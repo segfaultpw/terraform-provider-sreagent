@@ -33,6 +33,7 @@ var (
 	_ resource.ResourceWithConfigure   = (*facadeResource)(nil)
 	_ resource.ResourceWithImportState = (*facadeResource)(nil)
 	_ resource.ResourceWithIdentity    = (*facadeResource)(nil)
+	_ resource.ResourceWithModifyPlan  = (*facadeResource)(nil)
 )
 
 type facadeResource struct {
@@ -112,7 +113,8 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			// to restate a value nobody can read back. Create checks it instead.
 			n + "_wo":         schema.StringAttribute{Optional: true, Sensitive: true, WriteOnly: true, Description: a.Description + " Write-only: never stored in state or plan."},
 			n + "_wo_version": version,
-			n + "_set":        schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a value for %s.", n)},
+			// Stable until ModifyPlan says the secret is being sent.
+			n + "_set": schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a value for %s.", n), PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()}},
 		}
 	}
 	required := a.Required && !a.Computed
@@ -337,7 +339,7 @@ func (r *facadeResource) secretBody(ctx context.Context, a Attr, plan, config, s
 	if o == opUpdate && state != nil {
 		var prior types.Int64
 		diags.Append(state.GetAttribute(ctx, path.Root(n+"_wo_version"), &prior)...)
-		changed = !prior.Equal(planned)
+		changed = !prior.Equal(planned) || r.lost(ctx, state, n)
 	}
 	if wo.IsNull() || wo.IsUnknown() {
 		switch {
@@ -365,6 +367,42 @@ func (r *facadeResource) secretBody(ctx context.Context, a Attr, plan, config, s
 		return nil, nil, diags
 	}
 	return parsed, append(sent, stringLeaves(parsed)...), diags
+}
+
+// lost reports state saying the platform holds no value for the secret n.
+func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) bool {
+	var set types.Bool
+	if state.GetAttribute(ctx, path.Root(n+"_set"), &set).HasError() {
+		return false
+	}
+	return !set.IsNull() && !set.IsUnknown() && !set.ValueBool()
+}
+
+// ModifyPlan plans a secret's send: when its version changes, and when state
+// says the platform lost a value the configuration still sets. The second is
+// the one drift a secret shows, since its value is never answered, and it
+// plans a re-send at the same version.
+func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	for _, a := range r.spec.Attrs {
+		if !a.Secret {
+			continue
+		}
+		n := a.Attribute()
+		var wo types.String
+		var planned, prior types.Int64
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(n+"_wo"), &wo)...)
+		resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root(n+"_wo_version"), &planned)...)
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root(n+"_wo_version"), &prior)...)
+		if wo.IsNull() || planned.IsNull() {
+			continue
+		}
+		if !prior.Equal(planned) || r.lost(ctx, req.State, n) {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(n+"_set"), types.BoolUnknown())...)
+		}
+	}
 }
 
 // stringLeaves is every string in a decoded JSON value long enough that

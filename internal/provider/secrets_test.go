@@ -92,3 +92,37 @@ func TestAVersionBumpWithoutAValueIsRefused(t *testing.T) {
 		},
 	})
 }
+
+// The platform never answers a secret's value, only whether it holds one, so
+// a secret lost on the platform while the configuration still sets it is the
+// one drift a secret shows: it plans a re-send at the same version.
+func TestALostSecretIsSentAgain(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_outbound_config\" \"pd\" {\n  name = \"pd\"\n  provider_type = \"pagerduty\"\n  routing_key_wo = %q\n  routing_key_wo_version = 1\n}\n", sentinel)
+	var id string
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg, Check: func(s *terraform.State) error {
+				id = s.RootModule().Resources["sreagent_outbound_config.pd"].Primary.ID
+				return nil
+			}},
+			{
+				PreConfig:          func() { f.Mutate("outbound_configs", id, func(r map[string]any) { r["routing_key_set"] = false }) },
+				Config:             cfg,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+			{Config: cfg, Check: func(*terraform.State) error {
+				if n := f.Calls("PUT", "outbound_configs"); n != 1 {
+					return fmt.Errorf("want exactly one PUT, got %d", n)
+				}
+				if got := f.LastBody("PUT", "outbound_configs")["routing_key"]; got != sentinel {
+					return fmt.Errorf("the re-send must carry the secret, sent %v", got)
+				}
+				return nil
+			}},
+			{Config: cfg, PlanOnly: true},
+		},
+	})
+}
