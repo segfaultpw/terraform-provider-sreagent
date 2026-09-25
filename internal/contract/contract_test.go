@@ -167,7 +167,6 @@ func isReadOnlyByDesign(key, field string) bool {
 }
 
 func TestEveryContractResourceHasASpec(t *testing.T) {
-	t.Skip("enabled in Task 25")
 	d := doc(t)
 	have := map[string]bool{}
 	for _, s := range specs.All() {

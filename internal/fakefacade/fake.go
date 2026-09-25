@@ -31,12 +31,13 @@ type Fake struct {
 	calls       map[string]int
 	bodies      map[string]map[string]any
 	readOnly    bool
+	truncated   map[string]bool
 }
 
 // New starts a fake for specs; the server stops when the test ends.
 func New(t *testing.T, specs []engine.Spec) *Fake {
 	t.Helper()
-	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}}
+	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}}
 	for _, s := range specs {
 		f.specs[s.Key] = s
 		f.rows[s.Key] = map[string]map[string]any{}
@@ -77,6 +78,13 @@ func (f *Fake) ReadOnly() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.readOnly = true
+}
+
+// ForceTruncated makes the list of key say it may hold more rows than it answered.
+func (f *Fake) ForceTruncated(key string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.truncated[key] = true
 }
 
 // MutateBeforeNextWrite simulates a browser edit landing between Terraform's refresh and its write.
@@ -228,11 +236,16 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case r.Method == http.MethodGet && (id == "" && spec.Shape != engine.Singleton):
-		list := []any{}
-		for _, row := range f.rows[spec.Key] {
-			list = append(list, row)
+		ids := make([]string, 0, len(f.rows[spec.Key]))
+		for id := range f.rows[spec.Key] {
+			ids = append(ids, id)
 		}
-		reply(w, 200, map[string]any{"organization": wrap(nil)["organization"], "data": list, "truncated": false}, "")
+		sort.Strings(ids)
+		list := []any{}
+		for _, id := range ids {
+			list = append(list, f.rows[spec.Key][id])
+		}
+		reply(w, 200, map[string]any{"organization": wrap(nil)["organization"], "data": list, "truncated": f.truncated[spec.Key]}, "")
 	case r.Method == http.MethodGet:
 		row, ok := f.rows[spec.Key][id]
 		if !ok {

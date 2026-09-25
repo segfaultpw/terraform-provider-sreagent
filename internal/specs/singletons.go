@@ -110,24 +110,20 @@ var OverseerSettings = singleton("overseer_settings", "The Overseer's schedule a
 	computed(s("last_skip_reason", "Why the last due run did nothing.")),
 )
 
-// GitHubSettings mirrors x-sreagent-resources.github_settings. It needs a
-// connected installation, so it starts with no row.
-var GitHubSettings = func() engine.Spec {
-	sp := singleton("github_settings", "The GitHub App installation's settings. Needs a connected installation.",
-		b("auto_pr_enabled", "Open fix PRs automatically."),
-		b("auto_revise_on_review", "Revise a PR when a review asks."),
-		b("draft_prs", "Open PRs as drafts."),
-		b("review_enabled", "Review pull requests."),
-		b("link_comments_enabled", "Comment links on linked issues."),
-		engine.Attr{Name: "review_severity_floor", Kind: engine.String, OneOf: []string{"critical", "high", "medium", "low"}, Description: "The lowest severity a review comments on."},
-		s("context_repo", "A repository whose files give reviews context."),
-		computed(b("connected", "Whether an installation is connected.")),
-		computed(s("account", "The installation's account.")),
-		computed(i("installation_id", "The installation id.")),
-	)
-	sp.StartsEmpty = true
-	return sp
-}()
+// GitHubSettings mirrors x-sreagent-resources.github_settings. Every
+// organization reads a row; writing one needs a connected installation.
+var GitHubSettings = singleton("github_settings", "The GitHub App installation's settings. Needs a connected installation.",
+	b("auto_pr_enabled", "Open fix PRs automatically."),
+	b("auto_revise_on_review", "Revise a PR when a review asks."),
+	b("draft_prs", "Open PRs as drafts."),
+	b("review_enabled", "Review pull requests."),
+	b("link_comments_enabled", "Comment links on linked issues."),
+	engine.Attr{Name: "review_severity_floor", Kind: engine.String, OneOf: []string{"critical", "high", "medium", "low"}, Description: "The lowest severity a review comments on."},
+	s("context_repo", "A repository whose files give reviews context."),
+	computed(b("connected", "Whether an installation is connected.")),
+	computed(s("account", "The installation's account.")),
+	computed(i("installation_id", "The installation id.")),
+)
 
 // StatusPageSettings mirrors x-sreagent-resources.status_page_settings.
 var StatusPageSettings = singleton("status_page_settings", "The public status page's settings. Branding fields need the custom branding plan feature.",

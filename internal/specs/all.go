@@ -26,6 +26,7 @@ func All() []engine.Spec {
 		ServiceBinding,
 		StatusPageSettings,
 		StatusPageComponent,
+		StatusPageIncident,
 		OrganizationSettings,
 		NotificationSettings,
 		ChangeNotifications,
@@ -35,5 +36,7 @@ func All() []engine.Spec {
 		TicketIntegration,
 		TicketImportRule,
 		GitHubSettings,
+		AWSExternalID,
+		CompliancePeriod,
 	}
 }

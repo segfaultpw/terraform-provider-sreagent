@@ -31,6 +31,16 @@ func decodeRow(raw json.RawMessage) (map[string]any, error) {
 	return row, nil
 }
 
+func decodeRows(raw json.RawMessage) ([]map[string]any, error) {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	var rows []map[string]any
+	if err := d.Decode(&rows); err != nil {
+		return nil, fmt.Errorf("the API answered a list that is not an array of objects: %w", err)
+	}
+	return rows, nil
+}
+
 func getValue(ctx context.Context, src valueSource, a Attr) (attr.Value, diag.Diagnostics) {
 	p := path.Root(a.Attribute())
 	switch a.Kind {

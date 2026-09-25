@@ -222,17 +222,25 @@ func splitBindingID(id string) (string, string) {
 	return service, env
 }
 
-func (r *facadeResource) rowID(row map[string]any) string {
-	switch r.spec.Shape {
+// RowID is the id Terraform holds for a row: the uuid, the natural key, the
+// singleton's key, or a service binding's escaped Location form.
+func RowID(spec Spec, row map[string]any) string {
+	switch spec.Shape {
 	case Singleton:
-		return r.spec.Key
+		return spec.Key
 	case NaturalKey:
-		return fmt.Sprint(row[r.spec.IDAttr])
+		return fmt.Sprint(row[spec.IDAttr])
 	case ServiceBinding:
 		env, _ := row["environment"].(string)
 		return bindingID(fmt.Sprint(row["service"]), env)
 	}
-	return fmt.Sprint(row["id"])
+	if id, ok := row["id"].(string); ok {
+		return id
+	}
+	if spec.ListIDAttr != "" {
+		return fmt.Sprint(row[spec.ListIDAttr])
+	}
+	return ""
 }
 
 func (r *facadeResource) body(ctx context.Context, plan, config, state valueSource, o op) (map[string]any, []string, diag.Diagnostics) {
@@ -346,7 +354,7 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		diags.AddError("Unexpected API answer", err.Error())
 		return diags
 	}
-	id := r.rowID(row)
+	id := RowID(r.spec, row)
 	diags.Append(state.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 	for _, a := range r.spec.Attrs {
 		if a.Secret {
@@ -482,7 +490,7 @@ func (r *facadeResource) followUp(ctx context.Context, plan valueSource, created
 	if len(body) == 0 {
 		return created, nil
 	}
-	p, q := r.rowPath(r.rowID(row))
+	p, q := r.rowPath(RowID(r.spec, row))
 	return r.client.Do(ctx, client.Request{Method: http.MethodPut, Path: p, Query: q, Body: body, IfMatch: created.ETag})
 }
 

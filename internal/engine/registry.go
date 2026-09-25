@@ -16,7 +16,13 @@ func Resources(specs []Spec) []func() resource.Resource {
 	return out
 }
 
-// DataSources returns the data sources; filled in by Task 25.
-func DataSources(_ []Spec) []func() datasource.DataSource {
-	return nil
+// DataSources returns a list data source per collection and a read data source per singleton.
+func DataSources(specs []Spec) []func() datasource.DataSource {
+	out := []func() datasource.DataSource{}
+	for _, s := range specs {
+		spec := s
+		list := spec.Shape != Singleton
+		out = append(out, func() datasource.DataSource { return &facadeDataSource{spec: spec, list: list} })
+	}
+	return out
 }
