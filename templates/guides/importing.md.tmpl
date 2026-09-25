@@ -59,6 +59,12 @@ import {
 }
 ```
 
+## Arguments the platform never answers
+
+`sreagent_alert_mute`'s `duration_minutes` is sent when the mute is created and never read back (the platform
+answers only `ends_at`). An imported mute therefore holds no `duration_minutes`, and a configuration that sets
+it plans a replacement. Leave it out of an imported mute's configuration to keep the mute as it is.
+
 ## Secrets after an import
 
 Nobody can read a secret back, so an imported resource holds no `<name>_wo_version`. Leave the write-only

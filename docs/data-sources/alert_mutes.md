@@ -2,12 +2,12 @@
 page_title: "sreagent_alert_mutes Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every alert_mute row, read-only. Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute.
+  Every alert_mute row, read-only. Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute. duration_minutes is never read back, so importing a mute whose configuration sets it plans a replacement; import it with duration_minutes left out, or accept the replacement.
 ---
 
 # sreagent_alert_mutes (Data Source)
 
-Every alert_mute row, read-only. Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute.
+Every alert_mute row, read-only. Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute. duration_minutes is never read back, so importing a mute whose configuration sets it plans a replacement; import it with duration_minutes left out, or accept the replacement.
 
 ## Example Usage
 

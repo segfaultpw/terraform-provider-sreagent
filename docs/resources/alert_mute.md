@@ -2,12 +2,12 @@
 page_title: "sreagent_alert_mute Resource - sreagent"
 subcategory: ""
 description: |-
-  Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute.
+  Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute. duration_minutes is never read back, so importing a mute whose configuration sets it plans a replacement; import it with duration_minutes left out, or accept the replacement.
 ---
 
 # sreagent_alert_mute (Resource)
 
-Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute.
+Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute. duration_minutes is never read back, so importing a mute whose configuration sets it plans a replacement; import it with duration_minutes left out, or accept the replacement.
 
 ## Example Usage
 

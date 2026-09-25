@@ -6,7 +6,7 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 // tool, so every argument replaces the mute when it changes.
 var AlertMute = engine.Spec{
 	Key: "alert_mutes", TypeName: "alert_mute", ListName: "alert_mutes",
-	Description: "Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute.",
+	Description: "Silences alerts matching a pattern. Rows cannot be edited, so any change replaces the mute. duration_minutes is never read back, so importing a mute whose configuration sets it plans a replacement; import it with duration_minutes left out, or accept the replacement.",
 	Shape:       engine.Generated, Lifecycle: true,
 	Attrs: []engine.Attr{
 		{Name: "pattern", Kind: engine.String, Required: true, CreateOnly: true, Normalize: engine.Lower, Description: "The substring to silence, 2 to 200 characters, matched without case and stored lowercased."},

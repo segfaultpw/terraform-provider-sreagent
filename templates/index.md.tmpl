@@ -29,7 +29,7 @@ request is sent, because the configuration API only admits API keys.
   delete. An apply with it fails with *"The configured API key holds api:config_read, which can plan but not
   apply. Apply with an api:admin key."*
 
-{{ tffile "examples/provider/ci-plan-only.tf" }}
+{{ tffile "examples/provider-ci-plan-only/provider.tf" }}
 
 Both kinds need the organization's plan to include advanced integrations.
 
