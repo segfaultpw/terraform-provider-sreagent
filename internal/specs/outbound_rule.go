@@ -13,7 +13,7 @@ var OutboundRule = engine.Spec{
 		{Name: "enabled", Kind: engine.Bool, Description: "Whether the rule is in force."},
 		{Name: "match_source", Kind: engine.String, Clearable: true, Description: "Only alerts from this source."},
 		{Name: "match_severity", Kind: engine.String, Clearable: true, Description: "Only alerts at this severity."},
-		{Name: "match_labels", Kind: engine.JSON, Clearable: true, Description: "Only alerts carrying these labels, as jsonencode({...})."},
+		{Name: "match_labels", Kind: engine.JSON, Clearable: true, NullMeans: "{}", Description: "Only alerts carrying these labels, as jsonencode({...}). Unset matches every alert."},
 		{Name: "cooldown_minutes", Kind: engine.Int, Clearable: true, NullMeans: "30", Description: "Minimum minutes between pages from this rule; unset means 30."},
 		{Name: "escalate_after_minutes", Kind: engine.Int, Clearable: true, Description: "Page only when the alert is still unacknowledged after this many minutes."},
 		{Name: "step_order", Kind: engine.Int, Clearable: true, NullMeans: "0", Description: "This rule's step in an escalation chain; unset means 0, the first step."},

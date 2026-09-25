@@ -20,6 +20,12 @@ type Resource struct {
 	UpdateFields   []string       `json:"update_fields"`
 	IDArgs         []string       `json:"id_args"`
 	NaturalKey     []string       `json:"natural_key"`
+	// TerraformReadOnly names writable fields no API key can write, which
+	// the spec must declare Computed: a person decides them in the app.
+	TerraformReadOnly []string `json:"terraform_read_only"`
+	// NullMeans maps a Clearable field to the value the platform acts on
+	// when the field is null, which the spec's NullMeans must equal.
+	NullMeans map[string]any `json:"null_means"`
 }
 
 // Doc is the part of the document the provider is held to.

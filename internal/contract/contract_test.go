@@ -1,7 +1,9 @@
 package contract
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -52,6 +54,16 @@ func kindFor(schema map[string]any) engine.Kind {
 	return engine.JSON
 }
 
+// sameJSON reports whether a spec's NullMeans literal and the contract's
+// published value decode to the same JSON value.
+func sameJSON(literal string, published any) bool {
+	var want any
+	if err := json.Unmarshal([]byte(literal), &want); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(want, published)
+}
+
 // specProblems is every way one spec disagrees with the contract document.
 func specProblems(d *Doc, s engine.Spec) []string {
 	var p []string
@@ -93,10 +105,26 @@ func specProblems(d *Doc, s engine.Spec) []string {
 			add("field %s is missing from the spec", f)
 			continue
 		}
+		// The contract names the writable fields no API key can write, so
+		// the spec's Computed set is pinned to it rather than kept by hand.
 		if a.Computed || a.Secret {
-			if s.Lifecycle && !isReadOnlyByDesign(s.Key, f) {
+			if s.Lifecycle && !slices.Contains(res.TerraformReadOnly, f) {
 				add("field %s is writable in the contract but %s in the spec", f, map[bool]string{true: "computed", false: "secret"}[a.Computed])
 			}
+		} else if slices.Contains(res.TerraformReadOnly, f) {
+			add("field %s is terraform_read_only in the contract but writable in the spec", f)
+		}
+		// A Clearable field's null meaning is published too, so the
+		// provider's NullMeans is held to the platform's, not remembered.
+		if mean, ok := res.NullMeans[f]; ok {
+			switch {
+			case a.NullMeans == "":
+				add("field %s has null meaning %v in the contract but none in the spec", f, mean)
+			case !sameJSON(a.NullMeans, mean):
+				add("field %s null means %q in the spec, %v in the contract", f, a.NullMeans, mean)
+			}
+		} else if a.NullMeans != "" {
+			add("field %s has null meaning %q in the spec but none in the contract", f, a.NullMeans)
 		}
 		if got, want := a.Kind, kindFor(row[f]); got != want {
 			add("field %s kind %d, contract %d", f, got, want)
@@ -224,13 +252,6 @@ func checkAddressing(s engine.Spec, res Resource, add func(string, ...any)) {
 	}
 }
 
-// Fields the API accepts that the provider deliberately exposes read-only:
-// the platform refuses these two from any connection without a user
-// identity, and a Terraform key is an API key.
-func isReadOnlyByDesign(key, field string) bool {
-	return key == "organization_settings" && (field == "social_joins_enabled" || field == "restrict_domain_signups")
-}
-
 func TestEveryContractResourceHasASpec(t *testing.T) {
 	d := doc(t)
 	have := map[string]bool{}
@@ -277,6 +298,16 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r := d.Resources["ticket_import_rules"]
 			r.NaturalKey = []string{"name"}
 			d.Resources["ticket_import_rules"] = r
+		}},
+		{"a read-only field leaves terraform_read_only", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "social_joins_enabled" })
+			d.Resources["organization_settings"] = r
+		}},
+		{"a null meaning changes", "ai_providers", func(d *Doc) {
+			r := d.Resources["ai_providers"]
+			r.NullMeans["temperature"] = 0.5
+			d.Resources["ai_providers"] = r
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {

@@ -3161,7 +3161,7 @@
     },
     "/certificate_monitors": {
       "get": {
-        "description": "List the TLS certificates this organization watches, with the newest check beside each one: last_status, days_until_expiry and expires_at. A monitor no check has run against yet answers last_status \"unchecked\". `discovered` is true for a monitor a Kubernetes or ACM sweep filed rather than a person, which is the monitor a sweep proposes again after a delete. Optionally filter by enabled. Needs the infrastructure suite.",
+        "description": "List the TLS certificates this organization watches, with the newest check beside each one: last_status, days_until_expiry and expires_at. A monitor no check has run against yet answers last_status \"unchecked\". `discovered` is true for a monitor a Kubernetes or ACM sweep filed rather than a person, which is the monitor a sweep proposes again after a delete. Optionally filter by enabled, or by that flag. Needs the infrastructure suite.",
         "operationId": "list_certificate_monitors",
         "parameters": [],
         "responses": {
@@ -4356,7 +4356,7 @@
     },
     "/image_targets": {
       "get": {
-        "description": "List the container images this organization scans for known vulnerabilities, with the newest scan beside each one: last_scan_status, the critical, high, medium and low counts, and scanned_at, which is when that scan finished. last_scanned_at is the target's own stamp, written when a scan completes or is deliberately skipped and left alone when one fails, so it lags scanned_at while a scan is running and after a failed one: read last_scan_status to tell which. An image no scan has run against yet answers last_scan_status \"not scanned\" and null counts, because a zero would say the image is clean. `sources` says which estates run it (kubernetes, aws_ecs), and `discovered` is true for an image a sweep filed rather than a person. Optionally filter by enabled. Needs the infrastructure suite.",
+        "description": "List the container images this organization scans for known vulnerabilities, with the newest scan beside each one: last_scan_status, the critical, high, medium and low counts, and scanned_at, which is when that scan finished. last_scanned_at is the target's own stamp, written when a scan completes or is deliberately skipped and left alone when one fails, so it lags scanned_at while a scan is running and after a failed one: read last_scan_status to tell which. An image no scan has run against yet answers last_scan_status \"not scanned\" and null counts, because a zero would say the image is clean. `sources` says which estates run it (kubernetes, aws_ecs), and `discovered` is true for an image a sweep filed rather than a person. Optionally filter by enabled, or by that flag. Needs the infrastructure suite.",
         "operationId": "list_image_targets",
         "parameters": [],
         "responses": {
@@ -8503,6 +8503,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout_ms": 60000
+      },
       "secret_fields": [
         "api_key"
       ],
@@ -8510,6 +8515,7 @@
       "terraform_names": {
         "provider": "provider_type"
       },
+      "terraform_read_only": [],
       "terraform_type": "ai_provider",
       "update_fields": [
         "api_key",
@@ -8545,9 +8551,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "ai_settings",
       "update_fields": [
         "anonymization_enabled",
@@ -8590,9 +8598,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "alert_mute",
       "update_fields": [],
       "upsert": false
@@ -8624,9 +8634,11 @@
       "natural_key": [
         "service"
       ],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "alert_route",
       "update_fields": [
         "enabled",
@@ -8651,9 +8663,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
       "upsert": false
@@ -8704,9 +8718,11 @@
       "lifecycle": true,
       "list_max": 200,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "certificate_monitor",
       "update_fields": [],
       "upsert": false
@@ -8732,9 +8748,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "change_notifications",
       "update_fields": [
         "channel",
@@ -8774,9 +8792,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
       "upsert": false
@@ -8809,11 +8829,13 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [
         "config"
       ],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "connector",
       "update_fields": [
         "config",
@@ -8860,11 +8882,13 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [
         "auth_credentials"
       ],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "data_source",
       "update_fields": [
         "auth_credentials",
@@ -8925,9 +8949,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "deploy_policy",
       "update_fields": [
         "burn_rate_block_enabled",
@@ -8983,9 +9009,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "github_settings",
       "update_fields": [
         "auto_pr_enabled",
@@ -9046,9 +9074,11 @@
       "lifecycle": true,
       "list_max": 200,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "image_target",
       "update_fields": [],
       "upsert": false
@@ -9073,9 +9103,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "notification_settings",
       "update_fields": [
         "enabled",
@@ -9116,9 +9148,14 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [
+        "social_joins_enabled",
+        "restrict_domain_signups"
+      ],
       "terraform_type": "organization_settings",
       "update_fields": [
         "ai_budget_warn_percent",
@@ -9179,12 +9216,16 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {
+        "default_severity_mapping": {}
+      },
       "secret_fields": [
         "api_key",
         "routing_key"
       ],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "outbound_config",
       "update_fields": [
         "api_key",
@@ -9243,9 +9284,15 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {
+        "cooldown_minutes": 30,
+        "match_labels": {},
+        "step_order": 0
+      },
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "outbound_rule",
       "update_fields": [
         "cooldown_minutes",
@@ -9287,9 +9334,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "overseer_settings",
       "update_fields": [
         "aggressivity",
@@ -9332,9 +9381,11 @@
       "lifecycle": true,
       "list_max": 200,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "prompt_template",
       "update_fields": [
         "content",
@@ -9382,9 +9433,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "repo_setting",
       "update_fields": [
         "alerting_sns_topic_arn",
@@ -9436,9 +9489,11 @@
         "service",
         "environment"
       ],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "service_binding",
       "update_fields": [
         "account_id",
@@ -9474,12 +9529,14 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [
         "bot_token",
         "signing_secret"
       ],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "slack",
       "update_fields": [
         "bot_token",
@@ -9528,9 +9585,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "sli",
       "update_fields": [
         "data_source_id",
@@ -9570,9 +9629,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "slo",
       "update_fields": [
         "name",
@@ -9612,9 +9673,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "status_page_component",
       "update_fields": [
         "description",
@@ -9670,9 +9733,11 @@
       "lifecycle": true,
       "list_max": 100,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [
         "message",
@@ -9709,9 +9774,11 @@
       "lifecycle": false,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "status_page_settings",
       "update_fields": [
         "enabled",
@@ -9787,9 +9854,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "synthetic_check",
       "update_fields": [
         "alert_on_failure",
@@ -9832,9 +9901,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "team_member",
       "update_fields": [],
       "upsert": false
@@ -9859,9 +9930,11 @@
       "lifecycle": true,
       "list_max": null,
       "natural_key": [],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_read_only": [],
       "terraform_type": "team",
       "update_fields": [
         "name"
@@ -9901,11 +9974,13 @@
       "natural_key": [
         "provider"
       ],
+      "null_means": {},
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {
         "provider": "provider_type"
       },
+      "terraform_read_only": [],
       "terraform_type": "ticket_import_rule",
       "update_fields": [
         "config",
@@ -9962,6 +10037,7 @@
       "natural_key": [
         "provider"
       ],
+      "null_means": {},
       "secret_fields": [
         "client_secret",
         "refresh_token",
@@ -9971,6 +10047,7 @@
       "terraform_names": {
         "provider": "provider_type"
       },
+      "terraform_read_only": [],
       "terraform_type": "ticket_integration",
       "update_fields": [
         "account_email",
