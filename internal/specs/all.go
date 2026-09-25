@@ -9,6 +9,7 @@ func All() []engine.Spec {
 		AlertRoute,
 		OutboundConfig,
 		OutboundRule,
+		SyntheticCheck,
 		DeployPolicy,
 	}
 }

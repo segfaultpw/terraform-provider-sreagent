@@ -153,3 +153,95 @@ func TestOutboundRuleLifecycle(t *testing.T) {
 		browserEdit: func(r map[string]any) { r["cooldown_minutes"] = 99 },
 	})
 }
+
+func TestSyntheticCheckLifecycle(t *testing.T) {
+	runLifecycle(t, lifecycle{
+		spec:        specs.SyntheticCheck,
+		create:      "name = \"home\"\ncheck_type = \"http\"\ntarget = \"https://example.com\"\ninterval_seconds = 60\nconfig = jsonencode({ method = \"GET\", tls_verify = true })",
+		update:      "name = \"home\"\ncheck_type = \"http\"\ntarget = \"https://example.com\"\ninterval_seconds = 120\nconfig = jsonencode({ tls_verify = true, method = \"GET\" })",
+		after:       map[string]string{"check_type": "http", "interval_seconds": "60"},
+		browserEdit: func(r map[string]any) { r["target"] = "https://example.org" },
+	})
+}
+
+func TestSyntheticCheckProbeResultsAreNotDrift(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := providerBlock(f.URL) + "resource \"sreagent_synthetic_check\" \"c\" {\n  name = \"home\"\n  check_type = \"http\"\n  target = \"https://example.com\"\n}\n"
+	var id string
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg, Check: func(s *terraform.State) error {
+				id = s.RootModule().Resources["sreagent_synthetic_check.c"].Primary.ID
+				return nil
+			}},
+			{
+				PreConfig: func() {
+					f.Mutate("synthetic_checks", id, func(r map[string]any) { r["last_status"] = "failure"; r["consecutive_failures"] = 3 })
+				},
+				Config:   cfg,
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+func TestSyntheticCheckConfigRefusesHeadersAndBody(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config:      providerBlock(f.URL) + "resource \"sreagent_synthetic_check\" \"c\" {\n  name = \"home\"\n  check_type = \"http\"\n  target = \"https://example.com\"\n  config = jsonencode({ method = \"GET\", headers = { Authorization = \"Bearer x\" } })\n}\n",
+			ExpectError: regexp.MustCompile(`config.headers can carry a credential`),
+		}},
+	})
+}
+
+// config replaces the stored object as a whole, so an update that leaves it
+// alone must not send it: resending it would drop headers set in the app.
+func TestSyntheticCheckConfigIsSentOnlyWhenItChanges(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(extra string) string {
+		return providerBlock(f.URL) + "resource \"sreagent_synthetic_check\" \"c\" {\n  name = \"home\"\n  check_type = \"http\"\n  target = \"https://example.com\"\n  config = jsonencode({ method = \"GET\" })\n" + extra + "}\n"
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg("")},
+			{
+				Config: cfg("  interval_seconds = 120\n"),
+				Check: func(*terraform.State) error {
+					if _, sent := f.LastBody("PUT", "synthetic_checks")["config"]; sent {
+						return fmt.Errorf("an unchanged config was sent: %v", f.LastBody("PUT", "synthetic_checks"))
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+func TestSyntheticCheckConfigChangeIsRefusedWhileTheAppHoldsHeaders(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(method string) string {
+		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_synthetic_check\" \"c\" {\n  name = \"home\"\n  check_type = \"http\"\n  target = \"https://example.com\"\n  config = jsonencode({ method = %q })\n}\n", method)
+	}
+	var id string
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg("GET"), Check: func(s *terraform.State) error {
+				id = s.RootModule().Resources["sreagent_synthetic_check.c"].Primary.ID
+				return nil
+			}},
+			{
+				// An Authorization header added in the app, which reads back only by name.
+				PreConfig: func() {
+					f.Mutate("synthetic_checks", id, func(r map[string]any) { r["config_header_names"] = []any{"Authorization"} })
+				},
+				Config:      cfg("HEAD"),
+				ExpectError: regexp.MustCompile(`would silently drop them`),
+			},
+		},
+	})
+}

@@ -21,7 +21,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -133,7 +132,10 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			sa.CustomType = jsontypes.NormalizedType{}
 		}
 		if len(a.OneOf) > 0 {
-			sa.Validators = []validator.String{stringvalidator.OneOf(a.OneOf...)}
+			sa.Validators = append(sa.Validators, stringvalidator.OneOf(a.OneOf...))
+		}
+		if len(a.HiddenKeys) > 0 {
+			sa.Validators = append(sa.Validators, refuseKeys{keys: a.HiddenKeys})
 		}
 		return map[string]schema.Attribute{a.Name: sa}
 	case Int:
@@ -284,6 +286,19 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			}
 			continue
 		}
+		if o == opUpdate && len(a.HiddenKeys) > 0 && state != nil {
+			prior, d := getValue(ctx, state, a)
+			diags.Append(d...)
+			if keep(a, prior, v) {
+				continue
+			}
+			if r.hiddenHeld(ctx, state, a) {
+				diags.AddAttributeError(path.Root(a.Name), "Would drop values set in the app",
+					fmt.Sprintf("sreagent_%s holds %s set in the app, which the platform never answers, and a change to %s replaces the stored %s as a whole, so applying it would silently drop them. Change %s in the app, or remove %s there first. Nothing was written.",
+						r.spec.TypeName, strings.Join(a.HiddenKeys, " or "), a.Name, a.Name, a.Name, strings.Join(a.HiddenKeys, " and ")))
+				continue
+			}
+		}
 		j, err := toJSON(v)
 		if err != nil {
 			diags.AddAttributeError(path.Root(a.Name), "Invalid value", err.Error())
@@ -292,6 +307,33 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 		body[a.Name] = j
 	}
 	return body, secrets, diags
+}
+
+// hiddenHeld reports whether state says the row stores keys of a that the
+// platform never answers.
+func (r *facadeResource) hiddenHeld(ctx context.Context, state valueSource, a Attr) bool {
+	for _, name := range a.HiddenSetBy {
+		for _, c := range r.spec.Attrs {
+			if c.Name != name {
+				continue
+			}
+			v, d := getValue(ctx, state, c)
+			if d.HasError() || v == nil || v.IsNull() || v.IsUnknown() {
+				continue
+			}
+			switch t := v.(type) {
+			case types.Bool:
+				if t.ValueBool() {
+					return true
+				}
+			case types.List:
+				if len(t.Elements()) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (r *facadeResource) writeState(ctx context.Context, out *client.Response, prior valueSource, state *tfsdk.State, priv privateData, identity *tfsdk.ResourceIdentity) diag.Diagnostics {
