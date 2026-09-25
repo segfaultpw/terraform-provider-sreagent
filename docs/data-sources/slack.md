@@ -22,6 +22,7 @@ data "sreagent_slack" "this" {}
 
 - `app_token_set` (Boolean) Whether a Socket Mode app token is stored.
 - `bot_token_set` (Boolean) Whether the platform holds a value for bot_token.
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `default_channel_critical` (String) Where critical alerts post when no route names a channel.
 - `default_channel_info` (String) Where info alerts post when no route names a channel.
 - `default_channel_remediation` (String) Where remediation updates post.

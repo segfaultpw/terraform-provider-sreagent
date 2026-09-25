@@ -28,6 +28,7 @@ data "sreagent_organization_settings" "this" {}
 - `auto_close_incidents` (Boolean) Close incidents automatically.
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `id` (String) The row's identifier on the platform.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.

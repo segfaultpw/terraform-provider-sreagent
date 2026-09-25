@@ -281,7 +281,7 @@ func TestAccSingletons(t *testing.T) {
 }
 
 // startsEmpty are the singletons a fresh organization has no row of: both
-// need a Slack workspace on the other end first.
+// need a Slack workspace on the other end first, and read as not configured.
 var startsEmpty = map[string]bool{"slack": true, "change_notifications": true}
 
 // Every data source reads the seeded organization, with the api:admin key
@@ -291,31 +291,24 @@ func TestAccDataSources(t *testing.T) {
 	var body strings.Builder
 	checks := []resource.TestCheckFunc{}
 	for _, s := range specs.All() {
-		if startsEmpty[s.Key] {
-			continue
-		}
 		name := "sreagent_" + s.ListName
 		if s.Shape == engine.Singleton {
 			name = "sreagent_" + s.TypeName
 		}
 		fmt.Fprintf(&body, "data %q \"x\" {}\n", name)
 		checks = append(checks, resource.TestCheckResourceAttrSet("data."+name+".x", "id"))
+		if startsEmpty[s.Key] {
+			checks = append(checks, resource.TestCheckResourceAttr("data."+name+".x", "configured", "false"))
+		}
 	}
 	checks = append(checks, resource.TestMatchResourceAttr("data.sreagent_aws_external_id.x", "external_id", regexp.MustCompile(`^sreagent-`)))
 	for _, key := range []string{"SREAGENT_API_KEY", "SREAGENT_READ_API_KEY"} {
 		t.Run(key, func(t *testing.T) {
 			provider := fmt.Sprintf("provider \"sreagent\" {\n  base_url = %q\n  organization = %q\n  api_key = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), os.Getenv("SREAGENT_ORGANIZATION"), os.Getenv(key))
-			steps := []resource.TestStep{{Config: provider + body.String(), Check: resource.ComposeAggregateTestCheckFunc(checks...)}}
-			for name := range startsEmpty {
-				steps = append(steps, resource.TestStep{
-					Config:      provider + fmt.Sprintf("data %q \"x\" {}\n", "sreagent_"+name),
-					ExpectError: regexp.MustCompile(`404`),
-				})
-			}
 			resource.Test(t, resource.TestCase{
 				ProtoV6ProviderFactories: factories,
 				TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
-				Steps:                    steps,
+				Steps:                    []resource.TestStep{{Config: provider + body.String(), Check: resource.ComposeAggregateTestCheckFunc(checks...)}},
 			})
 		})
 	}

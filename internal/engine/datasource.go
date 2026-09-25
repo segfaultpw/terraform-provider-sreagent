@@ -108,6 +108,9 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 		fields[name] = computedAttribute(a)
 	}
 	if !d.list {
+		if _, ok := fields["configured"]; !ok {
+			fields["configured"] = schema.BoolAttribute{Computed: true, Description: "False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null."}
+		}
 		resp.Schema = schema.Schema{Description: d.spec.Description, Attributes: fields}
 		return
 	}
@@ -141,6 +144,16 @@ func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, r
 		name = "sreagent_" + d.spec.ListName
 	}
 	out, err := d.client.Do(ctx, client.Request{Method: http.MethodGet, Path: d.spec.Key})
+	if !d.list && client.IsNotFound(err) {
+		// No row of its own (Slack not connected, or settings inherited from a
+		// parent): a fact to branch on in HCL, not an error.
+		vals, _, _ := d.values(map[string]any{})
+		vals["configured"] = types.BoolValue(false)
+		for n, v := range vals {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(n), v)...)
+		}
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Could not read "+name, err.Error())
 		return
@@ -155,6 +168,9 @@ func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, r
 		if err != nil {
 			resp.Diagnostics.AddError("Unexpected API answer", err.Error())
 			return
+		}
+		if _, answered := row["configured"]; !answered {
+			vals["configured"] = types.BoolValue(true)
 		}
 		for n, v := range vals {
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(n), v)...)

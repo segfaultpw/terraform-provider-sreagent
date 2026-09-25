@@ -21,6 +21,7 @@ data "sreagent_ai_settings" "this" {}
 ### Read-Only
 
 - `anonymization_enabled` (Boolean) Anonymize data sent to models.
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `id` (String) The row's identifier on the platform.
 - `multi_agent_investigation` (Boolean) Use multi-agent investigations.
 - `own_providers_only` (Boolean) Route only to the organization's own providers.

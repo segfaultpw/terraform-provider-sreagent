@@ -47,6 +47,7 @@ resource "sreagent_data_source" "cloudwatch" {
 
 ### Read-Only
 
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `external_id` (String) The organization's ExternalId; minted on first read.
 - `id` (String) The row's identifier on the platform.
 - `trust_principal_arn` (String) The platform principal the role trusts.

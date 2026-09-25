@@ -21,6 +21,7 @@ data "sreagent_change_notifications" "this" {}
 ### Read-Only
 
 - `channel` (String) The channel.
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `enabled` (Boolean) Announce changes.
 - `event_types` (List of String) deploy, scale, restart, config_change, rollback.
 - `id` (String) The row's identifier on the platform.

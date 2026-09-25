@@ -20,6 +20,7 @@ data "sreagent_notification_settings" "this" {}
 
 ### Read-Only
 
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `enabled` (Boolean) Send notification emails.
 - `id` (String) The row's identifier on the platform.
 - `muted_events` (List of String) Event types never emailed.

@@ -23,6 +23,7 @@ data "sreagent_github_settings" "this" {}
 - `account` (String) The installation's account.
 - `auto_pr_enabled` (Boolean) Open fix PRs automatically.
 - `auto_revise_on_review` (Boolean) Revise a PR when a review asks.
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `connected` (Boolean) Whether an installation is connected.
 - `context_repo` (String) A repository whose files give reviews context.
 - `draft_prs` (Boolean) Open PRs as drafts.

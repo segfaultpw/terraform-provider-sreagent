@@ -22,6 +22,7 @@ data "sreagent_overseer_settings" "this" {}
 
 - `aggressivity` (String) How much it proposes.
 - `cadence` (String) How often it runs.
+- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `digest_enabled` (Boolean) Send a digest.
 - `enabled` (Boolean) Run the Overseer.
 - `id` (String) The row's identifier on the platform.

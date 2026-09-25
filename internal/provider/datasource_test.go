@@ -58,3 +58,39 @@ func TestTruncatedIsSurfaced(t *testing.T) {
 		}},
 	})
 }
+
+// A singleton an organization has no row of reads as configured = false with
+// null attributes, so HCL can branch on it instead of failing the plan.
+func TestASingletonWithNoRowReadsAsNotConfigured(t *testing.T) {
+	for key, field := range map[string]string{"slack": "enabled", "change_notifications": "channel", "github_settings": "draft_prs"} {
+		t.Run(key, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			// github_settings answers a row on a fresh organization; one that
+			// only inherits its parent's reads as having none of its own.
+			f.Remove(key, key)
+			addr := "data.sreagent_" + key + ".x"
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config: providerBlock(f.URL) + "data \"sreagent_" + key + "\" \"x\" {}\n",
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(addr, "configured", "false"),
+						resource.TestCheckResourceAttr(addr, "id", key),
+						resource.TestCheckNoResourceAttr(addr, field),
+					),
+				}},
+			})
+		})
+	}
+}
+
+func TestASingletonWithARowReadsAsConfigured(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config: providerBlock(f.URL) + "data \"sreagent_organization_settings\" \"x\" {}\n",
+			Check:  resource.TestCheckResourceAttr("data.sreagent_organization_settings.x", "configured", "true"),
+		}},
+	})
+}
