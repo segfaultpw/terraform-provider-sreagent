@@ -128,8 +128,11 @@ func New(cfg Config) (*Client, error) {
 	if base.Scheme != "https" && (base.Scheme != "http" || !IsLoopback(base.Hostname())) {
 		return nil, fmt.Errorf("base_url must use https; plain http is accepted only for localhost, got %q", raw)
 	}
+	if cfg.APIKey == "" {
+		return nil, errors.New("api_key is not set: set it in the provider block or in SREAGENT_API_KEY to an sre_ak_ API key (api:admin to apply, api:config_read to plan only)")
+	}
 	if !strings.HasPrefix(cfg.APIKey, "sre_ak_") {
-		return nil, errors.New("api_key must be an sre_ak_ API key holding the api:admin scope; the configuration API refuses personal tokens")
+		return nil, errors.New("api_key must be an sre_ak_ API key; the configuration API refuses personal tokens and any other credential")
 	}
 	if cfg.MaxRetries < 0 || cfg.MaxRetries > 10 {
 		return nil, errors.New("max_retries must be between 0 and 10")

@@ -36,3 +36,22 @@ func (v refuseKeys) ValidateString(_ context.Context, req validator.StringReques
 		}
 	}
 }
+
+// trimmed refuses a string with surrounding whitespace, which the platform
+// would strip.
+type trimmed struct{}
+
+var _ validator.String = trimmed{}
+
+func (trimmed) Description(context.Context) string { return "must not start or end with whitespace" }
+
+func (v trimmed) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (trimmed) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if v := req.ConfigValue.ValueString(); v != strings.TrimSpace(v) {
+		resp.Diagnostics.AddAttributeError(req.Path, "Surrounding whitespace", fmt.Sprintf("%q starts or ends with whitespace, which the platform strips; write %q.", v, strings.TrimSpace(v)))
+	}
+}

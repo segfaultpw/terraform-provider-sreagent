@@ -220,3 +220,10 @@ func TestA412AfterAGatewayErrorIsMarkedRetried(t *testing.T) {
 		}
 	}
 }
+
+func TestNewNamesTheEnvironmentVariableWhenTheKeyIsUnset(t *testing.T) {
+	_, err := New(Config{})
+	if err == nil || !strings.Contains(err.Error(), "SREAGENT_API_KEY") || strings.Contains(err.Error(), "personal") {
+		t.Fatalf("an unset key must say so and name SREAGENT_API_KEY, got %v", err)
+	}
+}

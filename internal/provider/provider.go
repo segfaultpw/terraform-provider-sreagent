@@ -45,7 +45,7 @@ func (p *sreagentProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 		Description: "Manages SRE Agent configuration through its configuration API (/api/v1/config).",
 		Attributes: map[string]schema.Attribute{
 			"base_url":     schema.StringAttribute{Optional: true, Description: "Platform URL. Defaults to SREAGENT_BASE_URL, then https://sreagent.app. Must be https except for localhost."},
-			"api_key":      schema.StringAttribute{Optional: true, Sensitive: true, Description: "An sre_ak_ API key holding only the api:admin scope. Defaults to SREAGENT_API_KEY."},
+			"api_key":      schema.StringAttribute{Optional: true, Sensitive: true, Description: "An sre_ak_ API key: one holding api:admin to apply, or a separate api:config_read key for plan-only CI jobs. Defaults to SREAGENT_API_KEY."},
 			"organization": schema.StringAttribute{Optional: true, Description: "The organization slug this configuration belongs to. When set, every answer must name it, so a key for another organization can never apply this plan. Defaults to SREAGENT_ORGANIZATION."},
 			"max_retries":  schema.Int64Attribute{Optional: true, Description: "Retries for rate limiting and gateway errors, 0 to 10. Defaults to 4."},
 		},

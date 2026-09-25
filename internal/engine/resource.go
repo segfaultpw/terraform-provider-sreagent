@@ -3,12 +3,14 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -22,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -179,7 +182,10 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, listplanmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		// The platform trims and deduplicates list entries, so a padded or
+		// repeated one would read back changed; refuse it at plan instead.
+		validators := []validator.List{listvalidator.UniqueValues(), listvalidator.ValueStringsAre(trimmed{})}
+		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods, Validators: validators}}
 	}
 	return nil
 }
@@ -578,6 +584,18 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 	return true, diags
 }
 
+// conflict names the row a 409 says already holds this key, and how to
+// adopt it, since the provider never adopts a row silently.
+func (r *facadeResource) conflict(err error) string {
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) && len(apiErr.Existing) > 0 {
+		if id := RowID(r.spec, apiErr.Existing); id != "" {
+			return fmt.Sprintf("A row with this key already exists on the platform (id %s). Import it instead of creating it:\n\n  terraform import sreagent_%s.<name> '%s'\n\nor add an import block with id = %q.", id, r.spec.TypeName, id, id)
+		}
+	}
+	return fmt.Sprintf("A row with this key already exists on the platform. Import it instead of creating it: %s", err)
+}
+
 // noVersion is the diagnostic for a write with no recorded row version:
 // sending it without If-Match would overwrite a browser edit unchecked.
 func (r *facadeResource) noVersion(verb string) (string, string) {
@@ -628,7 +646,7 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 	if client.IsConflict(err) {
-		resp.Diagnostics.AddError(r.title("create"), fmt.Sprintf("A row with this key already exists on the platform. Import it instead of creating it: %s", err))
+		resp.Diagnostics.AddError(r.title("create"), r.conflict(err))
 		return
 	}
 	if err != nil {

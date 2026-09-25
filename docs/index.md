@@ -100,7 +100,7 @@ other settings resources) cannot be deleted: destroying it only stops Terraform 
 
 ### Optional
 
-- `api_key` (String, Sensitive) An sre_ak_ API key holding only the api:admin scope. Defaults to SREAGENT_API_KEY.
+- `api_key` (String, Sensitive) An sre_ak_ API key: one holding api:admin to apply, or a separate api:config_read key for plan-only CI jobs. Defaults to SREAGENT_API_KEY.
 - `base_url` (String) Platform URL. Defaults to SREAGENT_BASE_URL, then https://sreagent.app. Must be https except for localhost.
 - `max_retries` (Number) Retries for rate limiting and gateway errors, 0 to 10. Defaults to 4.
 - `organization` (String) The organization slug this configuration belongs to. When set, every answer must name it, so a key for another organization can never apply this plan. Defaults to SREAGENT_ORGANIZATION.
