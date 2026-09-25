@@ -19,6 +19,7 @@ type Resource struct {
 	CreateFields   []string       `json:"create_fields"`
 	UpdateFields   []string       `json:"update_fields"`
 	IDArgs         []string       `json:"id_args"`
+	NaturalKey     []string       `json:"natural_key"`
 }
 
 // Doc is the part of the document the provider is held to.
