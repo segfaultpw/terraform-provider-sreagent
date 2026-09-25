@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+      - name: Unit and contract tests
+        run: go test ./...

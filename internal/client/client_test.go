@@ -48,7 +48,7 @@ func TestNewRefusesPlainHTTPExceptLoopback(t *testing.T) {
 }
 
 func TestNewRefusesAPersonalToken(t *testing.T) {
-	if _, err := New(Config{APIKey: "sre_pt_abc"}); err == nil {
+	if _, err := New(Config{APIKey: "sre_pt_abc"}); err == nil { //nolint:gosec // a made-up token of the wrong kind
 		t.Fatal("a non sre_ak_ credential must be refused before any request")
 	}
 }

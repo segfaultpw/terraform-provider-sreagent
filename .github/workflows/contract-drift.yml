@@ -1,0 +1,16 @@
+name: Contract drift
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  drift:
+    runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go run ./internal/contract/cmd/drift https://sreagent.app/api/openapi.json internal/contract/openapi.json
