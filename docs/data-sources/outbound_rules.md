@@ -38,7 +38,7 @@ Read-Only:
 - `escalate_after_minutes` (Number) Page only when the alert is still unacknowledged after this many minutes.
 - `id` (String) The row's identifier on the platform.
 - `last_triggered_at` (String) When the rule last paged.
-- `match_labels` (String) Only alerts carrying these labels, as jsonencode({...}).
+- `match_labels` (String) Only alerts carrying these labels, as jsonencode({...}). Unset matches every alert.
 - `match_severity` (String) Only alerts at this severity.
 - `match_source` (String) Only alerts from this source.
 - `name` (String) Unique within the organization.

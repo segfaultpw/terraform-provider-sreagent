@@ -43,7 +43,7 @@ resource "sreagent_outbound_config" "pagerduty" {
 - `api_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The bearer token for a webhook or Grafana target. Write-only: never stored in state or plan.
 - `api_key_wo_version` (Number) Change this number to send api_key_wo again. Set it whenever api_key_wo is set.
 - `base_url` (String) The endpoint for a webhook or Grafana target.
-- `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}).
+- `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}). Unset uses the built-in mapping.
 - `enabled` (Boolean) Whether the target receives pages.
 - `oncall_schedule_id` (String) The schedule for an on-call target.
 - `priority` (Number) Order among targets.

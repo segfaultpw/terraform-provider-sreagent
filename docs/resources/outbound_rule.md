@@ -39,7 +39,7 @@ resource "sreagent_outbound_rule" "sev1" {
 - `cooldown_minutes` (Number) Minimum minutes between pages from this rule; unset means 30.
 - `enabled` (Boolean) Whether the rule is in force.
 - `escalate_after_minutes` (Number) Page only when the alert is still unacknowledged after this many minutes.
-- `match_labels` (String) Only alerts carrying these labels, as jsonencode({...}).
+- `match_labels` (String) Only alerts carrying these labels, as jsonencode({...}). Unset matches every alert.
 - `match_severity` (String) Only alerts at this severity.
 - `match_source` (String) Only alerts from this source.
 - `step_order` (Number) This rule's step in an escalation chain; unset means 0, the first step.

@@ -35,7 +35,7 @@ Read-Only:
 
 - `api_key_set` (Boolean) Whether the platform holds a value for api_key.
 - `base_url` (String) The endpoint for a webhook or Grafana target.
-- `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}).
+- `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}). Unset uses the built-in mapping.
 - `enabled` (Boolean) Whether the target receives pages.
 - `id` (String) The row's identifier on the platform.
 - `name` (String) Unique within the organization.
