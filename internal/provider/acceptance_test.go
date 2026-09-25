@@ -78,6 +78,10 @@ func TestAccResources(t *testing.T) {
 		{name: "certificate_monitor", typeName: "certificate_monitor", key: "certificate_monitors", create: "hostname = \"example.com\"", update: "hostname = \"example.com\""},
 		{name: "prompt_template", typeName: "prompt_template", key: "prompt_templates", create: "name = \"acc-p\"\nprompt_type = \"custom\"\ncontent = \"Summarize the alert.\"", update: "name = \"acc-p\"\nprompt_type = \"custom\"\ncontent = \"Summarize the alert in two lines.\""},
 		{name: "team", typeName: "team", key: "teams", create: "name = \"acc-platform\"", update: "name = \"acc-platform-eng\""},
+		{name: "service_binding", typeName: "service_binding", key: "service_bindings", create: "service = \"Acc-Checkout\"\nlog_groups = [\"/aws/lambda/acc\"]", update: "service = \"Acc-Checkout\"\nlog_groups = [\"/aws/lambda/acc\", \"/aws/ecs/acc\"]", importIgnore: []string{"service"}},
+		{name: "status_page_component", typeName: "status_page_component", key: "status_page_components", create: "display_name = \"Acc API\"", update: "display_name = \"Acc Public API\""},
+		{name: "ai_provider", typeName: "ai_provider", key: "ai_providers", create: "name = \"acc-main\"\nprovider_type = \"anthropic\"\nmodel = \"claude-sonnet-5\"\napi_key_wo = \"sk-ant-acc-0000\"\napi_key_wo_version = 1", update: "name = \"acc-main\"\nprovider_type = \"anthropic\"\nmodel = \"claude-opus-5\"\napi_key_wo = \"sk-ant-acc-0000\"\napi_key_wo_version = 1", importIgnore: []string{"api_key_wo_version"}},
+		{name: "ticket_integration", typeName: "ticket_integration", key: "ticket_integrations", create: "provider_type = \"jira\"\nbase_url = \"https://acme.atlassian.net\"\naccount_email = \"ops@example.com\"\napi_token_wo = \"tok-acc-0000\"\napi_token_wo_version = 1", update: "provider_type = \"jira\"\nbase_url = \"https://acme.atlassian.net\"\naccount_email = \"sre@example.com\"\napi_token_wo = \"tok-acc-0000\"\napi_token_wo_version = 1", importIgnore: []string{"api_token_wo_version"}},
 	} {
 		t.Run(c.name, func(t *testing.T) { runAcc(t, c) })
 	}

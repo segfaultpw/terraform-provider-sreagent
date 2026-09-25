@@ -21,7 +21,11 @@ const (
 // Attr is one field of a resource. Flags mirror x-sreagent-resources in the
 // OpenAPI document; internal/contract proves each one against it.
 type Attr struct {
-	Name        string
+	// Name is the API's field name.
+	Name string
+	// TFName is the Terraform attribute when Name cannot be one: provider is
+	// reserved in every resource and data source block.
+	TFName      string
 	Description string
 	Kind        Kind
 	// Required: in the create schema's required list.
@@ -59,6 +63,14 @@ type Attr struct {
 	HiddenSetBy []string
 }
 
+// Attribute is the Terraform attribute name.
+func (a Attr) Attribute() string {
+	if a.TFName != "" {
+		return a.TFName
+	}
+	return a.Name
+}
+
 // Shape is how a row is addressed.
 type Shape int
 
@@ -83,6 +95,8 @@ type Spec struct {
 	Lifecycle   bool
 	Attrs       []Attr
 	ListAttrs   []Attr
+	// ListIDAttr names a list row when the list answers rows without an id.
+	ListIDAttr string
 }
 
 // LowerTrim is the platform's normalization of service names.

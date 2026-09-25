@@ -100,7 +100,8 @@ func (r *facadeResource) IdentitySchema(_ context.Context, _ resource.IdentitySc
 
 func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	if a.Secret {
-		version := schema.Int64Attribute{Optional: true, Description: fmt.Sprintf("Change this number to send %s_wo again. Set it whenever %s_wo is set.", a.Name, a.Name)}
+		n := a.Attribute()
+		version := schema.Int64Attribute{Optional: true, Description: fmt.Sprintf("Change this number to send %s_wo again. Set it whenever %s_wo is set.", n, n)}
 		if a.CreateOnly {
 			version.PlanModifiers = []planmodifier.Int64{int64planmodifier.RequiresReplace()}
 		}
@@ -108,9 +109,9 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			// Optional even when the API requires the secret on create: an imported
 			// row already holds it, and a required argument would force every import
 			// to restate a value nobody can read back. Create checks it instead.
-			a.Name + "_wo":         schema.StringAttribute{Optional: true, Sensitive: true, WriteOnly: true, Description: a.Description + " Write-only: never stored in state or plan."},
-			a.Name + "_wo_version": version,
-			a.Name + "_set":        schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a %s.", a.Name)},
+			n + "_wo":         schema.StringAttribute{Optional: true, Sensitive: true, WriteOnly: true, Description: a.Description + " Write-only: never stored in state or plan."},
+			n + "_wo_version": version,
+			n + "_set":        schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a %s.", n)},
 		}
 	}
 	required := a.Required && !a.Computed
@@ -139,7 +140,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if len(a.HiddenKeys) > 0 {
 			sa.Validators = append(sa.Validators, refuseKeys{keys: a.HiddenKeys})
 		}
-		return map[string]schema.Attribute{a.Name: sa}
+		return map[string]schema.Attribute{a.Attribute(): sa}
 	case Int:
 		mods := []planmodifier.Int64{}
 		if stable {
@@ -148,7 +149,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, int64planmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Name: schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		return map[string]schema.Attribute{a.Attribute(): schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
 	case Float:
 		mods := []planmodifier.Float64{}
 		if stable {
@@ -157,7 +158,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly {
 			mods = append(mods, float64planmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Name: schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		return map[string]schema.Attribute{a.Attribute(): schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
 	case Bool:
 		mods := []planmodifier.Bool{}
 		if stable {
@@ -166,7 +167,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly {
 			mods = append(mods, boolplanmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Name: schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		return map[string]schema.Attribute{a.Attribute(): schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
 	case StringList:
 		mods := []planmodifier.List{}
 		if stable {
@@ -175,7 +176,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly {
 			mods = append(mods, listplanmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Name: schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
 	}
 	return nil
 }
@@ -244,22 +245,22 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 		}
 		if a.Secret {
 			var wo types.String
-			diags.Append(config.GetAttribute(ctx, path.Root(a.Name+"_wo"), &wo)...)
+			diags.Append(config.GetAttribute(ctx, path.Root(a.Attribute()+"_wo"), &wo)...)
 			if wo.IsNull() || wo.IsUnknown() {
 				if o == opCreate && a.Required && r.spec.Shape != Singleton {
-					diags.AddAttributeError(path.Root(a.Name+"_wo"), "Missing required secret", fmt.Sprintf("%s_wo is required to create sreagent_%s.", a.Name, r.spec.TypeName))
+					diags.AddAttributeError(path.Root(a.Attribute()+"_wo"), "Missing required secret", fmt.Sprintf("%s_wo is required to create sreagent_%s.", a.Attribute(), r.spec.TypeName))
 				}
 				continue
 			}
 			var planned types.Int64
-			diags.Append(plan.GetAttribute(ctx, path.Root(a.Name+"_wo_version"), &planned)...)
+			diags.Append(plan.GetAttribute(ctx, path.Root(a.Attribute()+"_wo_version"), &planned)...)
 			if planned.IsNull() {
-				diags.AddAttributeError(path.Root(a.Name+"_wo_version"), "Missing version", fmt.Sprintf("Set %s_wo_version whenever %s_wo is set, and change it to send a new value.", a.Name, a.Name))
+				diags.AddAttributeError(path.Root(a.Attribute()+"_wo_version"), "Missing version", fmt.Sprintf("Set %s_wo_version whenever %s_wo is set, and change it to send a new value.", a.Attribute(), a.Attribute()))
 				continue
 			}
 			if o == opUpdate && state != nil {
 				var prior types.Int64
-				diags.Append(state.GetAttribute(ctx, path.Root(a.Name+"_wo_version"), &prior)...)
+				diags.Append(state.GetAttribute(ctx, path.Root(a.Attribute()+"_wo_version"), &prior)...)
 				if prior.Equal(planned) {
 					continue
 				}
@@ -268,7 +269,7 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			if a.Kind == JSON {
 				var parsed any
 				if err := json.Unmarshal([]byte(wo.ValueString()), &parsed); err != nil {
-					diags.AddAttributeError(path.Root(a.Name+"_wo"), "Invalid JSON", "Use jsonencode(...) for this value.")
+					diags.AddAttributeError(path.Root(a.Attribute()+"_wo"), "Invalid JSON", "Use jsonencode(...) for this value.")
 					continue
 				}
 				value = parsed
@@ -295,15 +296,15 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 				continue
 			}
 			if r.hiddenHeld(ctx, state, a) {
-				diags.AddAttributeError(path.Root(a.Name), "Would drop values set in the app",
+				diags.AddAttributeError(path.Root(a.Attribute()), "Would drop values set in the app",
 					fmt.Sprintf("sreagent_%s holds %s set in the app, which the platform never answers, and a change to %s replaces the stored %s as a whole, so applying it would silently drop them. Change %s in the app, or remove %s there first. Nothing was written.",
-						r.spec.TypeName, strings.Join(a.HiddenKeys, " or "), a.Name, a.Name, a.Name, strings.Join(a.HiddenKeys, " and ")))
+						r.spec.TypeName, strings.Join(a.HiddenKeys, " or "), a.Attribute(), a.Attribute(), a.Attribute(), strings.Join(a.HiddenKeys, " and ")))
 				continue
 			}
 		}
 		j, err := toJSON(v)
 		if err != nil {
-			diags.AddAttributeError(path.Root(a.Name), "Invalid value", err.Error())
+			diags.AddAttributeError(path.Root(a.Attribute()), "Invalid value", err.Error())
 			continue
 		}
 		body[a.Name] = j
@@ -351,25 +352,25 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		if a.Secret {
 			version := types.Int64Null()
 			if prior != nil {
-				diags.Append(prior.GetAttribute(ctx, path.Root(a.Name+"_wo_version"), &version)...)
+				diags.Append(prior.GetAttribute(ctx, path.Root(a.Attribute()+"_wo_version"), &version)...)
 			}
 			set, _ := row[a.Name+"_set"].(bool)
-			diags.Append(state.SetAttribute(ctx, path.Root(a.Name+"_wo"), types.StringNull())...)
-			diags.Append(state.SetAttribute(ctx, path.Root(a.Name+"_wo_version"), version)...)
-			diags.Append(state.SetAttribute(ctx, path.Root(a.Name+"_set"), types.BoolValue(set))...)
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()+"_wo"), types.StringNull())...)
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()+"_wo_version"), version)...)
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()+"_set"), types.BoolValue(set))...)
 			continue
 		}
 		if a.NotRead {
 			if prior != nil {
 				v, d := getValue(ctx, prior, a)
 				diags.Append(d...)
-				diags.Append(state.SetAttribute(ctx, path.Root(a.Name), v)...)
+				diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), v)...)
 			}
 			continue
 		}
 		remote, err := fromJSON(a.Kind, row[a.Name])
 		if err != nil {
-			diags.AddAttributeError(path.Root(a.Name), "Unexpected API answer", err.Error())
+			diags.AddAttributeError(path.Root(a.Attribute()), "Unexpected API answer", err.Error())
 			continue
 		}
 		if prior != nil && !a.Computed {
@@ -379,7 +380,7 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 				remote = before
 			}
 		}
-		diags.Append(state.SetAttribute(ctx, path.Root(a.Name), remote)...)
+		diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), remote)...)
 	}
 	if out.ETag != "" && priv != nil {
 		b, _ := json.Marshal(out.ETag)

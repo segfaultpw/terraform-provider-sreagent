@@ -19,5 +19,10 @@ func All() []engine.Spec {
 		CertificateMonitor,
 		PromptTemplate,
 		Team,
+		RepoSetting,
+		ServiceBinding,
+		StatusPageComponent,
+		AIProvider,
+		TicketIntegration,
 	}
 }

@@ -304,3 +304,16 @@ func TestDataSourceEnabledIsSentAfterCreate(t *testing.T) {
 		}},
 	})
 }
+
+func TestBatchBLifecycles(t *testing.T) {
+	cases := []lifecycle{
+		{spec: specs.RepoSetting, create: "repo = \"acme/api\"\nbranch = \"main\"\npath_prefix = \"services\"", update: "repo = \"acme/api\"\nbranch = \"main\"\npath_prefix = \"services/api\"", after: map[string]string{"repo": "acme/api"}, browserEdit: func(r map[string]any) { r["service"] = "x" }},
+		{spec: specs.ServiceBinding, create: "service = \"Checkout\"\nlog_groups = [\"/aws/lambda/checkout\"]", update: "service = \"Checkout\"\nlog_groups = [\"/aws/lambda/checkout\", \"/aws/ecs/checkout\"]", after: map[string]string{"id": "checkout"}, importIgnore: []string{"service"}, browserEdit: func(r map[string]any) { r["log_filter"] = "ERROR" }},
+		{spec: specs.StatusPageComponent, create: "display_name = \"API\"", update: "display_name = \"Public API\"", after: map[string]string{"display_name": "API"}, browserEdit: func(r map[string]any) { r["display_name"] = "x" }},
+		{spec: specs.AIProvider, create: "name = \"main\"\nprovider_type = \"anthropic\"\nmodel = \"claude-sonnet-5\"\napi_key_wo = \"sk-ant-unit\"\napi_key_wo_version = 1", update: "name = \"main\"\nprovider_type = \"anthropic\"\nmodel = \"claude-opus-5\"\napi_key_wo = \"sk-ant-unit\"\napi_key_wo_version = 1", after: map[string]string{"api_key_set": "true"}, importIgnore: []string{"api_key_wo_version"}, browserEdit: func(r map[string]any) { r["priority"] = 5 }},
+		{spec: specs.TicketIntegration, create: "provider_type = \"jira\"\nbase_url = \"https://acme.atlassian.net\"\naccount_email = \"ops@example.com\"\napi_token_wo = \"tok-unit\"\napi_token_wo_version = 1", update: "provider_type = \"jira\"\nbase_url = \"https://acme.atlassian.net\"\naccount_email = \"sre@example.com\"\napi_token_wo = \"tok-unit\"\napi_token_wo_version = 1", after: map[string]string{"id": "jira", "api_token_set": "true"}, importIgnore: []string{"api_token_wo_version"}, browserEdit: func(r map[string]any) { r["project_key"] = "OPS" }},
+	}
+	for _, c := range cases {
+		t.Run(c.spec.TypeName, func(t *testing.T) { runLifecycle(t, c) })
+	}
+}

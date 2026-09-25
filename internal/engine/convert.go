@@ -32,7 +32,7 @@ func decodeRow(raw json.RawMessage) (map[string]any, error) {
 }
 
 func getValue(ctx context.Context, src valueSource, a Attr) (attr.Value, diag.Diagnostics) {
-	p := path.Root(a.Name)
+	p := path.Root(a.Attribute())
 	switch a.Kind {
 	case String:
 		var v types.String
