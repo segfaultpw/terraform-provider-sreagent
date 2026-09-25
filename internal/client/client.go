@@ -125,7 +125,7 @@ func New(cfg Config) (*Client, error) {
 	if err != nil || base.Host == "" {
 		return nil, fmt.Errorf("base_url %q is not an absolute URL", raw)
 	}
-	if base.Scheme != "https" && (base.Scheme != "http" || !isLoopback(base.Hostname())) {
+	if base.Scheme != "https" && (base.Scheme != "http" || !IsLoopback(base.Hostname())) {
 		return nil, fmt.Errorf("base_url must use https; plain http is accepted only for localhost, got %q", raw)
 	}
 	if !strings.HasPrefix(cfg.APIKey, "sre_ak_") {
@@ -151,7 +151,8 @@ func New(cfg Config) (*Client, error) {
 	return &Client{base: base, apiKey: cfg.APIKey, org: cfg.Organization, userAgent: cfg.UserAgent, maxRetries: cfg.MaxRetries, http: hc, sleep: sleep}, nil
 }
 
-func isLoopback(host string) bool {
+// IsLoopback reports a host that never leaves this machine.
+func IsLoopback(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 

@@ -13,7 +13,11 @@ jobs:
     # Pulling the sre-agent image needs this repository to hold read access to
     # that package, which only the owner can grant. Set the repository
     # variable ACCEPTANCE_ENABLED to "true" once it does.
-    if: vars.ACCEPTANCE_ENABLED == 'true'
+    # A fork's pull request never runs here: the job can pull the private
+    # sre-agent image, and a fork controls the code the job runs.
+    if: >-
+      vars.ACCEPTANCE_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
     strategy:
       fail-fast: false

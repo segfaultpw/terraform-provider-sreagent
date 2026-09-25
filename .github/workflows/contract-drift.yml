@@ -2,12 +2,14 @@ name: Contract drift
 on:
   schedule:
     - cron: "17 6 * * *"
-  pull_request:
+  push:
+    branches: [main]
 permissions:
   contents: read
 jobs:
   drift:
     runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

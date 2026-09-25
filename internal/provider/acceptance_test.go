@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,54 @@ type accCase struct {
 	importIgnore                                 []string
 }
 
+// accStackMarker is the line acceptance/seed.sh prints: proof that the
+// environment describes a throwaway local stack, not an organization anyone uses.
+const accStackMarker = "local"
+
+// accStackError refuses any target but the seeded local stack. The provider
+// defaults to production, so an environment holding a real key and nothing
+// else would otherwise change and delete a real organization's rows.
+func accStackError(baseURL, marker string) error {
+	if baseURL == "" {
+		return fmt.Errorf("SREAGENT_BASE_URL is unset, and the provider would default to production; start the local stack with acceptance/seed.sh")
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil || !client.IsLoopback(u.Hostname()) {
+		return fmt.Errorf("SREAGENT_BASE_URL %q is not a loopback address; acceptance tests run only against the local stack acceptance/seed.sh starts", baseURL)
+	}
+	if marker != accStackMarker {
+		return fmt.Errorf("SREAGENT_ACC_STACK=%s is missing; load the environment acceptance/seed.sh prints", accStackMarker)
+	}
+	return nil
+}
+
+// accPreCheck runs first in every acceptance test.
+func accPreCheck(t *testing.T) {
+	t.Helper()
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("acceptance only")
+	}
+	if err := accStackError(os.Getenv("SREAGENT_BASE_URL"), os.Getenv("SREAGENT_ACC_STACK")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAccPreCheckRefusesAnythingButTheLocalStack(t *testing.T) {
+	for _, c := range []struct {
+		url, marker string
+		ok          bool
+	}{
+		{"", accStackMarker, false},
+		{"https://sreagent.app", accStackMarker, false},
+		{"http://127.0.0.1:4000", "", false},
+		{"http://127.0.0.1:4000", accStackMarker, true},
+	} {
+		if err := accStackError(c.url, c.marker); (err == nil) != c.ok {
+			t.Errorf("%q with marker %q: got %v", c.url, c.marker, err)
+		}
+	}
+}
+
 func accClient(t *testing.T) *client.Client {
 	t.Helper()
 	c, err := client.New(client.Config{BaseURL: os.Getenv("SREAGENT_BASE_URL"), APIKey: os.Getenv("SREAGENT_API_KEY"), UserAgent: "acceptance", MaxRetries: 2})
@@ -36,10 +85,11 @@ func accClient(t *testing.T) *client.Client {
 }
 
 func accProvider() string {
-	return fmt.Sprintf("provider \"sreagent\" {\n  organization = %q\n}\n", os.Getenv("SREAGENT_ORGANIZATION"))
+	return fmt.Sprintf("provider \"sreagent\" {\n  base_url     = %q\n  organization = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), os.Getenv("SREAGENT_ORGANIZATION"))
 }
 
 func runAcc(t *testing.T, c accCase) {
+	accPreCheck(t)
 	addr := "sreagent_" + c.typeName + ".test"
 	cfg := func(body string) string {
 		return accProvider() + c.prelude + fmt.Sprintf("resource %q \"test\" {\n%s\n}\n", "sreagent_"+c.typeName, body)
@@ -132,9 +182,7 @@ func (c *cli) run(args ...string) (string, error) {
 }
 
 func TestAccStalePlanIsRefused(t *testing.T) {
-	if os.Getenv("TF_ACC") == "" {
-		t.Skip("acceptance only")
-	}
+	accPreCheck(t)
 	tf := newCLI(t)
 	t.Cleanup(func() { _, _ = tf.run("destroy", "-auto-approve") })
 
@@ -164,9 +212,7 @@ func TestAccStalePlanIsRefused(t *testing.T) {
 
 // A CI job holding only the api:config_read key can plan against real rows and cannot apply.
 func TestAccReadOnlyKeyPlansButCannotApply(t *testing.T) {
-	if os.Getenv("TF_ACC") == "" {
-		t.Skip("acceptance only")
-	}
+	accPreCheck(t)
 	admin := newCLI(t)
 	t.Cleanup(func() { _, _ = admin.run("destroy", "-auto-approve") })
 	body := "resource \"sreagent_deploy_policy\" \"p\" {\n  service = \"acc-read-only\"\n  error_budget_threshold = 10\n}\n"
@@ -191,6 +237,7 @@ func TestAccReadOnlyKeyPlansButCannotApply(t *testing.T) {
 // github_settings need Slack or GitHub on the other end; their acceptance
 // coverage is the data source.
 func TestAccSingletons(t *testing.T) {
+	accPreCheck(t)
 	for _, c := range []struct{ typeName, create, update, field, want string }{
 		{"organization_settings", "alert_storm_threshold = 21", "alert_storm_threshold = 22", "alert_storm_threshold", "22"},
 		{"notification_settings", "notify_slo = true", "notify_slo = false", "notify_slo", "false"},
@@ -240,6 +287,7 @@ var startsEmpty = map[string]bool{"slack": true, "change_notifications": true}
 // Every data source reads the seeded organization, with the api:admin key
 // and with the plan-only api:config_read key.
 func TestAccDataSources(t *testing.T) {
+	accPreCheck(t)
 	var body strings.Builder
 	checks := []resource.TestCheckFunc{}
 	for _, s := range specs.All() {
@@ -256,7 +304,7 @@ func TestAccDataSources(t *testing.T) {
 	checks = append(checks, resource.TestMatchResourceAttr("data.sreagent_aws_external_id.x", "external_id", regexp.MustCompile(`^sreagent-`)))
 	for _, key := range []string{"SREAGENT_API_KEY", "SREAGENT_READ_API_KEY"} {
 		t.Run(key, func(t *testing.T) {
-			provider := fmt.Sprintf("provider \"sreagent\" {\n  organization = %q\n  api_key = %q\n}\n", os.Getenv("SREAGENT_ORGANIZATION"), os.Getenv(key))
+			provider := fmt.Sprintf("provider \"sreagent\" {\n  base_url = %q\n  organization = %q\n  api_key = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), os.Getenv("SREAGENT_ORGANIZATION"), os.Getenv(key))
 			steps := []resource.TestStep{{Config: provider + body.String(), Check: resource.ComposeAggregateTestCheckFunc(checks...)}}
 			for name := range startsEmpty {
 				steps = append(steps, resource.TestStep{
