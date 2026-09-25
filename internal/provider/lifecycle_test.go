@@ -317,3 +317,70 @@ func TestBatchBLifecycles(t *testing.T) {
 		t.Run(c.spec.TypeName, func(t *testing.T) { runLifecycle(t, c) })
 	}
 }
+
+func TestBatchCLifecycles(t *testing.T) {
+	cases := []lifecycle{
+		{spec: specs.TicketImportRule, create: "provider_type = \"jira\"\nenabled = false\nconfig = jsonencode({ project = \"OPS\" })", update: "provider_type = \"jira\"\nenabled = true\nconfig = jsonencode({ project = \"OPS\" })", after: map[string]string{"id": "jira"}, browserEdit: func(r map[string]any) { r["enabled"] = false }},
+	}
+	for _, c := range cases {
+		t.Run(c.spec.TypeName, func(t *testing.T) { runLifecycle(t, c) })
+	}
+}
+
+func TestNoUpdateResourcesReplace(t *testing.T) {
+	for _, c := range []struct{ typeName, before, after, prelude string }{
+		{"image_target", "image_ref = \"nginx:1.27\"", "image_ref = \"nginx:1.28\"", ""},
+		{"team_member", "team_id = sreagent_team.t.id\nemail = \"a@example.com\"", "team_id = sreagent_team.t.id\nemail = \"b@example.com\"", "resource \"sreagent_team\" \"t\" {\n  name = \"platform\"\n}\n"},
+	} {
+		t.Run(c.typeName, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			cfg := func(body string) string {
+				return providerBlock(f.URL) + c.prelude + fmt.Sprintf("resource \"sreagent_%s\" \"x\" {\n%s\n}\n", c.typeName, body)
+			}
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{
+					{Config: cfg(c.before)},
+					{Config: cfg(c.after), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("sreagent_"+c.typeName+".x", plancheck.ResourceActionDestroyBeforeCreate),
+					}}},
+				},
+			})
+		})
+	}
+}
+
+func TestTeamMemberEmailCaseIsNotDrift(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := providerBlock(f.URL) + "resource \"sreagent_team\" \"t\" {\n  name = \"platform\"\n}\nresource \"sreagent_team_member\" \"m\" {\n  team_id = sreagent_team.t.id\n  email = \"Ana@Example.com\"\n}\n"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg},
+			{Config: cfg, PlanOnly: true},
+		},
+	})
+}
+
+func TestDestroyingADiscoveredImageTargetWarns(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := providerBlock(f.URL) + "resource \"sreagent_image_target\" \"i\" {\n  image_ref = \"acme/api:1.4\"\n}\n"
+	var id string
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg, Check: func(s *terraform.State) error {
+				id = s.RootModule().Resources["sreagent_image_target.i"].Primary.ID
+				f.Mutate("image_targets", id, func(r map[string]any) { r["discovered"] = true })
+				return nil
+			}},
+			{Config: cfg, PlanOnly: true, ExpectNonEmptyPlan: false},
+			{Config: providerBlock(f.URL), Check: func(*terraform.State) error {
+				if f.Row("image_targets", id) != nil {
+					return fmt.Errorf("the target must be deleted")
+				}
+				return nil
+			}},
+		},
+	})
+}

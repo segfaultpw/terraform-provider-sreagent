@@ -17,12 +17,15 @@ func All() []engine.Spec {
 		DeployPolicy,
 		AlertMute,
 		CertificateMonitor,
+		ImageTarget,
 		PromptTemplate,
 		Team,
+		TeamMember,
 		RepoSetting,
 		ServiceBinding,
 		StatusPageComponent,
 		AIProvider,
 		TicketIntegration,
+		TicketImportRule,
 	}
 }

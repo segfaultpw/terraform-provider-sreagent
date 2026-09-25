@@ -7,7 +7,7 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 var CertificateMonitor = engine.Spec{
 	Key: "certificate_monitors", TypeName: "certificate_monitor", ListName: "certificate_monitors",
 	Description: "Watches a TLS certificate's expiry. Needs the security plan feature. Rows cannot be edited, so any change replaces the monitor.",
-	Shape:       engine.Generated, Lifecycle: true,
+	Shape:       engine.Generated, Lifecycle: true, DiscoveredAttr: "discovered",
 	Attrs: []engine.Attr{
 		{Name: "hostname", Kind: engine.String, Required: true, CreateOnly: true, Description: "The host to check."},
 		{Name: "port", Kind: engine.Int, CreateOnly: true, Description: "1 to 65535; default 443."},

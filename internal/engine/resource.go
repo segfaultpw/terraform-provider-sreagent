@@ -566,6 +566,10 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 	var id types.String
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("id"), &id)...)
+	discovered := types.BoolNull()
+	if r.spec.DiscoveredAttr != "" {
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root(r.spec.DiscoveredAttr), &discovered)...)
+	}
 	etag, d := r.etag(ctx, req.Private)
 	resp.Diagnostics.Append(d...)
 	if resp.Diagnostics.HasError() {
@@ -575,6 +579,9 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	_, err := r.client.Do(ctx, client.Request{Method: http.MethodDelete, Path: p, Query: q, IfMatch: etag})
 	switch {
 	case err == nil, client.IsNotFound(err):
+		if w := discoveredWarning(r.spec, discovered.ValueBool()); w != "" && err == nil {
+			resp.Diagnostics.AddWarning("Discovered row", w)
+		}
 		return
 	case client.IsReadOnlyKey(err):
 		summary, detail := r.readOnly("delete")
@@ -585,6 +592,15 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	default:
 		resp.Diagnostics.AddError(r.title("delete"), err.Error())
 	}
+}
+
+// discoveredWarning is said when Terraform destroys a row a discovery sweep
+// filed: the platform deletes it, and the next sweep files it again.
+func discoveredWarning(spec Spec, discovered bool) string {
+	if !discovered || spec.DiscoveredAttr == "" {
+		return ""
+	}
+	return fmt.Sprintf("A discovery sweep filed this sreagent_%s. It was deleted, and the next sweep files it again while the estate still runs it; stop it at the source (the connector) to keep it gone.", spec.TypeName)
 }
 
 func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
