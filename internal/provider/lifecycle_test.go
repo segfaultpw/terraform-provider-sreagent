@@ -384,3 +384,51 @@ func TestDestroyingADiscoveredImageTargetWarns(t *testing.T) {
 		},
 	})
 }
+
+// runSingleton is runLifecycle without the delete-drift step: a singleton
+// cannot be deleted, only forgotten.
+func runSingleton(t *testing.T, spec engine.Spec, create, update string, browserEdit func(map[string]any)) {
+	t.Run(spec.TypeName, func(t *testing.T) {
+		f := fakefacade.New(t, specs.All())
+		addr := "sreagent_" + spec.TypeName + ".test"
+		cfg := func(body string) string {
+			return providerBlock(f.URL) + fmt.Sprintf("resource %q \"test\" {\n%s\n}\n", "sreagent_"+spec.TypeName, body)
+		}
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: factories,
+			TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+			Steps: []resource.TestStep{
+				{Config: cfg(create)},
+				{Config: cfg(update)},
+				{ResourceName: addr, ImportState: true, ImportStateId: spec.Key, ImportStateVerify: true, ImportStateVerifyIgnore: secretVersions(spec), Config: cfg(update)},
+				{
+					PreConfig:   func() { f.MutateBeforeNextWrite(spec.Key, browserEdit) },
+					Config:      cfg(create),
+					ExpectError: regexp.MustCompile(`changed outside Terraform`),
+				},
+			},
+		})
+	})
+}
+
+// secretVersions is every <secret>_wo_version of spec, which an import cannot know.
+func secretVersions(spec engine.Spec) []string {
+	out := []string{}
+	for _, a := range spec.Attrs {
+		if a.Secret {
+			out = append(out, a.Attribute()+"_wo_version")
+		}
+	}
+	return out
+}
+
+func TestSingletonLifecycles(t *testing.T) {
+	runSingleton(t, specs.OrganizationSettings, "alert_storm_threshold = 20", "alert_storm_threshold = 30\ntimezone = \"America/Sao_Paulo\"", func(r map[string]any) { r["alert_storm_threshold"] = 99 })
+	runSingleton(t, specs.NotificationSettings, "notify_slo = true", "notify_slo = false", func(r map[string]any) { r["notify_slo"] = true })
+	runSingleton(t, specs.Slack, "name = \"ws\"\nbot_token_wo = \"xoxb-unit\"\nbot_token_wo_version = 1", "name = \"ws-2\"\ndefault_channel_critical = \"#pager\"\nbot_token_wo = \"xoxb-unit\"\nbot_token_wo_version = 1", func(r map[string]any) { r["name"] = "other" })
+	runSingleton(t, specs.ChangeNotifications, "enabled = true\nchannel = \"#changes\"", "enabled = true\nchannel = \"#deploys\"", func(r map[string]any) { r["channel"] = "#x" })
+	runSingleton(t, specs.AISettings, "anonymization_enabled = true", "anonymization_enabled = false", func(r map[string]any) { r["anonymization_enabled"] = true })
+	runSingleton(t, specs.OverseerSettings, "enabled = true\ndigest_enabled = false", "enabled = true\ndigest_enabled = true", func(r map[string]any) { r["cadence"] = "weekly" })
+	runSingleton(t, specs.GitHubSettings, "draft_prs = true", "draft_prs = false", func(r map[string]any) { r["draft_prs"] = true })
+	runSingleton(t, specs.StatusPageSettings, "enabled = true\nshow_history_days = 14", "enabled = true\nshow_history_days = 30", func(r map[string]any) { r["title"] = "changed" })
+}

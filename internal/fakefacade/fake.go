@@ -40,6 +40,10 @@ func New(t *testing.T, specs []engine.Spec) *Fake {
 	for _, s := range specs {
 		f.specs[s.Key] = s
 		f.rows[s.Key] = map[string]map[string]any{}
+		// The platform answers defaults for most singletons before any write.
+		if s.Shape == engine.Singleton && !s.StartsEmpty {
+			f.rows[s.Key][s.Key] = blank(s)
+		}
 	}
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(srv.Close)
@@ -151,6 +155,19 @@ func zero(a engine.Attr) any {
 		return map[string]any{}
 	}
 	return nil
+}
+
+// blank is a row holding every field's zero value.
+func blank(spec engine.Spec) map[string]any {
+	row := map[string]any{}
+	for _, a := range spec.Attrs {
+		if a.Secret {
+			row[a.Name+"_set"] = false
+		} else {
+			row[a.Name] = zero(a)
+		}
+	}
+	return row
 }
 
 func (f *Fake) rowID(spec engine.Spec, row map[string]any) string {
@@ -294,14 +311,7 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, id string, body map[string]any) {
 	row, ok := f.rows[spec.Key][id]
 	if !ok && spec.Shape == engine.Singleton {
-		row = map[string]any{}
-		for _, a := range spec.Attrs {
-			if a.Secret {
-				row[a.Name+"_set"] = false
-			} else {
-				row[a.Name] = zero(a)
-			}
-		}
+		row = blank(spec)
 		f.rows[spec.Key][id] = row
 		ok = true
 	}

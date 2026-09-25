@@ -97,6 +97,9 @@ type Spec struct {
 	ListAttrs   []Attr
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
+	// StartsEmpty: a singleton an organization has no row of until its first
+	// write. Read only by internal/fakefacade.
+	StartsEmpty bool
 	// DiscoveredAttr is the computed boolean that, true in state, makes a
 	// destroy warn that a discovery sweep files the row again.
 	DiscoveredAttr string

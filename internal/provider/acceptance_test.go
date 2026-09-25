@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -180,5 +181,52 @@ func TestAccReadOnlyKeyPlansButCannotApply(t *testing.T) {
 	out, err := reader.run("apply", "-auto-approve")
 	if err == nil || !regexp.MustCompile(`can plan but not apply`).MatchString(out) {
 		t.Fatalf("a read-only key must be refused on apply with the read-only diagnostic, got: %s", out)
+	}
+}
+
+// Create adopts the organization's row, destroy forgets it and leaves the
+// last applied value on the platform. slack, change_notifications and
+// github_settings need Slack or GitHub on the other end; their acceptance
+// coverage is the data source.
+func TestAccSingletons(t *testing.T) {
+	for _, c := range []struct{ typeName, create, update, field, want string }{
+		{"organization_settings", "alert_storm_threshold = 21", "alert_storm_threshold = 22", "alert_storm_threshold", "22"},
+		{"notification_settings", "notify_slo = true", "notify_slo = false", "notify_slo", "false"},
+		{"ai_settings", "anonymization_enabled = true", "anonymization_enabled = false", "anonymization_enabled", "false"},
+		{"overseer_settings", "digest_enabled = true", "digest_enabled = false", "digest_enabled", "false"},
+		{"status_page_settings", "show_history_days = 14", "show_history_days = 30", "show_history_days", "30"},
+	} {
+		t.Run(c.typeName, func(t *testing.T) {
+			addr := "sreagent_" + c.typeName + ".test"
+			cfg := func(body string) string {
+				return accProvider() + fmt.Sprintf("resource %q \"test\" {\n%s\n}\n", "sreagent_"+c.typeName, body)
+			}
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+				Steps: []resource.TestStep{
+					{Config: cfg(c.create)},
+					{Config: cfg(c.update), Check: resource.TestCheckResourceAttr(addr, c.field, c.want)},
+					{ResourceName: addr, ImportState: true, ImportStateId: c.typeName, ImportStateVerify: true, Config: cfg(c.update)},
+					{
+						Config: accProvider(),
+						Check: func(*terraform.State) error {
+							out, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodGet, Path: c.typeName})
+							if err != nil {
+								return err
+							}
+							var row map[string]any
+							if err := json.Unmarshal(out.Data, &row); err != nil {
+								return err
+							}
+							if got := fmt.Sprint(row[c.field]); got != c.want {
+								return fmt.Errorf("destroying the singleton must leave %s at %s on the platform, found %s", c.field, c.want, got)
+							}
+							return nil
+						},
+					},
+				},
+			})
+		})
 	}
 }

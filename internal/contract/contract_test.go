@@ -159,9 +159,11 @@ func TestEverySpecMatchesTheContract(t *testing.T) {
 	}
 }
 
-// Fields the API accepts that the provider deliberately exposes read-only.
-func isReadOnlyByDesign(_, _ string) bool {
-	return false
+// Fields the API accepts that the provider deliberately exposes read-only:
+// the platform refuses these two from any connection without a user
+// identity, and a Terraform key is an API key.
+func isReadOnlyByDesign(key, field string) bool {
+	return key == "organization_settings" && (field == "social_joins_enabled" || field == "restrict_domain_signups")
 }
 
 func TestEveryContractResourceHasASpec(t *testing.T) {
