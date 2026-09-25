@@ -28,10 +28,12 @@ resource "sreagent_service_binding" "checkout_prod" {
 
 ### Optional
 
+- `account_id` (String) The AWS account the service lives in; when set, logs and metrics are searched there only. Traces always search every account.
 - `environment` (String) The environment; empty for the default.
 - `log_filter` (String) A filter pattern applied to them.
 - `log_groups` (List of String) CloudWatch log groups.
 - `metric_selectors` (String) Metric selectors, as jsonencode([...]).
+- `region` (String) The AWS region the service lives in; pairs with account_id.
 - `trace_service_names` (List of String) Service names in traces.
 
 ### Read-Only

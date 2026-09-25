@@ -18,6 +18,8 @@ var RepoSetting = engine.Spec{
 		{Name: "writable_extensions", Kind: engine.StringList, Description: "File extensions a fix may write."},
 		{Name: "alerting_sns_topic_arn", Kind: engine.String, Description: "An SNS topic alarms for this repository publish to."},
 		{Name: "fix_runner", Kind: engine.String, Description: "platform, opencode_ci or self_hosted."},
+		{Name: "auto_dispatch", Kind: engine.Bool, Description: "Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Defaults to true."},
+		{Name: "ci_fallback_to_platform", Kind: engine.Bool, Description: "With the opencode_ci runner, fall back to the SRE Agent runner once when no CI run starts within five minutes. Defaults to false."},
 	},
 	ListIDAttr: "repo",
 	ListAttrs: []engine.Attr{

@@ -15,5 +15,7 @@ var ServiceBinding = engine.Spec{
 		{Name: "log_filter", Kind: engine.String, Description: "A filter pattern applied to them."},
 		{Name: "trace_service_names", Kind: engine.StringList, Description: "Service names in traces."},
 		{Name: "metric_selectors", Kind: engine.JSON, Description: "Metric selectors, as jsonencode([...])."},
+		{Name: "account_id", Kind: engine.String, Clearable: true, Description: "The AWS account the service lives in; when set, logs and metrics are searched there only. Traces always search every account."},
+		{Name: "region", Kind: engine.String, Clearable: true, Description: "The AWS region the service lives in; pairs with account_id."},
 	},
 }

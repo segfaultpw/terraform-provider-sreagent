@@ -31,7 +31,9 @@ resource "sreagent_repo_setting" "api_main" {
 ### Optional
 
 - `alerting_sns_topic_arn` (String) An SNS topic alarms for this repository publish to.
+- `auto_dispatch` (Boolean) Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Defaults to true.
 - `branch` (String) The branch; omit for the all-branches row.
+- `ci_fallback_to_platform` (Boolean) With the opencode_ci runner, fall back to the SRE Agent runner once when no CI run starts within five minutes. Defaults to false.
 - `environment` (String) The environment this branch deploys to.
 - `fix_runner` (String) platform, opencode_ci or self_hosted.
 - `path_prefix` (String) Only paths under this prefix may be changed.

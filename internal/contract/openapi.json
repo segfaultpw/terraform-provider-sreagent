@@ -1371,6 +1371,12 @@
               "null"
             ]
           },
+          "auto_dispatch": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "branch": {
             "type": [
               "string",
@@ -1379,6 +1385,12 @@
           },
           "branches": {
             "type": "array"
+          },
+          "ci_fallback_to_platform": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "environment": {
             "type": [
@@ -1429,6 +1441,8 @@
           "writable_extensions",
           "alerting_sns_topic_arn",
           "fix_runner",
+          "auto_dispatch",
+          "ci_fallback_to_platform",
           "branches",
           "id"
         ],
@@ -1436,6 +1450,12 @@
       },
       "service_bindings_row": {
         "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "environment": {
             "type": [
               "string",
@@ -1491,6 +1511,12 @@
               "null"
             ]
           },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "service": {
             "type": "string"
           },
@@ -1514,6 +1540,8 @@
           "log_filter",
           "trace_service_names",
           "metric_selectors",
+          "account_id",
+          "region",
           "id",
           "updated_at"
         ],
@@ -4189,6 +4217,42 @@
         "summary": "Update deploy_policie"
       }
     },
+    "/export": {
+      "get": {
+        "description": "One Terraform file: a resource block and an import block per row this organization manages here, configuration fields only. A stored secret appears only as a commented pointer to the write-only argument that would manage it. Archived, inherited and discovered rows are counted in comments, and a resource the plan does not include is a comment carrying the refusal. The first plan of the file should import every row and change nothing.",
+        "operationId": "export_configuration",
+        "parameters": [
+          {
+            "description": "The file format. Only hcl is served.",
+            "in": "query",
+            "name": "format",
+            "required": true,
+            "schema": {
+              "enum": [
+                "hcl"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file, served as an attachment named sreagent.tf."
+          },
+          "422": {
+            "description": "format was not hcl."
+          }
+        },
+        "summary": "Export this organization's configuration as Terraform"
+      }
+    },
     "/github_settings": {
       "get": {
         "description": "How this organization's GitHub App connection stands, as the Integrations page's GitHub tab shows it: whether one is connected, the account it is installed on, the repositories it grants, the five behaviour toggles, the severity floor inline review comments start at, the grounding context repo, whether a webhook signing secret is stored, and this organization's own fix runner when it has registered one. The repository list is re-read from GitHub when it was last read more than an hour ago, and repos_refreshed_at says when that was; a GitHub that cannot be reached leaves the cached list and its stamp as they were. connected is false and every field of the installation is null when none is connected. No secret is returned: webhook_secret_set says only that one is stored.",
@@ -5592,7 +5656,7 @@
     },
     "/repo_settings": {
       "get": {
-        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (path prefix and writable extensions). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, \"opencode_ci\", opencode running in this organization's own GitHub Actions runners, or \"self_hosted\", opencode on a machine this organization runs. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both doors verify the repository runs the sre-agent-opencode package before saving \"opencode_ci\". A repository with no settings row is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one.",
+        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (path prefix and writable extensions). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, \"opencode_ci\", opencode running in this organization's own GitHub Actions runners, or \"self_hosted\", opencode on a machine this organization runs. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both doors verify the repository runs the sre-agent-opencode package before saving \"opencode_ci\". A repository with no settings row is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; ci_fallback_to_platform true means a request its CI never starts goes to SRE Agent's own agent after 5 minutes.",
         "operationId": "list_repo_settings",
         "parameters": [],
         "responses": {
@@ -5636,9 +5700,17 @@
                     "description": "The SNS topic ARN an \"Alarm on this\" pull request for this repository should name in a generated alarm's alarm_actions, when one already exists for this repository's AWS account and region. Left unset, that pull request creates its own topic and subscription the first time and reuses it (by name) after that.",
                     "type": "string"
                   },
+                  "auto_dispatch": {
+                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any door (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
+                    "type": "boolean"
+                  },
                   "branch": {
                     "description": "The branch this row applies to. Leave it out (or send null) for the all-branches row, which is what a repository with one fence wants.",
                     "type": "string"
+                  },
+                  "ci_fallback_to_platform": {
+                    "description": "For a repository on \"opencode_ci\": when no CI run starts within 5 minutes of the handover, send the same request to SRE Agent's own agent once, instead of failing it. false (the default) fails it, naming the likely causes. Applies to the whole repository.",
+                    "type": "boolean"
                   },
                   "environment": {
                     "description": "The environment this row describes, e.g. production. Optional.",
@@ -5781,9 +5853,17 @@
                     "description": "The SNS topic ARN an \"Alarm on this\" pull request for this repository should name in a generated alarm's alarm_actions, when one already exists for this repository's AWS account and region. Left unset, that pull request creates its own topic and subscription the first time and reuses it (by name) after that.",
                     "type": "string"
                   },
+                  "auto_dispatch": {
+                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any door (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
+                    "type": "boolean"
+                  },
                   "branch": {
                     "description": "The branch this row applies to. Leave it out (or send null) for the all-branches row, which is what a repository with one fence wants.",
                     "type": "string"
+                  },
+                  "ci_fallback_to_platform": {
+                    "description": "For a repository on \"opencode_ci\": when no CI run starts within 5 minutes of the handover, send the same request to SRE Agent's own agent once, instead of failing it. false (the default) fails it, naming the likely causes. Applies to the whole repository.",
+                    "type": "boolean"
                   },
                   "environment": {
                     "description": "The environment this row describes, e.g. production. Optional.",
@@ -5870,7 +5950,7 @@
         "summary": "List service_bindings"
       },
       "post": {
-        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
+        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). `account_id` and `region` pin where the service lives, so logs and metrics search only there (traces always search every account); null clears either. Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
         "operationId": "set_service_binding_create",
         "parameters": [],
         "requestBody": {
@@ -5878,6 +5958,13 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "account_id": {
+                    "description": "AWS account (twelve digits) the service lives in; null searches every account.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "environment": {
                     "description": "Default \"\", meaning no particular environment.",
                     "type": "string"
@@ -5921,6 +6008,13 @@
                       "type": "object"
                     },
                     "type": "array"
+                  },
+                  "region": {
+                    "description": "AWS region the service lives in, for example us-east-1; null searches every region.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "service": {
                     "description": "The service to bind.",
@@ -6025,7 +6119,7 @@
         "summary": "Read one service_binding"
       },
       "put": {
-        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
+        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). `account_id` and `region` pin where the service lives, so logs and metrics search only there (traces always search every account); null clears either. Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
         "operationId": "set_service_binding_update",
         "parameters": [
           {
@@ -6043,6 +6137,13 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "account_id": {
+                    "description": "AWS account (twelve digits) the service lives in; null searches every account.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "log_filter": {
                     "description": "A Logs Insights `filter` fragment. \"\" clears it.",
                     "type": "string"
@@ -6082,6 +6183,13 @@
                       "type": "object"
                     },
                     "type": "array"
+                  },
+                  "region": {
+                    "description": "AWS region the service lives in, for example us-east-1; null searches every region.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "trace_service_names": {
                     "description": "X-Ray service names, replacing the stored list.",
@@ -8399,6 +8507,9 @@
         "api_key"
       ],
       "singleton": false,
+      "terraform_names": {
+        "provider": "provider_type"
+      },
       "terraform_type": "ai_provider",
       "update_fields": [
         "api_key",
@@ -8436,6 +8547,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "ai_settings",
       "update_fields": [
         "anonymization_enabled",
@@ -8480,6 +8592,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "alert_mute",
       "update_fields": [],
       "upsert": false
@@ -8513,6 +8626,7 @@
       ],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "alert_route",
       "update_fields": [
         "enabled",
@@ -8539,6 +8653,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": null,
       "update_fields": [],
       "upsert": false
@@ -8591,6 +8706,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "certificate_monitor",
       "update_fields": [],
       "upsert": false
@@ -8618,6 +8734,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "change_notifications",
       "update_fields": [
         "channel",
@@ -8659,6 +8776,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": null,
       "update_fields": [],
       "upsert": false
@@ -8695,6 +8813,7 @@
         "config"
       ],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "connector",
       "update_fields": [
         "config",
@@ -8745,6 +8864,7 @@
         "auth_credentials"
       ],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "data_source",
       "update_fields": [
         "auth_credentials",
@@ -8807,6 +8927,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "deploy_policy",
       "update_fields": [
         "burn_rate_block_enabled",
@@ -8864,6 +8985,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "github_settings",
       "update_fields": [
         "auto_pr_enabled",
@@ -8926,6 +9048,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "image_target",
       "update_fields": [],
       "upsert": false
@@ -8952,6 +9075,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "notification_settings",
       "update_fields": [
         "enabled",
@@ -8994,6 +9118,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "organization_settings",
       "update_fields": [
         "ai_budget_warn_percent",
@@ -9059,6 +9184,7 @@
         "routing_key"
       ],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "outbound_config",
       "update_fields": [
         "api_key",
@@ -9119,6 +9245,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "outbound_rule",
       "update_fields": [
         "cooldown_minutes",
@@ -9162,6 +9289,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "overseer_settings",
       "update_fields": [
         "aggressivity",
@@ -9206,6 +9334,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "prompt_template",
       "update_fields": [
         "content",
@@ -9224,7 +9353,9 @@
       },
       "create_fields": [
         "alerting_sns_topic_arn",
+        "auto_dispatch",
         "branch",
+        "ci_fallback_to_platform",
         "environment",
         "fix_runner",
         "path_prefix",
@@ -9240,7 +9371,9 @@
         "path_prefix",
         "writable_extensions",
         "alerting_sns_topic_arn",
-        "fix_runner"
+        "fix_runner",
+        "auto_dispatch",
+        "ci_fallback_to_platform"
       ],
       "id_args": [
         "id"
@@ -9251,10 +9384,13 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "repo_setting",
       "update_fields": [
         "alerting_sns_topic_arn",
+        "auto_dispatch",
         "branch",
+        "ci_fallback_to_platform",
         "environment",
         "fix_runner",
         "path_prefix",
@@ -9270,10 +9406,12 @@
         "updated_at": "string"
       },
       "create_fields": [
+        "account_id",
         "environment",
         "log_filter",
         "log_groups",
         "metric_selectors",
+        "region",
         "service",
         "trace_service_names"
       ],
@@ -9283,7 +9421,9 @@
         "log_groups",
         "log_filter",
         "trace_service_names",
-        "metric_selectors"
+        "metric_selectors",
+        "account_id",
+        "region"
       ],
       "id_args": [
         "service",
@@ -9298,11 +9438,14 @@
       ],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "service_binding",
       "update_fields": [
+        "account_id",
         "log_filter",
         "log_groups",
         "metric_selectors",
+        "region",
         "trace_service_names"
       ],
       "upsert": true
@@ -9336,6 +9479,7 @@
         "signing_secret"
       ],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "slack",
       "update_fields": [
         "bot_token",
@@ -9386,6 +9530,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "sli",
       "update_fields": [
         "data_source_id",
@@ -9427,6 +9572,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "slo",
       "update_fields": [
         "name",
@@ -9468,6 +9614,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "status_page_component",
       "update_fields": [
         "description",
@@ -9525,6 +9672,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": null,
       "update_fields": [
         "message",
@@ -9563,6 +9711,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": true,
+      "terraform_names": {},
       "terraform_type": "status_page_settings",
       "update_fields": [
         "enabled",
@@ -9640,6 +9789,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "synthetic_check",
       "update_fields": [
         "alert_on_failure",
@@ -9684,6 +9834,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "team_member",
       "update_fields": [],
       "upsert": false
@@ -9710,6 +9861,7 @@
       "natural_key": [],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {},
       "terraform_type": "team",
       "update_fields": [
         "name"
@@ -9751,6 +9903,9 @@
       ],
       "secret_fields": [],
       "singleton": false,
+      "terraform_names": {
+        "provider": "provider_type"
+      },
       "terraform_type": "ticket_import_rule",
       "update_fields": [
         "config",
@@ -9813,6 +9968,9 @@
         "api_token"
       ],
       "singleton": false,
+      "terraform_names": {
+        "provider": "provider_type"
+      },
       "terraform_type": "ticket_integration",
       "update_fields": [
         "account_email",
