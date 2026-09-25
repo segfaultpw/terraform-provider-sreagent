@@ -111,7 +111,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			// to restate a value nobody can read back. Create checks it instead.
 			n + "_wo":         schema.StringAttribute{Optional: true, Sensitive: true, WriteOnly: true, Description: a.Description + " Write-only: never stored in state or plan."},
 			n + "_wo_version": version,
-			n + "_set":        schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a %s.", n)},
+			n + "_set":        schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a value for %s.", n)},
 		}
 	}
 	required := a.Required && !a.Computed
@@ -130,7 +130,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, stringplanmodifier.RequiresReplace())
 		}
-		sa := schema.StringAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		sa := schema.StringAttribute{Description: describe(a), Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
 		if a.Kind == JSON {
 			sa.CustomType = jsontypes.NormalizedType{}
 		}
@@ -600,6 +600,14 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	default:
 		resp.Diagnostics.AddError(r.title("delete"), err.Error())
 	}
+}
+
+// describe is an attribute's description, naming its allowed values.
+func describe(a Attr) string {
+	if len(a.OneOf) == 0 {
+		return a.Description
+	}
+	return fmt.Sprintf("%s One of: %s.", a.Description, strings.Join(a.OneOf, ", "))
 }
 
 // discoveredWarning is said when Terraform destroys a row a discovery sweep

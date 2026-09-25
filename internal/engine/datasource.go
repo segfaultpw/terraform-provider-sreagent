@@ -94,7 +94,7 @@ func readable(attrs []Attr) map[string]Attr {
 		switch {
 		case a.NotRead:
 		case a.Secret:
-			out[a.Attribute()+"_set"] = Attr{Name: a.Name + "_set", Kind: Bool, Description: fmt.Sprintf("Whether the platform holds a %s.", a.Attribute())}
+			out[a.Attribute()+"_set"] = Attr{Name: a.Name + "_set", Kind: Bool, Description: fmt.Sprintf("Whether the platform holds a value for %s.", a.Attribute())}
 		default:
 			out[a.Attribute()] = Attr{Name: a.Name, Kind: a.Kind, Description: a.Description}
 		}

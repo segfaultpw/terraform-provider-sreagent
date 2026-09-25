@@ -24,3 +24,9 @@ jobs:
           version: v2.14.0
       - name: Unit and contract tests
         run: go test ./...
+      - name: Docs are current
+        run: |
+          go generate ./...
+          test -z "$(git status --porcelain docs)"
+      - name: Examples are formatted
+        run: terraform fmt -check -recursive examples
