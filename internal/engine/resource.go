@@ -487,9 +487,12 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 	}
 	if priv != nil {
 		// An answer without an ETag clears the stored one: a stale version
-		// would refuse every later write.
+		// would refuse every later write, and a missing one refuses them too.
 		b, _ := json.Marshal(out.ETag)
 		diags.Append(priv.SetKey(ctx, "etag", b)...)
+		if out.ETag == "" {
+			diags.AddWarning("No row version", fmt.Sprintf("The platform answered sreagent_%s without an ETag, so Terraform cannot prove a later write starts from this version; updates and deletes are refused until a refresh records one.", r.spec.TypeName))
+		}
 	}
 	diags.Append(r.setIdentity(ctx, identity, id)...)
 	return diags
@@ -509,6 +512,38 @@ func (r *facadeResource) setIdentity(ctx context.Context, identity *tfsdk.Resour
 	}
 	diags.Append(identity.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 	return diags
+}
+
+// matchesState reports whether an answered row holds every configuration
+// value state holds.
+func (r *facadeResource) matchesState(ctx context.Context, state valueSource, out *client.Response) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	row, err := decodeRow(out.Data)
+	if err != nil {
+		diags.AddError("Unexpected API answer", err.Error())
+		return false, diags
+	}
+	for _, a := range r.spec.Attrs {
+		if a.Computed || a.Secret || a.NotRead {
+			continue
+		}
+		held, d := getValue(ctx, state, a)
+		diags.Append(d...)
+		remote, err := fromJSON(a.Kind, row[a.Name])
+		if err != nil || held == nil {
+			return false, diags
+		}
+		if !keep(a, held, remote) && (!held.IsNull() || !remote.IsNull()) {
+			return false, diags
+		}
+	}
+	return true, diags
+}
+
+// noVersion is the diagnostic for a write with no recorded row version:
+// sending it without If-Match would overwrite a browser edit unchecked.
+func (r *facadeResource) noVersion(verb string) (string, string) {
+	return r.title(verb), fmt.Sprintf("No row version was recorded for sreagent_%s, so the write could overwrite a change made in the app. Nothing was written. Run terraform plan to refresh it, then apply again.", r.spec.TypeName)
 }
 
 func (r *facadeResource) etag(ctx context.Context, priv privateData) (string, diag.Diagnostics) {
@@ -606,6 +641,9 @@ func (r *facadeResource) followUp(ctx context.Context, plan valueSource, created
 	if len(body) == 0 {
 		return created, nil
 	}
+	if created.ETag == "" {
+		return nil, fmt.Errorf("the create answered no row version, so the fields it does not take were not sent")
+	}
 	p, q := r.rowPath(RowID(r.spec, row))
 	return r.client.Do(ctx, client.Request{Method: http.MethodPut, Path: p, Query: q, Body: body, IfMatch: created.ETag})
 }
@@ -618,6 +656,9 @@ func (r *facadeResource) adoptSingleton(ctx context.Context, body map[string]any
 		ifMatch = current.ETag
 		if len(body) == 0 {
 			return current, nil
+		}
+		if ifMatch == "" {
+			return nil, fmt.Errorf("the platform answered the current sreagent_%s without a row version, so adopting it could overwrite a change made in the app; nothing was written", r.spec.TypeName)
 		}
 	case client.IsNotFound(err):
 		if len(body) == 0 {
@@ -671,6 +712,10 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 	if len(body) == 0 {
 		// Nothing to write: read the row for state instead.
 		request = client.Request{Method: http.MethodGet, Path: p, Query: q}
+	} else if etag == "" {
+		summary, detail := r.noVersion("update")
+		resp.Diagnostics.AddError(summary, detail)
+		return
 	}
 	out, err := r.client.Do(ctx, request)
 	switch {
@@ -709,6 +754,27 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 	p, q := r.rowPath(id.ValueString())
+	if etag == "" {
+		// Terraform keeps a tainted row's state but not its private data, so a
+		// replacement can arrive here with no version. The row is deleted only
+		// when it still holds what state says, under the version just read.
+		current, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
+		if client.IsNotFound(err) {
+			return
+		}
+		if err != nil {
+			resp.Diagnostics.AddError(r.title("delete"), err.Error())
+			return
+		}
+		same, d := r.matchesState(ctx, req.State, current)
+		resp.Diagnostics.Append(d...)
+		if !same || current.ETag == "" {
+			summary, detail := r.noVersion("delete")
+			resp.Diagnostics.AddError(summary, detail)
+			return
+		}
+		etag = current.ETag
+	}
 	_, err := r.client.Do(ctx, client.Request{Method: http.MethodDelete, Path: p, Query: q, IfMatch: etag})
 	switch {
 	case err == nil, client.IsNotFound(err):

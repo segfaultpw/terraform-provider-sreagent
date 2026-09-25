@@ -525,3 +525,71 @@ func TestADroppedModelOverrideIsCleared(t *testing.T) {
 		},
 	})
 }
+
+// Without a recorded row version a write would overwrite a browser edit
+// unchecked, so it is refused before anything is sent.
+func TestAWriteWithoutARecordedVersionIsRefused(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(n int) string {
+		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_deploy_policy\" \"p\" {\n  service = \"web\"\n  error_budget_threshold = %d\n}\n", n)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg(10)},
+			// A refresh against answers that carry no ETag records none.
+			{PreConfig: func() { f.OmitETags(true) }, RefreshState: true},
+			{Config: cfg(20), ExpectError: regexpMust(`No row version was recorded`)},
+			// Versions come back, so the harness's own destroy can run.
+			{PreConfig: func() { f.OmitETags(false) }, RefreshState: true, ExpectNonEmptyPlan: true},
+		},
+	})
+	if n := f.Calls("PUT", "deploy_policies"); n != 0 {
+		t.Fatalf("a write without a version must send nothing, the fake saw %d PUTs", n)
+	}
+}
+
+// A proxy that compresses an answer weakens its ETag to W/"..."; the
+// provider echoes it and the platform compares weakly, so applies still work.
+func TestWeakETagsRoundTrip(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.WeakETags()
+	cfg := func(n int) string {
+		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_deploy_policy\" \"p\" {\n  service = \"web\"\n  error_budget_threshold = %d\n}\n", n)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg(10)},
+			{Config: cfg(20), Check: resource.TestCheckResourceAttr("sreagent_deploy_policy.p", "error_budget_threshold", "20")},
+			{Config: cfg(20), PlanOnly: true},
+		},
+	})
+}
+
+// A delete with no recorded version (a tainted row's replacement, whose
+// private data Terraform drops) re-reads the row and goes ahead under that
+// version while the row still holds what state says. The harness's own
+// destroy runs without a refresh, so it is the delete under test here.
+func TestADeleteWithoutAVersionReadsTheRowFirst(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	var id string
+	cfg := providerBlock(f.URL) + "resource \"sreagent_team\" \"t\" {\n  name = \"platform\"\n}\n"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg, Check: func(s *terraform.State) error {
+				id = s.RootModule().Resources["sreagent_team.t"].Primary.ID
+				return nil
+			}},
+			{PreConfig: func() { f.OmitETags(true) }, RefreshState: true},
+			{PreConfig: func() { f.OmitETags(false) }, Config: cfg, PlanOnly: true},
+		},
+	})
+	if f.Row("teams", id) != nil {
+		t.Fatal("a row that still matches state must be deleted")
+	}
+	if n := f.Calls("GET", "teams"); n == 0 {
+		t.Fatal("the delete must read the row before deleting it")
+	}
+}

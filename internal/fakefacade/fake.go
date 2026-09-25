@@ -32,6 +32,7 @@ type Fake struct {
 	bodies      map[string]map[string]any
 	readOnly    bool
 	truncated   map[string]bool
+	etagMode    etagMode
 }
 
 // New starts a fake for specs; the server stops when the test ends.
@@ -78,6 +79,49 @@ func (f *Fake) ReadOnly() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.readOnly = true
+}
+
+type etagMode int
+
+const (
+	strongETags etagMode = iota
+	noETags
+	weakETags
+)
+
+// OmitETags makes every answer carry no ETag, or restores them.
+func (f *Fake) OmitETags(omit bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.etagMode = strongETags
+	if omit {
+		f.etagMode = noETags
+	}
+}
+
+// WeakETags serves W/"..." ETags, the form a proxy that compresses the answer
+// gives, and compares If-Match weakly, as the platform does.
+func (f *Fake) WeakETags() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.etagMode = weakETags
+}
+
+// tag is the ETag an answer carries for row.
+func (f *Fake) tag(spec engine.Spec, row map[string]any) string {
+	switch f.etagMode {
+	case noETags:
+		return ""
+	case weakETags:
+		return "W/" + etag(spec, row)
+	}
+	return etag(spec, row)
+}
+
+// stale reports an If-Match naming another version of row; a leading W/ is
+// ignored, since the tag is a content hash either way.
+func stale(ifMatch string, spec engine.Spec, row map[string]any) bool {
+	return ifMatch != "" && strings.TrimPrefix(ifMatch, "W/") != etag(spec, row)
 }
 
 // ForceTruncated makes the list of key say it may hold more rows than it answered.
@@ -281,7 +325,7 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 404, "not_found", "No row found.")
 			return
 		}
-		reply(w, 200, wrap(row), etag(spec, row))
+		reply(w, 200, wrap(row), f.tag(spec, row))
 	case r.Method == http.MethodPost:
 		f.create(w, spec, body)
 	case r.Method == http.MethodPut:
@@ -292,8 +336,8 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 404, "not_found", "No row found.")
 			return
 		}
-		if im := r.Header.Get("If-Match"); im != "" && im != etag(spec, row) {
-			reply(w, 412, map[string]any{"organization": wrap(nil)["organization"], "data": row, "error": "precondition_failed", "message": "The row changed after the version If-Match names; nothing was written."}, etag(spec, row))
+		if im := r.Header.Get("If-Match"); stale(im, spec, row) {
+			reply(w, 412, map[string]any{"organization": wrap(nil)["organization"], "data": row, "error": "precondition_failed", "message": "The row changed after the version If-Match names; nothing was written."}, f.tag(spec, row))
 			return
 		}
 		delete(f.rows[spec.Key], id)
@@ -347,7 +391,7 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 	}
 	f.rows[spec.Key][id] = row
 	w.Header().Set("Location", "/api/v1/config/"+spec.Key+"/"+id)
-	reply(w, 201, wrap(row), etag(spec, row))
+	reply(w, 201, wrap(row), f.tag(spec, row))
 }
 
 func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, id string, body map[string]any) {
@@ -365,8 +409,8 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		fn(row)
 		delete(f.beforeWrite, spec.Key)
 	}
-	if im := r.Header.Get("If-Match"); im != "" && im != etag(spec, row) {
-		reply(w, 412, map[string]any{"organization": wrap(nil)["organization"], "data": row, "error": "precondition_failed", "message": "The row changed after the version If-Match names; nothing was written."}, etag(spec, row))
+	if im := r.Header.Get("If-Match"); stale(im, spec, row) {
+		reply(w, 412, map[string]any{"organization": wrap(nil)["organization"], "data": row, "error": "precondition_failed", "message": "The row changed after the version If-Match names; nothing was written."}, f.tag(spec, row))
 		return
 	}
 	byName := map[string]engine.Attr{}
@@ -401,5 +445,5 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		}
 		row[k] = v
 	}
-	reply(w, 200, wrap(row), etag(spec, row))
+	reply(w, 200, wrap(row), f.tag(spec, row))
 }
