@@ -25,7 +25,7 @@ resource "sreagent_alert_mute" "storage_migration" {
 
 ### Required
 
-- `pattern` (String) The substring to silence, 2 to 200 characters.
+- `pattern` (String) The substring to silence, 2 to 200 characters, matched without case and stored lowercased.
 
 ### Optional
 

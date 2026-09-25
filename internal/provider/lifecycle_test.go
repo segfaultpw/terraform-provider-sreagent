@@ -54,6 +54,7 @@ func runLifecycle(t *testing.T, c lifecycle) {
 	}
 	idOf := func(s *terraform.State) string { return s.RootModule().Resources[addr].Primary.ID }
 	var id string
+	var posts int
 
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
@@ -69,11 +70,15 @@ func runLifecycle(t *testing.T, c lifecycle) {
 				ExpectError: regexp.MustCompile(`changed outside Terraform`),
 			},
 			{
-				// Deleted in the browser: the next plan recreates it.
-				PreConfig:          func() { f.Remove(c.spec.Key, id) },
-				Config:             cfg(c.create),
-				PlanOnly:           true,
-				ExpectNonEmptyPlan: true,
+				// Deleted in the browser: the next apply creates it again.
+				PreConfig: func() { f.Remove(c.spec.Key, id); posts = f.Calls("POST", c.spec.Key) },
+				Config:    cfg(c.update),
+				Check: func(*terraform.State) error {
+					if got := f.Calls("POST", c.spec.Key) - posts; got != 1 {
+						return fmt.Errorf("a row deleted in the browser must be created again, got %d creates", got)
+					}
+					return nil
+				},
 			},
 		},
 	})
@@ -431,4 +436,92 @@ func TestSingletonLifecycles(t *testing.T) {
 	runSingleton(t, specs.OverseerSettings, "enabled = true\ndigest_enabled = false", "enabled = true\ndigest_enabled = true", func(r map[string]any) { r["cadence"] = "weekly" })
 	runSingleton(t, specs.GitHubSettings, "draft_prs = true", "draft_prs = false", func(r map[string]any) { r["draft_prs"] = true })
 	runSingleton(t, specs.StatusPageSettings, "enabled = true\nshow_history_days = 14", "enabled = true\nshow_history_days = 30", func(r map[string]any) { r["title"] = "changed" })
+}
+
+// An update tool changes only the fields a call names, so an update sends
+// what changed and nothing else: resending a setting nobody touched would
+// store a default as if it had been chosen.
+func TestAnUpdateSendsOnlyWhatChanged(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(anonymize bool) string {
+		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_ai_settings\" \"s\" {\n  anonymization_enabled = %v\n  own_providers_only = true\n}\n", anonymize)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg(true)},
+			{Config: cfg(false), Check: func(*terraform.State) error {
+				body := f.LastBody("PUT", "ai_settings")
+				if len(body) != 1 || body["anonymization_enabled"] != false {
+					return fmt.Errorf("want only the changed field, sent %v", body)
+				}
+				return nil
+			}},
+		},
+	})
+}
+
+// An import reads the stored, normalized service; a configured spelling that
+// differs only in case is the same route, not a new one.
+func TestANormalizedKeyChangeUpdatesInPlace(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(svc string) string {
+		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_alert_route\" \"r\" {\n  service = %q\n  target = \"#a\"\n}\n", svc)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg("checkout")},
+			{
+				Config: cfg("Checkout"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("sreagent_alert_route.r", plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.TestCheckResourceAttr("sreagent_alert_route.r", "service", "Checkout"),
+			},
+			{Config: cfg("Checkout"), PlanOnly: true},
+		},
+	})
+}
+
+// A create whose follow-up PUT fails leaves the row in state, tainted, so the
+// next apply replaces it rather than creating a second one beside it.
+func TestAFailedFollowUpLeavesTheRowTainted(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := providerBlock(f.URL) + "resource \"sreagent_data_source\" \"d\" {\n  name = \"prom\"\n  type = \"prometheus\"\n  url = \"https://p.example.com\"\n  enabled = false\n}\n"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {
+					f.MutateBeforeNextWrite("data_sources", func(r map[string]any) { r["url"] = "https://moved.example.com" })
+				},
+				Config:      cfg,
+				ExpectError: regexpMust(`The row was created`),
+			},
+			{Config: cfg, Check: func(*terraform.State) error {
+				if n := f.Rows("data_sources"); n != 1 {
+					return fmt.Errorf("the tainted row must be replaced, found %d rows", n)
+				}
+				return nil
+			}},
+		},
+	})
+}
+
+// model_overrides merges on the platform, so a purpose dropped from the map
+// has to be cleared by name.
+func TestADroppedModelOverrideIsCleared(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(overrides string) string {
+		return providerBlock(f.URL) + "resource \"sreagent_ai_provider\" \"p\" {\n  name = \"main\"\n  provider_type = \"anthropic\"\n  model_overrides = jsonencode(" + overrides + ")\n}\n"
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg(`{ investigation = "a", suggestion = "b" }`)},
+			{Config: cfg(`{ investigation = "a" }`), Check: resource.TestCheckResourceAttr("sreagent_ai_provider.p", "model_overrides", `{"investigation":"a"}`)},
+			{Config: cfg(`{ investigation = "a" }`), PlanOnly: true},
+		},
+	})
 }

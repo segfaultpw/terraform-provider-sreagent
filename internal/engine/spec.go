@@ -61,6 +61,9 @@ type Attr struct {
 	// bool or a non-empty list). While one does, changing the attribute is
 	// refused, since the write would silently drop what the app set.
 	HiddenSetBy []string
+	// MergedObject: a JSON object the platform merges into what it stores, so
+	// a key left out is kept; an update names each dropped key with "".
+	MergedObject bool
 }
 
 // Attribute is the Terraform attribute name.
@@ -93,8 +96,11 @@ type Spec struct {
 	Shape       Shape
 	IDAttr      string
 	Lifecycle   bool
-	Attrs       []Attr
-	ListAttrs   []Attr
+	// Upsert: the write tool describes the row's whole state, so an update
+	// sends every field rather than only the changed ones.
+	Upsert    bool
+	Attrs     []Attr
+	ListAttrs []Attr
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
 	// StartsEmpty: a singleton an organization has no row of until its first
@@ -107,3 +113,6 @@ type Spec struct {
 
 // LowerTrim is the platform's normalization of service names.
 func LowerTrim(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+
+// Lower is the platform's normalization of mute patterns.
+func Lower(v string) string { return strings.ToLower(v) }

@@ -165,6 +165,35 @@ func zero(a engine.Attr) any {
 	return nil
 }
 
+// merge folds an object into a stored one; an empty string clears its key.
+func merge(stored, sent any) any {
+	out := map[string]any{}
+	if m, ok := stored.(map[string]any); ok {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	m, ok := sent.(map[string]any)
+	if !ok {
+		return sent
+	}
+	for k, v := range m {
+		if v == "" {
+			delete(out, k)
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// Rows counts the stored rows of one resource key.
+func (f *Fake) Rows(key string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.rows[key])
+}
+
 // blank is a row holding every field's zero value.
 func blank(spec engine.Spec) map[string]any {
 	row := map[string]any{}
@@ -358,9 +387,17 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		}
 	}
 	for k, v := range body {
-		if byName[k].Secret {
+		a := byName[k]
+		if a.Secret {
 			row[k+"_set"] = true
 			continue
+		}
+		if a.MergedObject {
+			row[k] = merge(row[k], v)
+			continue
+		}
+		if v != nil && a.Normalize != nil {
+			v = a.Normalize(fmt.Sprint(v))
 		}
 		row[k] = v
 	}

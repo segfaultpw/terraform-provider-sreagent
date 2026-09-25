@@ -164,3 +164,59 @@ func TestErrorsNeverCarryTheKeyOrASecret(t *testing.T) {
 		t.Fatalf("secret or key leaked: %v", err)
 	}
 }
+
+func TestRedirectsAreNeverFollowed(t *testing.T) {
+	var reached atomic.Int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached.Add(1) }))
+	defer elsewhere.Close()
+	c := newTest(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect) //nolint:gosec // the redirect under test
+	}, "")
+	_, err := c.Do(context.Background(), Request{Method: http.MethodPut, Path: "outbound_configs/o1", Body: map[string]any{"routing_key": "pd-secret"}, Secrets: []string{"pd-secret"}})
+	if err == nil {
+		t.Fatal("a redirect must be an error")
+	}
+	if reached.Load() != 0 {
+		t.Fatal("the key and the body were replayed to the redirect target")
+	}
+}
+
+func TestOrganizationPinRefusesASuccessNamingNoOrganization(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 200, map[string]any{"data": map[string]any{}}, nil)
+	}, "acme")
+	if _, err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "organization_settings"}); err == nil {
+		t.Fatal("a pinned client must refuse an answer that cannot prove its organization")
+	}
+}
+
+func TestErrorCodeIsRedactedToo(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 422, map[string]any{"error": "bad pd-secret-123", "message": "no"}, nil)
+	}, "")
+	_, err := c.Do(context.Background(), Request{Method: http.MethodPost, Path: "outbound_configs", Secrets: []string{"pd-secret-123"}})
+	if err == nil || strings.Contains(err.Error(), "pd-secret-123") {
+		t.Fatalf("secret leaked through the code: %v", err)
+	}
+}
+
+func TestA412AfterAGatewayErrorIsMarkedRetried(t *testing.T) {
+	for _, first := range []int{502, 429} {
+		var calls atomic.Int32
+		c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+			if calls.Add(1) == 1 {
+				write(w, first, map[string]any{"error": "x", "message": "x"}, nil)
+				return
+			}
+			write(w, 412, map[string]any{"organization": org, "error": "precondition_failed", "message": "changed", "data": map[string]any{}}, nil)
+		}, "")
+		_, err := c.Do(context.Background(), Request{Method: http.MethodPut, Path: "teams/t1", IfMatch: `"x"`})
+		if !IsPreconditionFailed(err) {
+			t.Fatalf("want a 412, got %v", err)
+		}
+		// A 429 is answered before anything runs, so it proves nothing was written.
+		if got, want := IsRetried(err), first != 429; got != want {
+			t.Fatalf("after a %d: retried %v, want %v", first, got, want)
+		}
+	}
+}

@@ -79,6 +79,9 @@ type APIError struct {
 	Message  string
 	Existing map[string]any
 	Current  map[string]any
+	// Retried: an earlier attempt of this call ended in a gateway or
+	// transport error, so it may have been applied before this answer.
+	Retried bool
 }
 
 func (e *APIError) Error() string {
@@ -98,6 +101,13 @@ func IsConflict(err error) bool { return statusIs(err, http.StatusConflict) }
 
 // IsPreconditionFailed reports a 412.
 func IsPreconditionFailed(err error) bool { return statusIs(err, http.StatusPreconditionFailed) }
+
+// IsRetried reports an error answered to a retry of a call whose earlier
+// attempt may have been applied.
+func IsRetried(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Retried
+}
 
 // IsReadOnlyKey reports the facade refusing a write from an api:config_read key.
 func IsReadOnlyKey(err error) bool {
@@ -126,7 +136,13 @@ func New(cfg Config) (*Client, error) {
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 60 * time.Second}
+		hc = &http.Client{
+			Timeout: 60 * time.Second,
+			// The API never redirects. Following one could replay the key and a
+			// secret-bearing body to another scheme or host, or turn a POST into
+			// a GET, so a redirect is answered as the error it is.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 	}
 	sleep := cfg.Sleep
 	if sleep == nil {
@@ -165,6 +181,10 @@ func (c *Client) Do(ctx context.Context, r Request) (*Response, error) {
 		target.RawQuery = r.Query.Encode()
 	}
 	secrets := append([]string{c.apiKey}, r.Secrets...)
+	// uncertain: an earlier attempt failed in a way that says nothing about
+	// whether it was applied. A 429 is not one: the rate limiter answers
+	// before anything runs.
+	uncertain := false
 
 	for attempt := 0; ; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, r.Method, target.String(), bytes.NewReader(payload))
@@ -187,6 +207,7 @@ func (c *Client) Do(ctx context.Context, r Request) (*Response, error) {
 				return nil, ctx.Err()
 			}
 			if r.Method != http.MethodPost && attempt < c.maxRetries {
+				uncertain = true
 				if serr := c.sleep(ctx, backoff(attempt)); serr != nil {
 					return nil, serr
 				}
@@ -202,12 +223,20 @@ func (c *Client) Do(ctx context.Context, r Request) (*Response, error) {
 		tflog.Debug(ctx, "sreagent API call", map[string]any{"method": r.Method, "path": r.Path, "status": resp.StatusCode, "attempt": attempt})
 
 		if wait, retry := c.retryWait(r.Method, resp, attempt); retry {
+			if resp.StatusCode != http.StatusTooManyRequests {
+				uncertain = true
+			}
 			if serr := c.sleep(ctx, wait); serr != nil {
 				return nil, serr
 			}
 			continue
 		}
-		return c.decode(r, resp, body, secrets)
+		out, err := c.decode(r, resp, body, secrets)
+		var apiErr *APIError
+		if errors.As(err, &apiErr) {
+			apiErr.Retried = uncertain
+		}
+		return out, err
 	}
 }
 
@@ -253,14 +282,20 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 	if env.Organization != nil && c.org != "" && env.Organization.Slug != c.org {
 		return nil, fmt.Errorf("the API key belongs to organization %q but the provider is pinned to %q; nothing was recorded in state", env.Organization.Slug, c.org)
 	}
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	success := resp.StatusCode >= 200 && resp.StatusCode < 300
+	// Every success names its organization; one that does not cannot prove
+	// the pin, so it is refused rather than trusted.
+	if success && c.org != "" && env.Organization == nil {
+		return nil, fmt.Errorf("%s %s answered without naming its organization, so the pin to %q cannot be checked; nothing was recorded in state", r.Method, r.Path, c.org)
+	}
+	if success {
 		out := &Response{Status: resp.StatusCode, ETag: resp.Header.Get("ETag"), Data: env.Data, Truncated: env.Truncated}
 		if env.Organization != nil {
 			out.Organization = *env.Organization
 		}
 		return out, nil
 	}
-	apiErr := &APIError{Status: resp.StatusCode, Code: env.Error, Message: redact(env.Message, secrets), Existing: env.Existing}
+	apiErr := &APIError{Status: resp.StatusCode, Code: redact(env.Error, secrets), Message: redact(env.Message, secrets), Existing: env.Existing}
 	if apiErr.Message == "" {
 		apiErr.Message = http.StatusText(resp.StatusCode)
 	}

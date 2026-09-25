@@ -9,6 +9,7 @@ import (
 // Resource is one entry of x-sreagent-resources.
 type Resource struct {
 	Singleton      bool           `json:"singleton"`
+	Upsert         bool           `json:"upsert"`
 	Lifecycle      bool           `json:"lifecycle"`
 	TerraformType  string         `json:"terraform_type"`
 	Fields         []string       `json:"fields"`

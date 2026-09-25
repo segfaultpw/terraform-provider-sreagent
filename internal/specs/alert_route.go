@@ -11,6 +11,7 @@ var AlertRoute = engine.Spec{
 	Description: "Where one service's alerts open in Slack.",
 	Shape:       engine.Generated,
 	Lifecycle:   true,
+	Upsert:      true,
 	Attrs: []engine.Attr{
 		{Name: "service", Kind: engine.String, Required: true, CreateOnly: true, Normalize: engine.LowerTrim, Description: "The service whose alerts this routes. Changing it replaces the route."},
 		{Name: "target", Kind: engine.String, Required: true, Description: "The Slack channel this service's alerts open in."},

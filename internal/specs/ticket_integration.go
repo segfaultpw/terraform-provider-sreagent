@@ -7,7 +7,7 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 var TicketIntegration = engine.Spec{
 	Key: "ticket_integrations", TypeName: "ticket_integration", ListName: "ticket_integrations",
 	Description: "The connection to Jira or Zoho Sprints; one per provider. The status map is managed in the app.",
-	Shape:       engine.NaturalKey, IDAttr: "provider", Lifecycle: true,
+	Shape:       engine.NaturalKey, IDAttr: "provider", Lifecycle: true, Upsert: true,
 	Attrs: []engine.Attr{
 		{Name: "provider", TFName: "provider_type", Kind: engine.String, Required: true, CreateOnly: true, OneOf: []string{"zoho_sprints", "jira"}, Description: "Which ticket system."},
 		{Name: "enabled", Kind: engine.Bool, Description: "Whether the connection is used."},

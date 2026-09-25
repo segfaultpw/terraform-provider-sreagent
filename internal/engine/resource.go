@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -128,7 +129,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			mods = append(mods, stringplanmodifier.UseStateForUnknown())
 		}
 		if a.CreateOnly || a.NotRead {
-			mods = append(mods, stringplanmodifier.RequiresReplace())
+			mods = append(mods, replaceString(a))
 		}
 		sa := schema.StringAttribute{Description: describe(a), Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
 		if a.Kind == JSON {
@@ -155,7 +156,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if stable {
 			mods = append(mods, float64planmodifier.UseStateForUnknown())
 		}
-		if a.CreateOnly {
+		if a.CreateOnly || a.NotRead {
 			mods = append(mods, float64planmodifier.RequiresReplace())
 		}
 		return map[string]schema.Attribute{a.Attribute(): schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
@@ -164,7 +165,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if stable {
 			mods = append(mods, boolplanmodifier.UseStateForUnknown())
 		}
-		if a.CreateOnly {
+		if a.CreateOnly || a.NotRead {
 			mods = append(mods, boolplanmodifier.RequiresReplace())
 		}
 		return map[string]schema.Attribute{a.Attribute(): schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
@@ -173,12 +174,26 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if stable {
 			mods = append(mods, listplanmodifier.UseStateForUnknown())
 		}
-		if a.CreateOnly {
+		if a.CreateOnly || a.NotRead {
 			mods = append(mods, listplanmodifier.RequiresReplace())
 		}
 		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
 	}
 	return nil
+}
+
+// replaceString replaces the row when a CreateOnly string changes. For a
+// value the platform normalizes, only a change that survives normalization
+// counts: an import reads the stored "checkout", and a configured "Checkout"
+// is the same service, not a new one.
+func replaceString(a Attr) planmodifier.String {
+	if a.Normalize == nil {
+		return stringplanmodifier.RequiresReplace()
+	}
+	desc := "Changing it replaces the row; a change of case or surrounding space does not."
+	return stringplanmodifier.RequiresReplaceIf(func(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+		resp.RequiresReplace = req.PlanValue.IsUnknown() || a.Normalize(req.PlanValue.ValueString()) != a.Normalize(req.StateValue.ValueString())
+	}, desc, desc)
 }
 
 func (r *facadeResource) title(verb string) string {
@@ -252,43 +267,30 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			continue
 		}
 		if a.Secret {
-			var wo types.String
-			diags.Append(config.GetAttribute(ctx, path.Root(a.Attribute()+"_wo"), &wo)...)
-			if wo.IsNull() || wo.IsUnknown() {
-				if o == opCreate && a.Required && r.spec.Shape != Singleton {
-					diags.AddAttributeError(path.Root(a.Attribute()+"_wo"), "Missing required secret", fmt.Sprintf("%s_wo is required to create sreagent_%s.", a.Attribute(), r.spec.TypeName))
-				}
-				continue
+			value, sent, d := r.secretBody(ctx, a, plan, config, state, o)
+			diags.Append(d...)
+			if value != nil {
+				body[a.Name] = value
+				secrets = append(secrets, sent...)
 			}
-			var planned types.Int64
-			diags.Append(plan.GetAttribute(ctx, path.Root(a.Attribute()+"_wo_version"), &planned)...)
-			if planned.IsNull() {
-				diags.AddAttributeError(path.Root(a.Attribute()+"_wo_version"), "Missing version", fmt.Sprintf("Set %s_wo_version whenever %s_wo is set, and change it to send a new value.", a.Attribute(), a.Attribute()))
-				continue
-			}
-			if o == opUpdate && state != nil {
-				var prior types.Int64
-				diags.Append(state.GetAttribute(ctx, path.Root(a.Attribute()+"_wo_version"), &prior)...)
-				if prior.Equal(planned) {
-					continue
-				}
-			}
-			value := any(wo.ValueString())
-			if a.Kind == JSON {
-				var parsed any
-				if err := json.Unmarshal([]byte(wo.ValueString()), &parsed); err != nil {
-					diags.AddAttributeError(path.Root(a.Attribute()+"_wo"), "Invalid JSON", "Use jsonencode(...) for this value.")
-					continue
-				}
-				value = parsed
-			}
-			body[a.Name] = value
-			secrets = append(secrets, wo.ValueString())
 			continue
 		}
 		v, d := getValue(ctx, plan, a)
 		diags.Append(d...)
 		if v == nil || v.IsUnknown() {
+			continue
+		}
+		var prior attr.Value
+		if o == opUpdate && state != nil {
+			prior, d = getValue(ctx, state, a)
+			diags.Append(d...)
+		}
+		unchanged := prior != nil && !prior.IsUnknown() && (keep(a, prior, v) || (prior.IsNull() && v.IsNull()))
+		// An upsert tool describes the row's whole state, so every field goes
+		// out; the other tools change only the fields a call names, so a field
+		// nobody changed stays out of the call (some, like a setting a person
+		// decides, are refused even when resent unchanged).
+		if o == opUpdate && !r.spec.Upsert && !a.Required && unchanged {
 			continue
 		}
 		if v.IsNull() {
@@ -297,10 +299,8 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			}
 			continue
 		}
-		if o == opUpdate && len(a.HiddenKeys) > 0 && state != nil {
-			prior, d := getValue(ctx, state, a)
-			diags.Append(d...)
-			if keep(a, prior, v) {
+		if o == opUpdate && len(a.HiddenKeys) > 0 && prior != nil {
+			if unchanged {
 				continue
 			}
 			if r.hiddenHeld(ctx, state, a) {
@@ -315,9 +315,104 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			diags.AddAttributeError(path.Root(a.Attribute()), "Invalid value", err.Error())
 			continue
 		}
+		if o == opUpdate && a.MergedObject {
+			j = clearRemovedKeys(j, prior)
+		}
 		body[a.Name] = j
 	}
 	return body, secrets, diags
+}
+
+// secretBody is what a write-only argument sends, and the strings an error
+// must never repeat: the whole value and, for a JSON secret, every string in
+// it, since a refusal may quote one field rather than the whole object.
+func (r *facadeResource) secretBody(ctx context.Context, a Attr, plan, config, state valueSource, o op) (any, []string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	n := a.Attribute()
+	var wo types.String
+	diags.Append(config.GetAttribute(ctx, path.Root(n+"_wo"), &wo)...)
+	var planned types.Int64
+	diags.Append(plan.GetAttribute(ctx, path.Root(n+"_wo_version"), &planned)...)
+	changed := true
+	if o == opUpdate && state != nil {
+		var prior types.Int64
+		diags.Append(state.GetAttribute(ctx, path.Root(n+"_wo_version"), &prior)...)
+		changed = !prior.Equal(planned)
+	}
+	if wo.IsNull() || wo.IsUnknown() {
+		switch {
+		case o == opCreate && a.Required && r.spec.Shape != Singleton:
+			diags.AddAttributeError(path.Root(n+"_wo"), "Missing required secret", fmt.Sprintf("%s_wo is required to create sreagent_%s.", n, r.spec.TypeName))
+		case o == opUpdate && changed && !planned.IsNull():
+			diags.AddAttributeError(path.Root(n+"_wo"), "Missing secret", fmt.Sprintf("%s_wo_version changed but %s_wo is not set, so there is nothing to send. Set %s_wo in the same apply.", n, n, n))
+		}
+		return nil, nil, diags
+	}
+	if planned.IsNull() {
+		diags.AddAttributeError(path.Root(n+"_wo_version"), "Missing version", fmt.Sprintf("Set %s_wo_version whenever %s_wo is set, and change it to send a new value.", n, n))
+		return nil, nil, diags
+	}
+	if !changed {
+		return nil, nil, diags
+	}
+	sent := []string{wo.ValueString()}
+	if a.Kind != JSON {
+		return wo.ValueString(), sent, diags
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(wo.ValueString()), &parsed); err != nil {
+		diags.AddAttributeError(path.Root(n+"_wo"), "Invalid JSON", "Use jsonencode(...) for this value.")
+		return nil, nil, diags
+	}
+	return parsed, append(sent, stringLeaves(parsed)...), diags
+}
+
+// stringLeaves is every string in a decoded JSON value long enough that
+// redacting it cannot mangle an unrelated message.
+func stringLeaves(v any) []string {
+	switch t := v.(type) {
+	case string:
+		if len(t) >= 4 {
+			return []string{t}
+		}
+	case map[string]any:
+		var out []string
+		for _, x := range t {
+			out = append(out, stringLeaves(x)...)
+		}
+		return out
+	case []any:
+		var out []string
+		for _, x := range t {
+			out = append(out, stringLeaves(x)...)
+		}
+		return out
+	}
+	return nil
+}
+
+// clearRemovedKeys names, with an empty string, every key the prior object
+// held that the planned one dropped: a merged object keeps what a write
+// leaves out, and an empty string is how it clears one.
+func clearRemovedKeys(planned any, prior attr.Value) any {
+	obj, ok := planned.(map[string]any)
+	if !ok || prior == nil || prior.IsNull() || prior.IsUnknown() {
+		return planned
+	}
+	n, ok := prior.(jsontypes.Normalized)
+	if !ok {
+		return planned
+	}
+	var before map[string]any
+	if json.Unmarshal([]byte(n.ValueString()), &before) != nil {
+		return planned
+	}
+	for k := range before {
+		if _, kept := obj[k]; !kept {
+			obj[k] = ""
+		}
+	}
+	return obj
 }
 
 // hiddenHeld reports whether state says the row stores keys of a that the
@@ -390,7 +485,9 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		}
 		diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), remote)...)
 	}
-	if out.ETag != "" && priv != nil {
+	if priv != nil {
+		// An answer without an ETag clears the stored one: a stale version
+		// would refuse every later write.
 		b, _ := json.Marshal(out.ETag)
 		diags.Append(priv.SetKey(ctx, "etag", b)...)
 	}
@@ -432,7 +529,10 @@ func (r *facadeResource) readOnly(verb string) (string, string) {
 	return r.title(verb), "The configured API key holds api:config_read, which can plan but not apply. Apply with an api:admin key."
 }
 
-func (r *facadeResource) precondition(verb string) (string, string) {
+func (r *facadeResource) precondition(verb string, err error) (string, string) {
+	if client.IsRetried(err) {
+		return r.title(verb), fmt.Sprintf("sreagent_%s: the platform answered 412 to a retried request after a gateway error, so the first attempt may have been applied. Run terraform plan to see the row as it is now.", r.spec.TypeName)
+	}
 	return r.title(verb), fmt.Sprintf("sreagent_%s changed outside Terraform after the last refresh (the platform answered 412). Nothing was written. Run terraform plan again to review the change.", r.spec.TypeName)
 }
 
@@ -462,12 +562,20 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddError(r.title("create"), err.Error())
 		return
 	}
-	out, err = r.followUp(ctx, req.Plan, out)
-	if err != nil {
-		resp.Diagnostics.AddError(r.title("create"), err.Error())
+	// The row exists from here on: state records it before the follow-up, so a
+	// failed follow-up leaves it tainted in state rather than orphaned.
+	resp.Diagnostics.Append(r.writeState(ctx, out, req.Plan, &resp.State, resp.Private, resp.Identity)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	resp.Diagnostics.Append(r.writeState(ctx, out, req.Plan, &resp.State, resp.Private, resp.Identity)...)
+	followed, err := r.followUp(ctx, req.Plan, out)
+	if err != nil {
+		resp.Diagnostics.AddError(r.title("create"), "The row was created, but setting the fields its create does not take failed; it is marked tainted and the next apply replaces it. "+err.Error())
+		return
+	}
+	if followed != out {
+		resp.Diagnostics.Append(r.writeState(ctx, followed, req.Plan, &resp.State, resp.Private, resp.Identity)...)
+	}
 }
 
 // followUp sends UpdateOnly fields whose planned value differs from the created row.
@@ -559,18 +667,19 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	p, q := r.rowPath(id.ValueString())
-	method := http.MethodPut
+	request := client.Request{Method: http.MethodPut, Path: p, Query: q, Body: body, IfMatch: etag, Secrets: secrets}
 	if len(body) == 0 {
-		method = http.MethodGet
+		// Nothing to write: read the row for state instead.
+		request = client.Request{Method: http.MethodGet, Path: p, Query: q}
 	}
-	out, err := r.client.Do(ctx, client.Request{Method: method, Path: p, Query: q, Body: body, IfMatch: etag, Secrets: secrets})
+	out, err := r.client.Do(ctx, request)
 	switch {
 	case client.IsReadOnlyKey(err):
 		summary, detail := r.readOnly("update")
 		resp.Diagnostics.AddError(summary, detail)
 		return
 	case client.IsPreconditionFailed(err):
-		summary, detail := r.precondition("update")
+		summary, detail := r.precondition("update", err)
 		resp.Diagnostics.AddError(summary, detail)
 		return
 	case client.IsNotFound(err):
@@ -611,7 +720,7 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		summary, detail := r.readOnly("delete")
 		resp.Diagnostics.AddError(summary, detail)
 	case client.IsPreconditionFailed(err):
-		summary, detail := r.precondition("delete")
+		summary, detail := r.precondition("delete", err)
 		resp.Diagnostics.AddError(summary, detail)
 	default:
 		resp.Diagnostics.AddError(r.title("delete"), err.Error())

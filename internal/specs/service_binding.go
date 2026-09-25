@@ -7,7 +7,7 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 var ServiceBinding = engine.Spec{
 	Key: "service_bindings", TypeName: "service_binding", ListName: "service_bindings",
 	Description: "Which log groups, traces and metrics belong to a service in the Observability Explorer.",
-	Shape:       engine.ServiceBinding, Lifecycle: true,
+	Shape:       engine.ServiceBinding, Lifecycle: true, Upsert: true,
 	Attrs: []engine.Attr{
 		{Name: "service", Kind: engine.String, Required: true, CreateOnly: true, Normalize: engine.LowerTrim, Description: "The service. Stored trimmed and lowercased."},
 		{Name: "environment", Kind: engine.String, CreateOnly: true, Normalize: engine.LowerTrim, Description: "The environment; empty for the default."},

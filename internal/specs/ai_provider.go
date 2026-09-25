@@ -16,7 +16,7 @@ var AIProvider = engine.Spec{
 		{Name: "enabled", Kind: engine.Bool, Description: "Whether it is routed to."},
 		{Name: "priority", Kind: engine.Int, Description: "Routing order."},
 		{Name: "auto_upgrade_model", Kind: engine.Bool, Description: "Follow the provider's newest model."},
-		{Name: "model_overrides", Kind: engine.JSON, Description: "Per call type models, as jsonencode({...})."},
+		{Name: "model_overrides", Kind: engine.JSON, MergedObject: true, Description: "A model per purpose, as jsonencode({...}). \"auto\" hands a purpose to the platform's own model selection. A purpose removed from the map is cleared on the platform."},
 		{Name: "max_tokens", Kind: engine.Int, Clearable: true, NullMeans: "4096", Description: "Output token cap; unset means 4096."},
 		{Name: "temperature", Kind: engine.Float, Clearable: true, NullMeans: "0.7", Description: "Sampling temperature; a new provider starts at 0.7."},
 		{Name: "timeout_ms", Kind: engine.Int, Clearable: true, NullMeans: "60000", Description: "Request timeout; a new provider starts at 60000."},

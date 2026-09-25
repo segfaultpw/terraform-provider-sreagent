@@ -69,6 +69,9 @@ func TestEverySpecMatchesTheContract(t *testing.T) {
 			if (s.Shape == engine.Singleton) != res.Singleton {
 				t.Fatalf("singleton mismatch")
 			}
+			if s.Lifecycle && s.Upsert != res.Upsert {
+				t.Fatalf("Upsert %v, contract upsert %v", s.Upsert, res.Upsert)
+			}
 			row := d.Components.Schemas[s.Key+"_row"].Properties
 			post := d.Paths["/"+s.Key]["post"].RequestBody.Content["application/json"].Schema
 			// Clearable is read from the update body: a row schema allows null wherever

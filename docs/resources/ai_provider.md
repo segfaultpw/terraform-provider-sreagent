@@ -46,7 +46,7 @@ resource "sreagent_ai_provider" "anthropic" {
 - `enabled` (Boolean) Whether it is routed to.
 - `max_tokens` (Number) Output token cap; unset means 4096.
 - `model` (String) The default model.
-- `model_overrides` (String) Per call type models, as jsonencode({...}).
+- `model_overrides` (String) A model per purpose, as jsonencode({...}). "auto" hands a purpose to the platform's own model selection. A purpose removed from the map is cleared on the platform.
 - `priority` (Number) Routing order.
 - `rate_limit_rpm` (Number) Requests per minute.
 - `temperature` (Number) Sampling temperature; a new provider starts at 0.7.

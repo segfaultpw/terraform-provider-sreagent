@@ -50,6 +50,19 @@ func TestSecretsNeverReachStateOrPlan(t *testing.T) {
 					if n := f.Calls("PUT", "outbound_configs"); n != 1 {
 						return fmt.Errorf("want one PUT, got %d", n)
 					}
+					if got := f.LastBody("PUT", "outbound_configs")["routing_key"]; got != sentinel {
+						return fmt.Errorf("the new version must send the secret, sent %v", got)
+					}
+					return nil
+				},
+			},
+			{
+				// Another change at the same version leaves the secret out.
+				Config: strings.Replace(cfg(2), `name = "pd"`, `name = "pd-2"`, 1),
+				Check: func(*terraform.State) error {
+					if _, sent := f.LastBody("PUT", "outbound_configs")["routing_key"]; sent {
+						return fmt.Errorf("an unchanged version resent the secret: %v", f.LastBody("PUT", "outbound_configs"))
+					}
 					return nil
 				},
 			},
@@ -65,5 +78,17 @@ func TestAWriteOnlyValueWithoutAVersionIsRefused(t *testing.T) {
 			Config:      providerBlock(f.URL) + "resource \"sreagent_outbound_config\" \"pd\" {\n  name = \"pd\"\n  provider_type = \"pagerduty\"\n  routing_key_wo = \"x\"\n}\n",
 			ExpectError: regexpMust(`routing_key_wo_version`),
 		}},
+	})
+}
+
+func TestAVersionBumpWithoutAValueIsRefused(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	base := providerBlock(f.URL) + "resource \"sreagent_outbound_config\" \"pd\" {\n  name = \"pd\"\n  provider_type = \"pagerduty\"\n%s}\n"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: fmt.Sprintf(base, "  routing_key_wo = \"one\"\n  routing_key_wo_version = 1\n")},
+			{Config: fmt.Sprintf(base, "  routing_key_wo_version = 2\n"), ExpectError: regexpMust(`routing_key_wo_version changed but routing_key_wo is not set`)},
+		},
 	})
 }

@@ -36,5 +36,5 @@ Read-Only:
 - `created_via` (String) Which door created it.
 - `ends_at` (String) When the mute stops silencing.
 - `id` (String) The row's identifier on the platform.
-- `pattern` (String) The substring to silence, 2 to 200 characters.
+- `pattern` (String) The substring to silence, 2 to 200 characters, matched without case and stored lowercased.
 - `reason` (String) Why it is muted.
