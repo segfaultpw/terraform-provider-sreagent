@@ -36,3 +36,5 @@ resource "sreagent_deploy_policy" "x" { service = "web" }`,
 		}},
 	})
 }
+
+func regexpMust(s string) *regexp.Regexp { return regexp.MustCompile(s) }

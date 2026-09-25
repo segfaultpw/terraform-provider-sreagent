@@ -131,3 +131,25 @@ func TestAlertRouteClearsItsScheduleWhenRemovedFromConfig(t *testing.T) {
 		},
 	})
 }
+
+func TestOutboundConfigLifecycle(t *testing.T) {
+	runLifecycle(t, lifecycle{
+		spec:         specs.OutboundConfig,
+		create:       "name = \"pd\"\nprovider_type = \"pagerduty\"\nrouting_key_wo = \"R0UTING-one\"\nrouting_key_wo_version = 1",
+		update:       "name = \"pd-primary\"\nprovider_type = \"pagerduty\"\nrouting_key_wo = \"R0UTING-one\"\nrouting_key_wo_version = 1",
+		after:        map[string]string{"routing_key_set": "true", "api_key_set": "false"},
+		importIgnore: []string{"routing_key_wo_version"},
+		browserEdit:  func(r map[string]any) { r["priority"] = 9 },
+	})
+}
+
+func TestOutboundRuleLifecycle(t *testing.T) {
+	runLifecycle(t, lifecycle{
+		spec:        specs.OutboundRule,
+		prelude:     "resource \"sreagent_outbound_config\" \"pd\" {\n  name = \"pd\"\n  provider_type = \"webhook\"\n  base_url = \"https://hooks.example.com/x\"\n}\n",
+		create:      "name = \"sev1\"\noutbound_config_id = sreagent_outbound_config.pd.id\nmatch_severity = \"critical\"",
+		update:      "name = \"sev1\"\noutbound_config_id = sreagent_outbound_config.pd.id",
+		after:       map[string]string{"match_severity": "critical"},
+		browserEdit: func(r map[string]any) { r["cooldown_minutes"] = 99 },
+	})
+}

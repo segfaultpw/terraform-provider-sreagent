@@ -7,6 +7,8 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 func All() []engine.Spec {
 	return []engine.Spec{
 		AlertRoute,
+		OutboundConfig,
+		OutboundRule,
 		DeployPolicy,
 	}
 }
