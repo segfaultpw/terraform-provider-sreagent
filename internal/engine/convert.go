@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -168,6 +169,21 @@ func fromJSON(k Kind, raw any) (attr.Value, error) {
 // keep reports whether the configured value should stay in state although
 // the server answered a different spelling of the same value.
 func keep(a Attr, before, remote attr.Value) bool {
+	// The platform defaults a Clearable object to {} on create and stores null
+	// when one is cleared; both mean none, so an unset configuration stays null.
+	if a.Kind == JSON && a.Clearable && before != nil && before.IsNull() && isEmptyObject(remote) {
+		return true
+	}
+	if a.NullMeans != "" && a.Clearable && before != nil && before.IsNull() && remote != nil && !remote.IsNull() {
+		d := json.NewDecoder(strings.NewReader(a.NullMeans))
+		d.UseNumber()
+		var raw any
+		if d.Decode(&raw) == nil {
+			if def, err := fromJSON(a.Kind, raw); err == nil && def.Equal(remote) {
+				return true
+			}
+		}
+	}
 	if before == nil || before.IsNull() || before.IsUnknown() || remote == nil || remote.IsNull() {
 		return false
 	}
@@ -192,4 +208,13 @@ func keep(a Attr, before, remote attr.Value) bool {
 		return reflect.DeepEqual(x, y)
 	}
 	return false
+}
+
+func isEmptyObject(v attr.Value) bool {
+	n, ok := v.(jsontypes.Normalized)
+	if !ok || n.IsNull() || n.IsUnknown() {
+		return false
+	}
+	var obj map[string]any
+	return json.Unmarshal([]byte(n.ValueString()), &obj) == nil && obj != nil && len(obj) == 0
 }

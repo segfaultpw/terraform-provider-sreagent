@@ -142,7 +142,8 @@ func TestAccStalePlanIsRefused(t *testing.T) {
 	if out, err := tf.run("plan", "-out=stale.tfplan"); err != nil {
 		t.Fatal(out)
 	}
-	if _, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodPut, Path: "deploy_policies/" + id, Body: map[string]any{"incident_block_enabled": true}}); err != nil {
+	// The platform's default is true, so false is a change that moves the ETag.
+	if _, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodPut, Path: "deploy_policies/" + id, Body: map[string]any{"incident_block_enabled": false}}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := tf.run("apply", "stale.tfplan")

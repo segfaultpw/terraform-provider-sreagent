@@ -32,6 +32,11 @@ type Attr struct {
 	UpdateOnly bool
 	// Clearable: a nullable collection field; unset sends null on update.
 	Clearable bool
+	// NullMeans: for a Clearable field, the JSON literal of the value the
+	// platform acts on when the field is null, which is also what a create
+	// that leaves it out stores. An answer equal to it reads back as the
+	// null an unset configuration holds. A Clearable object's is always {}.
+	NullMeans string
 	// Computed: answered, never written.
 	Computed bool
 	// Secret: exposed as <name>_wo, <name>_wo_version and <name>_set.

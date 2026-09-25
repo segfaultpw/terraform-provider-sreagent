@@ -70,3 +70,26 @@ func TestToJSONList(t *testing.T) {
 		t.Fatalf("got %v %v", v, err)
 	}
 }
+
+func TestAnEmptyObjectIsAnUnsetClearableObject(t *testing.T) {
+	a := Attr{Name: "default_severity_mapping", Kind: JSON, Clearable: true}
+	if !keep(a, jsontypes.NewNormalizedNull(), jsontypes.NewNormalizedValue(`{}`)) {
+		t.Fatal("{} answered for an unset Clearable object must keep null")
+	}
+	if keep(a, jsontypes.NewNormalizedNull(), jsontypes.NewNormalizedValue(`{"critical":"P1"}`)) {
+		t.Fatal("a real mapping must not read as unset")
+	}
+	if keep(Attr{Name: "config", Kind: JSON}, jsontypes.NewNormalizedNull(), jsontypes.NewNormalizedValue(`{}`)) {
+		t.Fatal("only a Clearable object treats {} as unset")
+	}
+}
+
+func TestTheNullDefaultIsAnUnsetClearableValue(t *testing.T) {
+	a := Attr{Name: "cooldown_minutes", Kind: Int, Clearable: true, NullMeans: "30"}
+	if !keep(a, types.Int64Null(), types.Int64Value(30)) {
+		t.Fatal("the default a null means must keep an unset configuration null")
+	}
+	if keep(a, types.Int64Null(), types.Int64Value(45)) {
+		t.Fatal("a value set in the app is drift")
+	}
+}
