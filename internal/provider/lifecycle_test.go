@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
@@ -85,5 +86,48 @@ func TestDeployPolicyLifecycle(t *testing.T) {
 		update:      `service = "web"` + "\n" + `error_budget_threshold = 25` + "\n" + `incident_block_enabled = true`,
 		after:       map[string]string{"service": "web", "error_budget_threshold": "10"},
 		browserEdit: func(r map[string]any) { r["error_budget_threshold"] = 50 },
+	})
+}
+
+func TestAlertRouteLifecycle(t *testing.T) {
+	runLifecycle(t, lifecycle{
+		spec:   specs.AlertRoute,
+		create: `service = "Checkout"` + "\n" + `target = "#checkout-alerts"`,
+		update: `service = "Checkout"` + "\n" + `target = "#checkout-incidents"`,
+		after:  map[string]string{"service": "Checkout", "target": "#checkout-alerts"},
+		// An import reads the stored, normalized "checkout"; the configured spelling is kept only once state exists.
+		importIgnore: []string{"service"},
+		browserEdit:  func(r map[string]any) { r["target"] = "#elsewhere" },
+	})
+}
+
+func TestAlertRouteServiceChangeReplaces(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(svc string) string {
+		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_alert_route\" \"r\" {\n  service = %q\n  target = \"#a\"\n}\n", svc)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg("checkout")},
+			{
+				Config: cfg("payments"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("sreagent_alert_route.r", plancheck.ResourceActionDestroyBeforeCreate),
+				}},
+			},
+		},
+	})
+}
+
+func TestAlertRouteClearsItsScheduleWhenRemovedFromConfig(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	base := providerBlock(f.URL) + "resource \"sreagent_alert_route\" \"r\" {\n  service = \"checkout\"\n  target = \"#a\"\n%s}\n"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: fmt.Sprintf(base, "  oncall_schedule_id = \"sched-1\"\n"), Check: resource.TestCheckResourceAttr("sreagent_alert_route.r", "oncall_schedule_id", "sched-1")},
+			{Config: fmt.Sprintf(base, ""), Check: resource.TestCheckNoResourceAttr("sreagent_alert_route.r", "oncall_schedule_id")},
+		},
 	})
 }
