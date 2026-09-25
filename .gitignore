@@ -1,0 +1,6 @@
+.plans/
+.claude/
+
+# Build output
+/terraform-provider-sreagent
+dist/

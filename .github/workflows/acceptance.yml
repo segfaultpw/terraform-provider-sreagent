@@ -1,0 +1,53 @@
+name: Acceptance
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 5 * * 1"
+permissions:
+  contents: read
+  packages: read
+jobs:
+  acceptance:
+    # Pulling the sre-agent image needs this repository to hold read access to
+    # that package, which only the owner can grant. Set the repository
+    # variable ACCEPTANCE_ENABLED to "true" once it does.
+    # A fork's pull request never runs here: the job can pull the private
+    # sre-agent image, and a fork controls the code the job runs.
+    if: >-
+      vars.ACCEPTANCE_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform: ["1.12.2", "1.15.8"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Start and seed the stack
+        run: |
+          ./acceptance/seed.sh > "$RUNNER_TEMP/acc.env"
+          for name in SREAGENT_API_KEY SREAGENT_READ_API_KEY; do
+            echo "::add-mask::$(grep "^$name=" "$RUNNER_TEMP/acc.env" | cut -d= -f2-)"
+          done
+          cat "$RUNNER_TEMP/acc.env" >> "$GITHUB_ENV"
+      - name: Acceptance tests
+        env:
+          TF_ACC: "1"
+        run: go test ./internal/provider/ -run TestAcc -timeout 60m -v
+      - name: Tear down
+        if: always()
+        run: docker compose -f acceptance/docker-compose.yml down -v
