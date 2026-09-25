@@ -38,7 +38,7 @@ func seedOne(t *testing.T, base, key string, row map[string]any) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("seeding %s: status %d", key, resp.StatusCode)
 	}
@@ -60,7 +60,7 @@ func seedOne(t *testing.T, base, key string, row map[string]any) string {
 // on the row being imported.
 type importsOnly struct{}
 
-func (importsOnly) CheckPlan(ctx context.Context, req plancheck.CheckPlanRequest, resp *plancheck.CheckPlanResponse) {
+func (importsOnly) CheckPlan(_ context.Context, req plancheck.CheckPlanRequest, resp *plancheck.CheckPlanResponse) {
 	for _, c := range req.Plan.ResourceChanges {
 		switch {
 		case c.Change.Actions.NoOp():
@@ -78,7 +78,7 @@ type requiresUpdate struct {
 	address string
 }
 
-func (r requiresUpdate) CheckPlan(ctx context.Context, req plancheck.CheckPlanRequest, resp *plancheck.CheckPlanResponse) {
+func (r requiresUpdate) CheckPlan(_ context.Context, req plancheck.CheckPlanRequest, resp *plancheck.CheckPlanResponse) {
 	for _, c := range req.Plan.ResourceChanges {
 		if c.Address == r.address && c.Change.Actions.Update() {
 			return
