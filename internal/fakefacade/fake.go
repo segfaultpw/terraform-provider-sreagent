@@ -143,7 +143,8 @@ func zero(a engine.Attr) any {
 	case engine.Int, engine.Float:
 		return 0
 	case engine.Bool:
-		return false
+		// Every enabled column on the platform defaults to true.
+		return a.Name == "enabled"
 	case engine.StringList:
 		return []any{}
 	case engine.JSON:

@@ -116,7 +116,9 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	required := a.Required && !a.Computed
 	optional := !required && !a.Computed
 	clearable := a.Clearable && !singleton
-	computed := a.Computed || (!required && !clearable)
+	// A NotRead argument is never answered, so the platform can never fill it:
+	// left out of the configuration it stays null rather than unknown.
+	computed := a.Computed || (!required && !clearable && !a.NotRead)
 	stable := computed && !a.Computed
 	switch a.Kind {
 	case String, JSON:

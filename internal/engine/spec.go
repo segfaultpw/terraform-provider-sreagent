@@ -37,6 +37,7 @@ type Attr struct {
 	// Secret: exposed as <name>_wo, <name>_wo_version and <name>_set.
 	Secret bool
 	// NotRead: an action argument the server never answers; state keeps config.
+	// It is Optional without Computed and replaces the row when it changes.
 	NotRead bool
 	// Normalize: the server stores this form; values equal after it are equal.
 	Normalize func(string) string

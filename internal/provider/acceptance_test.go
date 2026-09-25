@@ -63,13 +63,21 @@ func runAcc(t *testing.T, c accCase) {
 	})
 }
 
-func TestAccPhase3(t *testing.T) {
+func TestAccResources(t *testing.T) {
 	for _, c := range []accCase{
 		{name: "deploy_policy", typeName: "deploy_policy", key: "deploy_policies", create: "service = \"acc-web\"\nerror_budget_threshold = 10", update: "service = \"acc-web\"\nerror_budget_threshold = 25"},
 		{name: "alert_route", typeName: "alert_route", key: "alert_routes", create: "service = \"Acc-Checkout\"\ntarget = \"#acc-alerts\"", update: "service = \"Acc-Checkout\"\ntarget = \"#acc-incidents\"", importIgnore: []string{"service"}},
 		{name: "outbound_config", typeName: "outbound_config", key: "outbound_configs", create: "name = \"acc-pd\"\nprovider_type = \"pagerduty\"\nrouting_key_wo = \"R0UTING0acc0000000000000000000\"\nrouting_key_wo_version = 1", update: "name = \"acc-pd-2\"\nprovider_type = \"pagerduty\"\nrouting_key_wo = \"R0UTING0acc0000000000000000000\"\nrouting_key_wo_version = 1", importIgnore: []string{"routing_key_wo_version"}},
 		{name: "outbound_rule", typeName: "outbound_rule", key: "outbound_rules", prelude: "resource \"sreagent_outbound_config\" \"t\" {\n  name = \"acc-hook\"\n  provider_type = \"webhook\"\n  base_url = \"https://hooks.example.com/acc\"\n}\n", create: "name = \"acc-sev1\"\noutbound_config_id = sreagent_outbound_config.t.id\nmatch_severity = \"critical\"", update: "name = \"acc-sev1\"\noutbound_config_id = sreagent_outbound_config.t.id"},
 		{name: "synthetic_check", typeName: "synthetic_check", key: "synthetic_checks", create: "name = \"acc-home\"\ncheck_type = \"http\"\ntarget = \"https://example.com\"", update: "name = \"acc-home\"\ncheck_type = \"http\"\ntarget = \"https://example.com\"\ninterval_seconds = 120"},
+		{name: "data_source", typeName: "data_source", key: "data_sources", create: "name = \"acc-prom\"\ntype = \"prometheus\"\nurl = \"https://prometheus.example.com\"", update: "name = \"acc-prom\"\ntype = \"prometheus\"\nurl = \"https://prometheus.example.com\"\nenabled = false"},
+		{name: "connector", typeName: "connector", key: "connectors", create: "name = \"acc-box\"\nconnector_type = \"ssh\"\nconfig_wo = jsonencode({ host = \"127.0.0.1\" })\nconfig_wo_version = 1", update: "name = \"acc-box-2\"\nconnector_type = \"ssh\"\nconfig_wo = jsonencode({ host = \"127.0.0.1\" })\nconfig_wo_version = 1", importIgnore: []string{"config_wo_version"}},
+		{name: "sli", typeName: "sli", key: "slis", create: "name = \"acc-lat\"\nsli_type = \"latency\"", update: "name = \"acc-lat\"\nsli_type = \"latency\"\ndescription = \"p99 latency\""},
+		{name: "slo", typeName: "slo", key: "slos", prelude: "resource \"sreagent_sli\" \"s\" {\n  name = \"acc-slo-sli\"\n  sli_type = \"latency\"\n}\n", create: "name = \"acc-o\"\nsli_id = sreagent_sli.s.id\ntarget = 99.9", update: "name = \"acc-o\"\nsli_id = sreagent_sli.s.id\ntarget = 99.5"},
+		{name: "alert_mute", typeName: "alert_mute", key: "alert_mutes", create: "pattern = \"acc-disk-full\"", update: "pattern = \"acc-disk-full\""},
+		{name: "certificate_monitor", typeName: "certificate_monitor", key: "certificate_monitors", create: "hostname = \"example.com\"", update: "hostname = \"example.com\""},
+		{name: "prompt_template", typeName: "prompt_template", key: "prompt_templates", create: "name = \"acc-p\"\nprompt_type = \"custom\"\ncontent = \"Summarize the alert.\"", update: "name = \"acc-p\"\nprompt_type = \"custom\"\ncontent = \"Summarize the alert in two lines.\""},
+		{name: "team", typeName: "team", key: "teams", create: "name = \"acc-platform\"", update: "name = \"acc-platform-eng\""},
 	} {
 		t.Run(c.name, func(t *testing.T) { runAcc(t, c) })
 	}

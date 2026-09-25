@@ -9,7 +9,15 @@ func All() []engine.Spec {
 		AlertRoute,
 		OutboundConfig,
 		OutboundRule,
+		DataSource,
+		Connector,
 		SyntheticCheck,
+		SLI,
+		SLO,
 		DeployPolicy,
+		AlertMute,
+		CertificateMonitor,
+		PromptTemplate,
+		Team,
 	}
 }

@@ -245,3 +245,62 @@ func TestSyntheticCheckConfigChangeIsRefusedWhileTheAppHoldsHeaders(t *testing.T
 		},
 	})
 }
+
+func TestBatchALifecycles(t *testing.T) {
+	cases := []lifecycle{
+		{spec: specs.DataSource, create: "name = \"prom\"\ntype = \"prometheus\"\nurl = \"https://prometheus.example.com\"", update: "name = \"prom\"\ntype = \"prometheus\"\nurl = \"https://prometheus-2.example.com\"\nenabled = false", after: map[string]string{"type": "prometheus"}, browserEdit: func(r map[string]any) { r["url"] = "https://other.example.com" }},
+		{spec: specs.Connector, create: "name = \"box\"\nconnector_type = \"ssh\"\nconfig_wo = jsonencode({ host = \"10.0.0.1\" })\nconfig_wo_version = 1", update: "name = \"box-2\"\nconnector_type = \"ssh\"\nconfig_wo = jsonencode({ host = \"10.0.0.1\" })\nconfig_wo_version = 1", after: map[string]string{"config_set": "true"}, importIgnore: []string{"config_wo_version"}, browserEdit: func(r map[string]any) { r["name"] = "renamed" }},
+		{spec: specs.SLI, create: "name = \"lat\"\nsli_type = \"latency\"\ndescription = \"p50 latency\"", update: "name = \"lat\"\nsli_type = \"latency\"\ndescription = \"p99 latency\"", after: map[string]string{"sli_type": "latency"}, browserEdit: func(r map[string]any) { r["name"] = "x" }},
+		{spec: specs.SLO, prelude: "resource \"sreagent_sli\" \"s\" {\n  name = \"lat\"\n  sli_type = \"latency\"\n}\n", create: "name = \"o\"\nsli_id = sreagent_sli.s.id\ntarget = 99.9", update: "name = \"o\"\nsli_id = sreagent_sli.s.id\ntarget = 99.5", after: map[string]string{"target": "99.9"}, browserEdit: func(r map[string]any) { r["window_days"] = 7 }},
+		{spec: specs.PromptTemplate, create: "name = \"p\"\nprompt_type = \"custom\"\ncontent = \"Summarize the alert.\"", update: "name = \"p\"\nprompt_type = \"custom\"\ncontent = \"Summarize the alert in two lines.\"", after: map[string]string{"prompt_type": "custom"}, browserEdit: func(r map[string]any) { r["content"] = "x" }},
+		{spec: specs.Team, create: "name = \"platform\"", update: "name = \"platform-eng\"", after: map[string]string{"name": "platform"}, browserEdit: func(r map[string]any) { r["name"] = "other" }},
+	}
+	for _, c := range cases {
+		t.Run(c.spec.TypeName, func(t *testing.T) { runLifecycle(t, c) })
+	}
+}
+
+// No update tool: a change replaces the row, and there is no PUT for a 412 to refuse.
+func TestImmutableCollectionsReplaceOnChange(t *testing.T) {
+	for _, c := range []struct {
+		typeName, before, after string
+	}{
+		{"alert_mute", "pattern = \"disk-full\"", "pattern = \"disk-full-2\""},
+		{"certificate_monitor", "hostname = \"api.example.com\"", "hostname = \"api.example.com\"\nwarn_days_before = 14"},
+	} {
+		t.Run(c.typeName, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			cfg := func(body string) string {
+				return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_%s\" \"x\" {\n%s\n}\n", c.typeName, body)
+			}
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{
+					{Config: cfg(c.before)},
+					{Config: cfg(c.after), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("sreagent_"+c.typeName+".x", plancheck.ResourceActionDestroyBeforeCreate),
+					}}},
+				},
+			})
+		})
+	}
+}
+
+func TestDataSourceEnabledIsSentAfterCreate(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config: providerBlock(f.URL) + "resource \"sreagent_data_source\" \"d\" {\n  name = \"prom\"\n  type = \"prometheus\"\n  url = \"https://p.example.com\"\n  enabled = false\n}\n",
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("sreagent_data_source.d", "enabled", "false"),
+				func(*terraform.State) error {
+					if n := f.Calls("PUT", "data_sources"); n != 1 {
+						return fmt.Errorf("enabled is not a create argument, so it needs one PUT after the POST; got %d", n)
+					}
+					return nil
+				},
+			),
+		}},
+	})
+}
