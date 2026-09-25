@@ -8,6 +8,12 @@ permissions:
 jobs:
   test:
     runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The supported floor and the latest release: the unit suite drives
+        # the real Terraform CLI, and the two differ on resource identity.
+        terraform: ["1.12.2", "1.15.8"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -15,7 +21,7 @@ jobs:
           go-version-file: go.mod
       - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.15.8
+          terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
       - name: gofmt
         run: test -z "$(gofmt -l .)"

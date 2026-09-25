@@ -394,15 +394,23 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		b, _ := json.Marshal(out.ETag)
 		diags.Append(priv.SetKey(ctx, "etag", b)...)
 	}
-	if identity != nil {
-		if r.spec.Shape == ServiceBinding {
-			env, _ := row["environment"].(string)
-			diags.Append(identity.SetAttribute(ctx, path.Root("service"), types.StringValue(fmt.Sprint(row["service"])))...)
-			diags.Append(identity.SetAttribute(ctx, path.Root("environment"), types.StringValue(env))...)
-		} else {
-			diags.Append(identity.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
-		}
+	diags.Append(r.setIdentity(ctx, identity, id)...)
+	return diags
+}
+
+// setIdentity records the identity of the row Terraform holds as id.
+func (r *facadeResource) setIdentity(ctx context.Context, identity *tfsdk.ResourceIdentity, id string) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if identity == nil {
+		return diags
 	}
+	if r.spec.Shape == ServiceBinding {
+		service, env := splitBindingID(id)
+		diags.Append(identity.SetAttribute(ctx, path.Root("service"), types.StringValue(service))...)
+		diags.Append(identity.SetAttribute(ctx, path.Root("environment"), types.StringValue(env))...)
+		return diags
+	}
+	diags.Append(identity.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 	return diags
 }
 
@@ -519,6 +527,10 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// The framework refuses a read that answers no identity, even one that
+	// removes the resource, and a row can reach here without one stored
+	// (after a failed apply on Terraform 1.12, for one).
+	resp.Diagnostics.Append(r.setIdentity(ctx, resp.Identity, id.ValueString())...)
 	p, q := r.rowPath(id.ValueString())
 	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
 	if client.IsNotFound(err) {
@@ -535,6 +547,10 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var id types.String
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("id"), &id)...)
+	// A failed update keeps the prior state, and with it this identity: some
+	// Terraform versions send no planned identity, and a row stored without one
+	// fails the next refresh that finds it deleted.
+	resp.Diagnostics.Append(r.setIdentity(ctx, resp.Identity, id.ValueString())...)
 	body, secrets, diags := r.body(ctx, req.Plan, req.Config, req.State, opUpdate)
 	resp.Diagnostics.Append(diags...)
 	etag, d := r.etag(ctx, req.Private)
