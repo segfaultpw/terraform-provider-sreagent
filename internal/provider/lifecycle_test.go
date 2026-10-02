@@ -433,7 +433,7 @@ func TestSingletonLifecycles(t *testing.T) {
 	runSingleton(t, specs.Slack, "name = \"ws\"\nbot_token_wo = \"xoxb-unit\"\nbot_token_wo_version = 1", "name = \"ws-2\"\ndefault_channel_critical = \"#pager\"\nbot_token_wo = \"xoxb-unit\"\nbot_token_wo_version = 1", func(r map[string]any) { r["name"] = "other" })
 	runSingleton(t, specs.ChangeNotifications, "enabled = true\nchannel = \"#changes\"", "enabled = true\nchannel = \"#deploys\"", func(r map[string]any) { r["channel"] = "#x" })
 	runSingleton(t, specs.AISettings, "anonymization_enabled = true", "anonymization_enabled = false", func(r map[string]any) { r["anonymization_enabled"] = true })
-	runSingleton(t, specs.OverseerSettings, "enabled = true\ndigest_enabled = false", "enabled = true\ndigest_enabled = true", func(r map[string]any) { r["cadence"] = "weekly" })
+	runSingleton(t, specs.OverseerSettings, "enabled = true\ndigest_enabled = false\nauto_ticket_critical_findings = true", "enabled = true\ndigest_enabled = true\nauto_ticket_critical_findings = false", func(r map[string]any) { r["cadence"] = "weekly" })
 	runSingleton(t, specs.GitHubSettings, "draft_prs = true", "draft_prs = false", func(r map[string]any) { r["draft_prs"] = true })
 	runSingleton(t, specs.StatusPageSettings, "enabled = true\nshow_history_days = 14", "enabled = true\nshow_history_days = 30", func(r map[string]any) { r["title"] = "changed" })
 }

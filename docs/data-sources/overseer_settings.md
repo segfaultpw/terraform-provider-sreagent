@@ -21,6 +21,7 @@ data "sreagent_overseer_settings" "this" {}
 ### Read-Only
 
 - `aggressivity` (String) How much it proposes.
+- `auto_ticket_critical_findings` (Boolean) Open an urgent ticket when a critical finding newly enters critical. Needs a plan with the ticket board.
 - `cadence` (String) How often it runs.
 - `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `digest_enabled` (Boolean) Send a digest.

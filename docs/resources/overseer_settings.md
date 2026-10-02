@@ -13,10 +13,11 @@ The Overseer's schedule and budget. One row per organization: creating it adopts
 
 ```terraform
 resource "sreagent_overseer_settings" "this" {
-  enabled        = true
-  cadence        = "daily"
-  aggressivity   = "conservative"
-  digest_enabled = true
+  enabled                       = true
+  cadence                       = "daily"
+  aggressivity                  = "conservative"
+  digest_enabled                = true
+  auto_ticket_critical_findings = true
 }
 ```
 
@@ -26,6 +27,7 @@ resource "sreagent_overseer_settings" "this" {
 ### Optional
 
 - `aggressivity` (String) How much it proposes.
+- `auto_ticket_critical_findings` (Boolean) Open an urgent ticket when a critical finding newly enters critical. Needs a plan with the ticket board.
 - `cadence` (String) How often it runs.
 - `digest_enabled` (Boolean) Send a digest.
 - `enabled` (Boolean) Run the Overseer.

@@ -1241,6 +1241,12 @@
               "null"
             ]
           },
+          "auto_ticket_critical_findings": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "cadence": {
             "type": [
               "string",
@@ -1294,6 +1300,7 @@
           "max_tokens_per_run",
           "max_tool_calls",
           "digest_enabled",
+          "auto_ticket_critical_findings",
           "last_skip_reason",
           "next_run_at",
           "updated_at"
@@ -5373,6 +5380,10 @@
                     "description": "How far a run may go on its own: conservative, balanced, assertive.",
                     "type": "string"
                   },
+                  "auto_ticket_critical_findings": {
+                    "description": "Whether a critical finding opens an urgent board ticket on its own, linked to the finding, its alerts and its investigations. Needs a plan with the ticket board.",
+                    "type": "boolean"
+                  },
                   "cadence": {
                     "description": "hourly, every_6h, daily, weekly",
                     "type": "string"
@@ -9327,7 +9338,8 @@
         "aggressivity",
         "max_tokens_per_run",
         "max_tool_calls",
-        "digest_enabled"
+        "digest_enabled",
+        "auto_ticket_critical_findings"
       ],
       "id_args": [],
       "import_key": "overseer_settings",
@@ -9342,6 +9354,7 @@
       "terraform_type": "overseer_settings",
       "update_fields": [
         "aggressivity",
+        "auto_ticket_critical_findings",
         "cadence",
         "digest_enabled",
         "enabled",

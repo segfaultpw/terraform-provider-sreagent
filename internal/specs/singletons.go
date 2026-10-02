@@ -106,6 +106,7 @@ var OverseerSettings = singleton("overseer_settings", "The Overseer's schedule a
 	i("max_tokens_per_run", "Token budget per run."),
 	i("max_tool_calls", "Tool call budget per run."),
 	b("digest_enabled", "Send a digest."),
+	b("auto_ticket_critical_findings", "Open an urgent ticket when a critical finding newly enters critical. Needs a plan with the ticket board."),
 	computed(s("next_run_at", "When it runs next.")),
 	computed(s("last_skip_reason", "Why the last due run did nothing.")),
 )
