@@ -15,4 +15,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The document needs an API key now (it is not served to the public).
+      # SRE_AGENT_API_KEY is a repository secret: a read-only key (`api:read`)
+      # from an organization on the platform.
       - run: go run ./internal/contract/cmd/drift https://sreagent.app/api/openapi.json internal/contract/openapi.json
+        env:
+          SRE_AGENT_API_KEY: ${{ secrets.SRE_AGENT_API_KEY }}
