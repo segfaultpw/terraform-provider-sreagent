@@ -17,3 +17,4 @@ FEATURES:
   refused (412) instead of overwritten.
 * A plan-only mode for CI with an `api:config_read` key.
 * The `organization` pin refuses a key minted for another organization before anything is written.
+* `sreagent_ticket_integration` takes `auto_file`: every card created from then on is filed into the system without a button press.

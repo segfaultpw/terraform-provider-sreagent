@@ -25,11 +25,10 @@ func main() {
 		os.Exit(2)
 	}
 	code, msg := run(&http.Client{Timeout: 30 * time.Second}, os.Args[1], os.Args[2], os.Getenv("SRE_AGENT_API_KEY"))
-	if code == 0 {
+	switch code {
+	case 0, 1:
 		fmt.Println(msg)
-	} else if code == 1 {
-		fmt.Println(msg)
-	} else {
+	default:
 		fmt.Fprintln(os.Stderr, msg)
 	}
 	os.Exit(code)

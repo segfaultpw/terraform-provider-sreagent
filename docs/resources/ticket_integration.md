@@ -43,6 +43,7 @@ resource "sreagent_ticket_integration" "jira" {
 - `api_token_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The API token (Jira). Write-only: never stored in state or plan.
 - `api_token_wo_version` (Number) Change this number to send api_token_wo again. Set it whenever api_token_wo is set.
 - `auth_url` (String) The OAuth endpoint (Zoho).
+- `auto_file` (Boolean) File every card created from now on into this system without a button press; needs a destination. Existing cards are never filed by this.
 - `base_url` (String) The tracker's URL.
 - `client_id` (String) The OAuth client id (Zoho).
 - `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The OAuth client secret (Zoho). Write-only: never stored in state or plan.

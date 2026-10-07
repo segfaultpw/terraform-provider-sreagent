@@ -36,6 +36,7 @@ Read-Only:
 - `account_email` (String) The account email (Jira).
 - `api_token_set` (Boolean) Whether the platform holds a value for api_token.
 - `auth_url` (String) The OAuth endpoint (Zoho).
+- `auto_file` (Boolean) File every card created from now on into this system without a button press; needs a destination. Existing cards are never filed by this.
 - `base_url` (String) The tracker's URL.
 - `client_id` (String) The OAuth client id (Zoho).
 - `client_secret_set` (Boolean) Whether the platform holds a value for client_secret.

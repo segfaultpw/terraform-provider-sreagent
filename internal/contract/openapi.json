@@ -2229,6 +2229,12 @@
               "null"
             ]
           },
+          "auto_file": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "base_url": {
             "type": [
               "string",
@@ -2318,6 +2324,7 @@
           "create_team_id",
           "create_project_id",
           "create_sprint_id",
+          "auto_file",
           "client_secret_set",
           "refresh_token_set",
           "api_token_set",
@@ -2338,7 +2345,7 @@
     }
   },
   "info": {
-    "description": "A resource-shaped door onto the same tool surface the MCP server (/api/mcp) reaches. Every gate, refusal and audit row a caller sees here is the exact one the MCP door answers for the same tool. Authenticated with an API key holding the api:admin scope, or the read-only api:config_read scope for GET alone.",
+    "description": "A resource-shaped REST view of the same tool surface the MCP server (/api/mcp) offers. Every plan limit, refusal and audit log entry a caller sees here is the same one the MCP server produces for the same tool. Authenticated with an API key holding the api:admin scope, or the read-only api:config_read scope for GET alone.",
     "title": "SRE Agent configuration API",
     "version": "1.0.0"
   },
@@ -2378,7 +2385,7 @@
         "summary": "List ai_providers"
       },
       "post": {
-        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage. Needs the plan's bring-your-own-provider feature.",
+        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing. Needs the plan's bring-your-own-provider feature.",
         "operationId": "create_ai_provider",
         "parameters": [],
         "requestBody": {
@@ -2393,7 +2400,7 @@
                     "writeOnly": true
                   },
                   "auto_upgrade_model": {
-                    "description": "Whether the daily reconciler may move `model` on to a successor once the configured one drops out of the provider's list. Off by default: a pinned model stays pinned.",
+                    "description": "Whether SRE Agent may move `model` on to a successor once the configured one drops out of the provider's list. Off by default: a pinned model stays pinned.",
                     "type": "boolean"
                   },
                   "base_url": {
@@ -2422,7 +2429,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
                     "type": "object"
                   },
                   "name": {
@@ -2490,7 +2497,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a ai_provider"
+        "summary": "Create an ai_provider"
       }
     },
     "/ai_providers/{id}": {
@@ -2519,7 +2526,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a ai_provider"
+        "summary": "Delete an ai_provider"
       },
       "get": {
         "description": "One AI provider by id, the same fields list_ai_providers answers for it. No key is ever returned.",
@@ -2586,7 +2593,7 @@
                     "writeOnly": true
                   },
                   "auto_upgrade_model": {
-                    "description": "Whether the daily reconciler may move `model` on to a successor once the configured one drops out of the provider's list. Off by default: a pinned model stays pinned.",
+                    "description": "Whether SRE Agent may move `model` on to a successor once the configured one drops out of the provider's list. Off by default: a pinned model stays pinned.",
                     "type": "boolean"
                   },
                   "base_url": {
@@ -2615,7 +2622,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
                     "type": "object"
                   },
                   "name": {
@@ -2686,7 +2693,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update ai_provider"
+        "summary": "Update an ai_provider"
       }
     },
     "/ai_settings": {
@@ -2717,7 +2724,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one ai_setting"
+        "summary": "Read the ai_settings"
       },
       "put": {
         "description": "Change one or more of those switches; omitted ones keep their value. own_providers_only cannot be turned on while this organization has no enabled provider of its own, because every AI feature would then fail rather than fall back; turning it off is never refused.",
@@ -2769,7 +2776,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update ai_setting"
+        "summary": "Update the ai_settings"
       }
     },
     "/alert_mutes": {
@@ -2847,7 +2854,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a alert_mute"
+        "summary": "Create an alert_mute"
       }
     },
     "/alert_mutes/{id}": {
@@ -2876,7 +2883,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a alert_mute"
+        "summary": "Delete an alert_mute"
       },
       "get": {
         "description": "One alert mute by id, the same fields list_alert_mutes answers for it.",
@@ -3001,7 +3008,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a alert_route"
+        "summary": "Create an alert_route"
       }
     },
     "/alert_routes/{id}": {
@@ -3030,7 +3037,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a alert_route"
+        "summary": "Delete an alert_route"
       },
       "get": {
         "description": "One alert route by id, the same fields list_alert_routes answers for it.",
@@ -3132,7 +3139,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update alert_route"
+        "summary": "Update an alert_route"
       }
     },
     "/aws_external_id": {
@@ -3163,12 +3170,12 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one aws_external_id"
+        "summary": "Read the aws_external_id"
       }
     },
     "/certificate_monitors": {
       "get": {
-        "description": "List the TLS certificates this organization watches, with the newest check beside each one: last_status, days_until_expiry and expires_at. A monitor no check has run against yet answers last_status \"unchecked\". `discovered` is true for a monitor a Kubernetes or ACM sweep filed rather than a person, which is the monitor a sweep proposes again after a delete. Optionally filter by enabled, or by that flag. Needs the infrastructure suite.",
+        "description": "List the TLS certificates this organization watches, with the newest check beside each one: last_status, days_until_expiry and expires_at. A monitor no check has run against yet answers last_status \"unchecked\". `discovered` is true for a monitor found by Kubernetes or ACM discovery rather than created by a person, which is the monitor discovery proposes again after a delete. Optionally filter by enabled, or by that flag. Included in the Business and Enterprise plans.",
         "operationId": "list_certificate_monitors",
         "parameters": [],
         "responses": {
@@ -3200,7 +3207,7 @@
         "summary": "List certificate_monitors"
       },
       "post": {
-        "description": "Watch a hostname's TLS certificate. The platform opens a TLS connection to hostname:port every check_interval_hours, records what it found, and raises an alert once the certificate is within warn_days_before of expiry and a sharper one within critical_days_before. It alerts on a certificate that fails verification too, whatever its expiry date says: an untrusted chain or a wrong-host certificate is already failing for everything that checks one. warn_days_before must be greater than critical_days_before, or a certificate between the two would be announced as the milder of the two problems. A host inside the platform's own network is refused, because a monitor is a standing instruction to dial it unattended. The first check runs on the next scheduled sweep; check_certificate_now runs one at once. Needs the infrastructure suite.",
+        "description": "Watch a hostname's TLS certificate. The platform opens a TLS connection to hostname:port every check_interval_hours, records what it found, and raises an alert once the certificate is within warn_days_before of expiry and a sharper one within critical_days_before. It alerts on a certificate that fails verification too, whatever its expiry date says: an untrusted chain or a wrong-host certificate is already failing for everything that checks one. warn_days_before must be greater than critical_days_before, or a certificate between the two would be announced as the milder of the two problems. A host on a private, loopback or otherwise non-public address is refused, because a monitor is a standing instruction to dial it unattended. The first check runs on the next scheduled check; check_certificate_now runs one at once. Included in the Business and Enterprise plans.",
         "operationId": "create_certificate_monitor",
         "parameters": [],
         "requestBody": {
@@ -3254,7 +3261,7 @@
     },
     "/certificate_monitors/{id}": {
       "delete": {
-        "description": "Stop watching a host and delete its check history. Nothing announces the certificate afterwards, including one that is already failing verification. A monitor a Kubernetes or ACM sweep filed (`discovered` in the listing) comes back on that sweep's next tick. Needs confirm: true. Needs the infrastructure suite.",
+        "description": "Stop watching a host and delete its check history. Nothing announces the certificate afterwards, including one that is already failing verification. A monitor discovery created (`discovered` in the listing) comes back on discovery's next run. Needs confirm: true. Included in the Business and Enterprise plans.",
         "operationId": "delete_certificate_monitor",
         "parameters": [
           {
@@ -3281,7 +3288,7 @@
         "summary": "Delete a certificate_monitor"
       },
       "get": {
-        "description": "One certificate monitor by id, the same fields list_certificate_monitors answers for it. Needs the infrastructure suite.",
+        "description": "One certificate monitor by id, the same fields list_certificate_monitors answers for it. Included in the Business and Enterprise plans.",
         "operationId": "get_certificate_monitor",
         "parameters": [
           {
@@ -3348,7 +3355,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one change_notification"
+        "summary": "Read the change_notifications"
       },
       "put": {
         "description": "Change where infrastructure changes are announced, on the workspace the Settings page's card edits (the enabled one, else the first configured); omitted settings keep their value. event_types REPLACES the stored list and an empty list announces nothing; the types are deploy, scale, restart, config_change, rollback. namespace_filter empty means every namespace. Delivery reads the ENABLED workspace, so routing saved on a switched-off one is stored and not sent. The Settings card has no box for rollback, so saving that card drops it. This write is last-writer-wins: the Settings page carries a stamp that refuses a save made against values another admin has since changed, and this tool has none, so read the routing again if you are acting on something you were told a while ago.",
@@ -3410,7 +3417,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update change_notification"
+        "summary": "Update the change_notifications"
       }
     },
     "/compliance_periods": {
@@ -3579,7 +3586,7 @@
         "summary": "List connectors"
       },
       "post": {
-        "description": "Create an infrastructure connector a runbook step can act through. connector_type is one of kubernetes, ssh, aws_ecs, aws_lambda, aws_ec2, aws_eks. aws_eks is for discovery: it lists EKS clusters and the workloads Container Insights reports, and like every AWS connector it also sweeps the account-wide inventory (VPCs, subnets, security groups, load balancers, target groups, RDS, ACM). Its role needs exactly these read grants and nothing that writes: acm:ListCertificates, cloudwatch:ListMetrics, ec2:DescribeSecurityGroups, ec2:DescribeSubnets, ec2:DescribeVpcs, eks:DescribeCluster, eks:ListClusters, elasticloadbalancing:DescribeLoadBalancers, elasticloadbalancing:DescribeTargetGroups, rds:DescribeDBInstances. Runbook actions through it need their own grants. To reach EC2 instances via SSM, use aws_ec2 and grant the AWS credentials ssm:SendCommand. `config` holds the type-specific credentials: kubernetes -> {\"kubeconfig\":\"...\"}; ssh -> {\"host\",\"user\",\"private_key\",\"port\"}; aws_* -> {\"auth_type\":\"aws_assume_role\"|\"aws_access_keys\", \"role_arn\"|\"access_key_id\"/\"secret_access_key\", \"region\"}. metadata labels drive connector selection when several of a type exist.",
+        "description": "Create an infrastructure connector a runbook step can act through. connector_type is one of kubernetes, ssh, aws_ecs, aws_lambda, aws_ec2, aws_eks. aws_eks is for discovery: it lists EKS clusters and the workloads Container Insights reports, and like every AWS connector it also reads the account-wide inventory (VPCs, subnets, security groups, load balancers, target groups, RDS, ACM). Its role needs exactly these read grants and nothing that writes: acm:ListCertificates, cloudwatch:ListMetrics, ec2:DescribeSecurityGroups, ec2:DescribeSubnets, ec2:DescribeVpcs, eks:DescribeCluster, eks:ListClusters, elasticloadbalancing:DescribeLoadBalancers, elasticloadbalancing:DescribeTargetGroups, rds:DescribeDBInstances. Runbook actions through it need their own grants. To reach EC2 instances via SSM, use aws_ec2 and grant the AWS credentials ssm:SendCommand. `config` holds the type-specific credentials: kubernetes -> {\"kubeconfig\":\"...\"}; ssh -> {\"host\",\"user\",\"private_key\",\"port\"}; aws_* -> {\"auth_type\":\"aws_assume_role\"|\"aws_access_keys\", \"role_arn\"|\"access_key_id\"/\"secret_access_key\", \"region\"}. metadata labels drive connector selection when several of a type exist.",
         "operationId": "create_connector",
         "parameters": [],
         "requestBody": {
@@ -3753,7 +3760,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update connector"
+        "summary": "Update a connector"
       }
     },
     "/data_sources": {
@@ -4001,7 +4008,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update data_source"
+        "summary": "Update a data_source"
       }
     },
     "/deploy_policies": {
@@ -4087,7 +4094,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a deploy_policie"
+        "summary": "Create a deploy_policy"
       }
     },
     "/deploy_policies/{id}": {
@@ -4116,7 +4123,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a deploy_policie"
+        "summary": "Delete a deploy_policy"
       },
       "get": {
         "description": "One deploy policy by id, the same fields list_deploy_policies answers for it.",
@@ -4155,7 +4162,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one deploy_policie"
+        "summary": "Read one deploy_policy"
       },
       "put": {
         "description": "Change one deploy policy, named by the id list_deploy_policies reports. Only the fields you send change. Sending service renames the service the policy gates, which is what the page's own form does. The freeze is set and lifted with set_deploy_freeze and clear_deploy_freeze, and the audited override is not available over MCP.",
@@ -4221,7 +4228,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update deploy_policie"
+        "summary": "Update a deploy_policy"
       }
     },
     "/export": {
@@ -4288,7 +4295,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one github_setting"
+        "summary": "Read the github_settings"
       },
       "put": {
         "description": "Change what the connected installation does: the five toggles, the severity floor inline review comments start at (critical, high, medium, low), and the grounding context repo. Only the fields you send change, and a call that names none of them is refused rather than answered as a change.",
@@ -4358,12 +4365,12 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update github_setting"
+        "summary": "Update the github_settings"
       }
     },
     "/image_targets": {
       "get": {
-        "description": "List the container images this organization scans for known vulnerabilities, with the newest scan beside each one: last_scan_status, the critical, high, medium and low counts, and scanned_at, which is when that scan finished. last_scanned_at is the target's own stamp, written when a scan completes or is deliberately skipped and left alone when one fails, so it lags scanned_at while a scan is running and after a failed one: read last_scan_status to tell which. An image no scan has run against yet answers last_scan_status \"not scanned\" and null counts, because a zero would say the image is clean. `sources` says which estates run it (kubernetes, aws_ecs), and `discovered` is true for an image a sweep filed rather than a person. Optionally filter by enabled, or by that flag. Needs the infrastructure suite.",
+        "description": "List the container images this organization scans for known vulnerabilities, with the newest scan beside each one: last_scan_status, the critical, high, medium and low counts, and scanned_at, which is when that scan finished. last_scanned_at is the target's own stamp, written when a scan completes or is deliberately skipped and left alone when one fails, so it lags scanned_at while a scan is running and after a failed one: read last_scan_status to tell which. An image no scan has run against yet answers last_scan_status \"not scanned\" and null counts, because a zero would say the image is clean. `sources` says which estates run it (kubernetes, aws_ecs), and `discovered` is true for an image discovery created rather than a person. Optionally filter by enabled, or by that flag. Included in the Business and Enterprise plans.",
         "operationId": "list_image_targets",
         "parameters": [],
         "responses": {
@@ -4395,7 +4402,7 @@
         "summary": "List image_targets"
       },
       "post": {
-        "description": "Scan a container image for known vulnerabilities. The platform resolves the image's packages every 24 hours and records what is known against them, so name the image the way the registry does, tag and all (ghcr.io/acme/api:1.4.2). One row per image per organization: an image two clusters run is one target, and adding one that discovery already filed is refused as taken. The first scan runs on the next scheduled sweep; scan_image_now runs one at once. Needs the infrastructure suite.",
+        "description": "Scan a container image for known vulnerabilities. The platform resolves the image's packages every 24 hours and records what is known against them, so name the image the way the registry does, tag and all (registry.example.com/api:1.4.2). One row per image per organization: an image two clusters run is one target, and adding one that discovery already filed is refused as taken. The first scan runs on the next scheduled scan; scan_image_now runs one at once. Included in the Business and Enterprise plans.",
         "operationId": "create_image_target",
         "parameters": [],
         "requestBody": {
@@ -4428,12 +4435,12 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a image_target"
+        "summary": "Create an image_target"
       }
     },
     "/image_targets/{id}": {
       "delete": {
-        "description": "Stop scanning an image and delete its scan history. An image a cluster or ECS discovery filed (discovered: true) is filed again by the next sweep while that estate still runs it. Needs confirm: true. Needs the infrastructure suite.",
+        "description": "Stop scanning an image and delete its scan history. An image a cluster or ECS discovery filed (discovered: true) is filed again by the next discovery run while that estate still runs it. Needs confirm: true. Included in the Business and Enterprise plans.",
         "operationId": "delete_image_target",
         "parameters": [
           {
@@ -4457,10 +4464,10 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a image_target"
+        "summary": "Delete an image_target"
       },
       "get": {
-        "description": "One image scan target by id, the same fields list_image_targets answers for it. Needs the infrastructure suite.",
+        "description": "One image scan target by id, the same fields list_image_targets answers for it. Included in the Business and Enterprise plans.",
         "operationId": "get_image_target",
         "parameters": [
           {
@@ -4527,7 +4534,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one notification_setting"
+        "summary": "Read the notification_settings"
       },
       "put": {
         "description": "Change one or more email notification settings; omitted ones keep their value. recipients and muted_events each REPLACE the stored list, so send the whole list you want (and [] to empty it). A category toggle switched off silences its events whatever the mute list says. The events that can be muted are: alert_created, automation_approval, automation_completed, automation_failed, integration_failing, investigation_completed, investigation_failed, quota_warning, security_finding, slo_breach, slo_budget, slo_burn_rate, slo_tracking_failure, status_incident. This write is last-writer-wins: the Settings page carries a stamp that refuses a save made against values another admin has since changed, and this tool has none, so read the settings again if you are acting on something you were told a while ago.",
@@ -4613,7 +4620,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update notification_setting"
+        "summary": "Update the notification_settings"
       }
     },
     "/organization_settings": {
@@ -4644,7 +4651,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one organization_setting"
+        "summary": "Read the organization_settings"
       },
       "put": {
         "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled and restrict_domain_signups need a user token.",
@@ -4738,7 +4745,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update organization_setting"
+        "summary": "Update the organization_settings"
       }
     },
     "/outbound_configs": {
@@ -4868,7 +4875,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a outbound_config"
+        "summary": "Create an outbound_config"
       }
     },
     "/outbound_configs/{id}": {
@@ -4897,7 +4904,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a outbound_config"
+        "summary": "Delete an outbound_config"
       },
       "get": {
         "description": "One outbound target by id, the same fields list_outbound_configs answers for it. No token is ever returned.",
@@ -5045,7 +5052,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update outbound_config"
+        "summary": "Update an outbound_config"
       }
     },
     "/outbound_rules": {
@@ -5123,7 +5130,7 @@
                     ]
                   },
                   "match_source": {
-                    "description": "Only alerts from this source, matched exactly, one of: grafana, pagerduty, opsgenie, prometheus, alertmanager, datadog, newrelic, cloudwatch, cloudtrail, custom, slo_breach, slo_tracking, certificate_monitor, cost_monitor, synthetic_check, slack, overseer, security. null matches every source.",
+                    "description": "Only alerts from this source, matched exactly, one of: grafana, pagerduty, opsgenie, prometheus, alertmanager, datadog, newrelic, cloudwatch, cloudtrail, custom, slo_breach, slo_tracking, certificate_monitor, cost_monitor, synthetic_check, slack, overseer, security, self_healing. null matches every source.",
                     "type": [
                       "string",
                       "null"
@@ -5166,7 +5173,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a outbound_rule"
+        "summary": "Create an outbound_rule"
       }
     },
     "/outbound_rules/{id}": {
@@ -5195,7 +5202,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a outbound_rule"
+        "summary": "Delete an outbound_rule"
       },
       "get": {
         "description": "One escalation rule by id, the same fields list_outbound_rules answers for it.",
@@ -5288,7 +5295,7 @@
                     ]
                   },
                   "match_source": {
-                    "description": "Only alerts from this source, matched exactly, one of: grafana, pagerduty, opsgenie, prometheus, alertmanager, datadog, newrelic, cloudwatch, cloudtrail, custom, slo_breach, slo_tracking, certificate_monitor, cost_monitor, synthetic_check, slack, overseer, security. null matches every source.",
+                    "description": "Only alerts from this source, matched exactly, one of: grafana, pagerduty, opsgenie, prometheus, alertmanager, datadog, newrelic, cloudwatch, cloudtrail, custom, slo_breach, slo_tracking, certificate_monitor, cost_monitor, synthetic_check, slack, overseer, security, self_healing. null matches every source.",
                     "type": [
                       "string",
                       "null"
@@ -5334,12 +5341,12 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update outbound_rule"
+        "summary": "Update an outbound_rule"
       }
     },
     "/overseer_settings": {
       "get": {
-        "description": "The Control Tower's configuration as its settings card shows it: whether the overseer is on, how often it runs, how assertive it may be, the token and tool-call ceilings one run may spend, whether the digest is sent, when the next run is due and why the last one was skipped. Reading this creates the organization's settings row when it has never had one, with the defaults the page would show, the same way the page's own first visit does. Needs the Control Tower.",
+        "description": "The Control Tower's configuration as its settings card shows it: whether the overseer is on, how often it runs, how assertive it may be, the token and tool-call ceilings one run may spend, whether the digest is sent, when the next run is due and why the last one was skipped. Reading this creates the organization's settings when it has never had any, with the defaults the page would show, the same way the page's own first visit does. Included in the Business and Enterprise plans.",
         "operationId": "get_overseer_settings",
         "parameters": [],
         "responses": {
@@ -5365,10 +5372,10 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one overseer_setting"
+        "summary": "Read the overseer_settings"
       },
       "put": {
-        "description": "Change one or more of the Control Tower's settings; omitted ones keep their value. Turning the overseer on schedules its first run straight away, which is what the page's save does. Hourly and every_6h are the top plan's alone: every plan below it is refused and floors at daily or weekly. Needs the Control Tower.",
+        "description": "Change one or more of the Control Tower's settings; omitted ones keep their value. Turning the overseer on schedules its first run straight away, which is what the page's save does. Hourly and every_6h are the top plan's alone: every plan below it is refused and floors at daily or weekly. Included in the Business and Enterprise plans.",
         "operationId": "update_overseer_settings",
         "parameters": [],
         "requestBody": {
@@ -5429,12 +5436,12 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update overseer_setting"
+        "summary": "Update the overseer_settings"
       }
     },
     "/prompt_templates": {
       "get": {
-        "description": "The prompts this organization's AI work runs on, as the Settings page's Prompts card lists them: the system and user prompts for investigations, the root cause analysis and the Slack assistant, plus any custom ones. Each answers its full content, which is the point of reading it, with its type, whether it is the default for that type, whether it is enabled, and what the injection scanner made of it (review_status, and the patterns it matched). A template reaches the model only while it is approved, enabled and the default for its type; anything else here is stored and unused.",
+        "description": "The prompts this organization's AI work runs on, as the Settings page's Prompts card lists them: the system and user prompts for investigations, the root cause analysis and the Slack assistant, plus any custom ones. Each answers its full content, which is the point of reading it, with its type, whether it is the default for that type, whether it is enabled, and what the automatic prompt-injection check made of it (review_status, and the patterns it matched). A template reaches the model only while it is approved, enabled and the default for its type; anything else here is stored and unused.",
         "operationId": "list_prompt_templates",
         "parameters": [],
         "responses": {
@@ -5466,7 +5473,7 @@
         "summary": "List prompt_templates"
       },
       "post": {
-        "description": "Write a new prompt template for this organization. prompt_type is one of investigation_system, investigation_user, slack_assistant, root_cause, custom and is fixed once written: a template for another type is another template. The content is scanned for injection patterns as it is stored, and a template that matches one is kept flagged and disabled with the answer saying so. Nothing on this surface approves a flagged template: somebody reads it on the Settings page and approves it there.",
+        "description": "Write a new prompt template for this organization. prompt_type is one of investigation_system, investigation_user, slack_assistant, root_cause, custom and is fixed once written: a template for another type is another template. The content is checked for prompt-injection patterns as it is stored, and a template that matches one is kept flagged and disabled with the answer saying so. Nothing on this surface approves a flagged template: somebody reads it on the Settings page and approves it there.",
         "operationId": "create_prompt_template",
         "parameters": [],
         "requestBody": {
@@ -5475,7 +5482,7 @@
               "schema": {
                 "properties": {
                   "content": {
-                    "description": "The prompt itself, 1 to 10000 characters. This is the text the model is given, so it is scanned for injection patterns on every write and answered in full by list_prompt_templates.",
+                    "description": "The prompt itself, 1 to 10000 characters. This is the text the model is given, so it is checked for prompt-injection patterns on every write and answered in full by list_prompt_templates.",
                     "type": "string"
                   },
                   "description": {
@@ -5618,7 +5625,7 @@
               "schema": {
                 "properties": {
                   "content": {
-                    "description": "The prompt itself, 1 to 10000 characters. This is the text the model is given, so it is scanned for injection patterns on every write and answered in full by list_prompt_templates.",
+                    "description": "The prompt itself, 1 to 10000 characters. This is the text the model is given, so it is checked for prompt-injection patterns on every write and answered in full by list_prompt_templates.",
                     "type": "string"
                   },
                   "description": {
@@ -5662,12 +5669,12 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update prompt_template"
+        "summary": "Update a prompt_template"
       }
     },
     "/repo_settings": {
       "get": {
-        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (path prefix and writable extensions). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, \"opencode_ci\", opencode running in this organization's own GitHub Actions runners, or \"self_hosted\", opencode on a machine this organization runs. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both doors verify the repository runs the sre-agent-opencode package before saving \"opencode_ci\". A repository with no settings row is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; ci_fallback_to_platform true means a request its CI never starts goes to SRE Agent's own agent after 5 minutes.",
+        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (path prefix and writable extensions). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, \"opencode_ci\", your own CI (this organization's GitHub Actions runners), or \"self_hosted\", your own machine. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that the repository's workflow is set up for your own CI before saving \"opencode_ci\". A repository with no settings is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; ci_fallback_to_platform true means a request its CI never starts goes to SRE Agent's own agent after 5 minutes.",
         "operationId": "list_repo_settings",
         "parameters": [],
         "responses": {
@@ -5699,7 +5706,7 @@
         "summary": "List repo_settings"
       },
       "post": {
-        "description": "Create the settings row for one repository the GitHub App can reach: the write fence remediation obeys, an optional service alias, and which runner executes the repository's fix requests. A repository the App does not reach is refused rather than saved, because the fix pipeline would never read the row. Settings are optional: a repository with no row is still targetable, with its fence detected on first use. Answers the repository in the shape list_repo_settings answers.",
+        "description": "Create the settings for one repository the GitHub App can reach: the write fence remediation obeys, an optional service alias, and which runner executes the repository's fix requests. A repository the App does not reach is refused rather than saved, because the fix pipeline would never read the row. Settings are optional: a repository with no row is still targetable, with its fence detected on first use. Answers the repository in the shape list_repo_settings answers.",
         "operationId": "create_repo_settings",
         "parameters": [],
         "requestBody": {
@@ -5712,7 +5719,7 @@
                     "type": "string"
                   },
                   "auto_dispatch": {
-                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any door (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
+                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
                     "type": "boolean"
                   },
                   "branch": {
@@ -5728,7 +5735,7 @@
                     "type": "string"
                   },
                   "fix_runner": {
-                    "description": "Who executes this repository's fix requests: platform, opencode_ci, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"opencode_ci\" needs the plan feature opencode_ci_runner and a workflow in the repository referencing segfaultpw/sre-agent-opencode. \"self_hosted\" needs the plan feature self_hosted_fix_runner and a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
+                    "description": "Who executes this repository's fix requests: platform, opencode_ci, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"opencode_ci\" runs in your own CI. Included in the Business and Enterprise plans. It needs a workflow in the repository referencing the published package segfaultpw/sre-agent-opencode. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
                     "type": "string"
                   },
                   "path_prefix": {
@@ -5776,7 +5783,7 @@
     },
     "/repo_settings/{id}": {
       "delete": {
-        "description": "Remove one repository settings row, named by the id list_repo_settings reports. The repository stays targetable by a fix request: it simply returns to a detected write fence and the platform runner. Answers the repository's remaining rows in the shape list_repo_settings answers, with an empty `branches` when the last one is gone. Needs confirm: true.",
+        "description": "Remove one repository's settings, named by the id list_repo_settings reports. The repository stays targetable by a fix request: it simply returns to a detected write fence and the platform runner. Answers the repository's remaining rows in the shape list_repo_settings answers, with an empty `branches` when the last one is gone. Needs confirm: true.",
         "operationId": "delete_repo_settings",
         "parameters": [
           {
@@ -5842,7 +5849,7 @@
         "summary": "Read one repo_setting"
       },
       "put": {
-        "description": "Change one repository settings row, named by the id list_repo_settings reports. Only the fields you send change, so sending fix_runner on its own is legal; a field sent as null is cleared (a null branch makes the row the all-branches row, a null service removes the alias). The repository itself cannot be changed here: a row for another repository is a create. Answers the repository in the shape list_repo_settings answers.",
+        "description": "Change one repository's settings, named by the id list_repo_settings reports. Only the fields you send change, so sending fix_runner on its own is legal; a field sent as null is cleared (a null branch makes the row the all-branches row, a null service removes the alias). The repository itself cannot be changed here: a row for another repository is a create. Answers the repository in the shape list_repo_settings answers.",
         "operationId": "update_repo_settings",
         "parameters": [
           {
@@ -5865,7 +5872,7 @@
                     "type": "string"
                   },
                   "auto_dispatch": {
-                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any door (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
+                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
                     "type": "boolean"
                   },
                   "branch": {
@@ -5881,7 +5888,7 @@
                     "type": "string"
                   },
                   "fix_runner": {
-                    "description": "Who executes this repository's fix requests: platform, opencode_ci, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"opencode_ci\" needs the plan feature opencode_ci_runner and a workflow in the repository referencing segfaultpw/sre-agent-opencode. \"self_hosted\" needs the plan feature self_hosted_fix_runner and a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
+                    "description": "Who executes this repository's fix requests: platform, opencode_ci, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"opencode_ci\" runs in your own CI. Included in the Business and Enterprise plans. It needs a workflow in the repository referencing the published package segfaultpw/sre-agent-opencode. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
                     "type": "string"
                   },
                   "path_prefix": {
@@ -5924,7 +5931,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update repo_setting"
+        "summary": "Update a repo_setting"
       }
     },
     "/service_bindings": {
@@ -6234,7 +6241,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update service_binding"
+        "summary": "Update a service_binding"
       }
     },
     "/slack": {
@@ -6265,7 +6272,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one slack"
+        "summary": "Read the slack"
       },
       "put": {
         "description": "Create or update this organization's Slack integration. team_id (the T... workspace id) makes inbound routing exact, but it decides which tenant a workspace's traffic belongs to, so it is only accepted when Slack confirms the bot token belongs to that workspace: pass bot_token alongside it, or install through \"Add to Slack\".",
@@ -6341,7 +6348,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update slack"
+        "summary": "Update the slack"
       }
     },
     "/slis": {
@@ -6426,7 +6433,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a sli"
+        "summary": "Create an SLI"
       }
     },
     "/slis/{id}": {
@@ -6455,7 +6462,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a sli"
+        "summary": "Delete an SLI"
       },
       "get": {
         "description": "One SLI by id, the same fields list_slis answers for it.",
@@ -6494,7 +6501,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one sli"
+        "summary": "Read one SLI"
       },
       "put": {
         "description": "Update an SLI by id (name, service, query, data_source_id, status). Setting data_source_id also sets the SLI's query type to that source's type, which is how a draft SLI is made computable. Write the query in that source's own query language.",
@@ -6559,7 +6566,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update sli"
+        "summary": "Update an SLI"
       }
     },
     "/slos": {
@@ -6639,7 +6646,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Create a slo"
+        "summary": "Create an SLO"
       }
     },
     "/slos/{id}": {
@@ -6668,7 +6675,7 @@
             "description": "If-Match named a version of the row that is no longer current."
           }
         },
-        "summary": "Delete a slo"
+        "summary": "Delete an SLO"
       },
       "get": {
         "description": "One SLO by id, the same fields list_slos answers for it.",
@@ -6707,7 +6714,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one slo"
+        "summary": "Read one SLO"
       },
       "put": {
         "description": "Update an SLO by id (name, target, window_days, status). Writing status: \"suspended\" also resolves the SLO's still-open slo_breach/slo_tracking alerts, the same as delete_slo does; a suspended SLO computes nothing, so nothing else was ever going to clear them.",
@@ -6766,7 +6773,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update slo"
+        "summary": "Update an SLO"
       }
     },
     "/status_page_components": {
@@ -6855,7 +6862,7 @@
     },
     "/status_page_components/{id}": {
       "delete": {
-        "description": "Take a component off the public page. The row is kept rather than deleted, so past incidents still name what they affected, and the SLOs it published are untouched. There is no tool to bring it back: a component archived by mistake is re-created with create_status_page_component, under a new id. Needs confirm: true.",
+        "description": "Take a component off the public page. The row is kept rather than deleted, so past incidents still name what they affected, and the SLOs it published are untouched. Archiving cannot be undone here: a component archived by mistake is re-created with create_status_page_component, under a new id. Needs confirm: true.",
         "operationId": "archive_status_page_component",
         "parameters": [
           {
@@ -6986,7 +6993,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update status_page_component"
+        "summary": "Update a status_page_component"
       }
     },
     "/status_page_incidents": {
@@ -7089,7 +7096,7 @@
     },
     "/status_page_incidents/{id}": {
       "delete": {
-        "description": "Take a resolved incident off the public page and out of its history. The row and its timeline are kept rather than deleted, so the record survives, and an incident that is not resolved is refused: archiving an open one would hide a problem customers are living through. There is no tool to bring it back. Needs confirm: true.",
+        "description": "Take a resolved incident off the public page and out of its history. The row and its timeline are kept rather than deleted, so the record survives, and an incident that is not resolved is refused: archiving an open one would hide a problem customers are living through. Archiving cannot be undone through this surface. Needs confirm: true.",
         "operationId": "archive_status_page_incident",
         "parameters": [
           {
@@ -7208,7 +7215,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update status_page_incident"
+        "summary": "Update a status_page_incident"
       }
     },
     "/status_page_settings": {
@@ -7239,7 +7246,7 @@
             "description": "No such resource."
           }
         },
-        "summary": "Read one status_page_setting"
+        "summary": "Read the status_page_settings"
       },
       "put": {
         "description": "Change one or more of the page's settings; omitted ones keep their value. enabled is the publish switch: on, the page is served to anybody with the link, off, visitors get a 404. show_history_days is 7..90, the window the page can draw; timezone is an IANA zone name and is what every timestamp customers read is rendered in. logo_url and primary_color are sold separately from the page itself, and a plan without them refuses the call rather than saving the rest.",
@@ -7330,7 +7337,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update status_page_setting"
+        "summary": "Update the status_page_settings"
       }
     },
     "/synthetic_checks": {
@@ -7610,7 +7617,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update synthetic_check"
+        "summary": "Update a synthetic_check"
       }
     },
     "/team_members": {
@@ -7828,7 +7835,7 @@
     },
     "/teams/{id}": {
       "delete": {
-        "description": "Delete a team. What it owned keeps existing with no owner: workloads, findings and cards are not deleted with it, they stop being anybody's. The people on it keep their accounts and their other teams. There is no tool to bring it back, and a new team of the same name is a different id that owns nothing. Needs confirm: true.",
+        "description": "Delete a team. What it owned keeps existing with no owner: workloads, findings and cards are not deleted with it, they stop being anybody's. The people on it keep their accounts and their other teams. Deleting cannot be undone through this surface, and a new team of the same name is a different id that owns nothing. Needs confirm: true.",
         "operationId": "delete_team",
         "parameters": [
           {
@@ -7943,7 +7950,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update team"
+        "summary": "Update a team"
       }
     },
     "/ticket_import_rules": {
@@ -8148,7 +8155,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update ticket_import_rule"
+        "summary": "Update a ticket_import_rule"
       }
     },
     "/ticket_integrations": {
@@ -8206,6 +8213,10 @@
                   "auth_url": {
                     "description": "Zoho Sprints only: the accounts server its access tokens are minted at, which is a different host from the API.",
                     "type": "string"
+                  },
+                  "auto_file": {
+                    "description": "File every card created from now on into this system without a button press; later edits sync on their own. Needs a destination (project_key, or all three Zoho ids). Cards that already exist are never filed by this.",
+                    "type": "boolean"
                   },
                   "base_url": {
                     "description": "Where the API lives, per customer rather than a constant: Zoho serves seven data centres on seven domains and every Jira is its own host. Required the first time a provider is saved.",
@@ -8383,6 +8394,10 @@
                     "description": "Zoho Sprints only: the accounts server its access tokens are minted at, which is a different host from the API.",
                     "type": "string"
                   },
+                  "auto_file": {
+                    "description": "File every card created from now on into this system without a button press; later edits sync on their own. Needs a destination (project_key, or all three Zoho ids). Cards that already exist are never filed by this.",
+                    "type": "boolean"
+                  },
                   "base_url": {
                     "description": "Where the API lives, per customer rather than a constant: Zoho serves seven data centres on seven domains and every Jira is its own host. Required the first time a provider is saved.",
                     "type": "string"
@@ -8452,7 +8467,7 @@
             "description": "The tool refused the request's shape or content."
           }
         },
-        "summary": "Update ticket_integration"
+        "summary": "Update a ticket_integration"
       }
     }
   },
@@ -10016,6 +10031,7 @@
         "account_email",
         "api_token",
         "auth_url",
+        "auto_file",
         "base_url",
         "client_id",
         "client_secret",
@@ -10039,7 +10055,8 @@
         "issue_type",
         "create_team_id",
         "create_project_id",
-        "create_sprint_id"
+        "create_sprint_id",
+        "auto_file"
       ],
       "id_args": [
         "provider"
@@ -10066,6 +10083,7 @@
         "account_email",
         "api_token",
         "auth_url",
+        "auto_file",
         "base_url",
         "client_id",
         "client_secret",

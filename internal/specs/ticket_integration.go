@@ -20,6 +20,7 @@ var TicketIntegration = engine.Spec{
 		{Name: "create_team_id", Kind: engine.String, Description: "Zoho team for new items."},
 		{Name: "create_project_id", Kind: engine.String, Description: "Zoho project for new items."},
 		{Name: "create_sprint_id", Kind: engine.String, Description: "Zoho sprint for new items."},
+		{Name: "auto_file", Kind: engine.Bool, Description: "File every card created from now on into this system without a button press; needs a destination. Existing cards are never filed by this."},
 		{Name: "client_secret", Kind: engine.String, Secret: true, Description: "The OAuth client secret (Zoho)."},
 		{Name: "refresh_token", Kind: engine.String, Secret: true, Description: "The OAuth refresh token (Zoho)."},
 		{Name: "api_token", Kind: engine.String, Secret: true, Description: "The API token (Jira)."},
