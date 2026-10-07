@@ -37,9 +37,9 @@ Read-Only:
 - `alert_severity` (String) critical, high, medium, low or info.
 - `assertions` (String) Expected status, body match, latency, DNS values, as jsonencode({...}).
 - `check_type` (String) http, tcp or dns.
-- `config` (String) Method, TLS verification, redirects, port, record type, as jsonencode({...}). headers and body are set in the app: the platform never answers them, so they are refused here, and while the check holds either, a change to config is refused because the write would replace them.
-- `config_body_set` (Boolean) Whether a request body is set in the app; its content is never answered.
-- `config_header_names` (List of String) The names of the request headers set in the app; their values are never answered.
+- `config` (String) Method, TLS verification, redirects, port, record type, as jsonencode({...}). headers and body are set through the REST configuration API or MCP: the platform never answers them, so they are refused here, and a change to config keeps them.
+- `config_body_set` (Boolean) Whether the check sends a request body; its content is never answered.
+- `config_header_names` (List of String) The names of the request headers the check sends; their values are never answered.
 - `consecutive_failures` (Number) Failures in a row.
 - `down_quorum` (Number) Locations that must fail for the check to be down.
 - `enabled` (Boolean) Whether the check runs.

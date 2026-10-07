@@ -18,3 +18,4 @@ FEATURES:
 * A plan-only mode for CI with an `api:config_read` key.
 * The `organization` pin refuses a key minted for another organization before anything is written.
 * `sreagent_ticket_integration` takes `auto_file`: every card created from then on is filed into the system without a button press.
+* `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.

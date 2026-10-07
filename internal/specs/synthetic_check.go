@@ -4,8 +4,8 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 
 // SyntheticCheck mirrors x-sreagent-resources.synthetic_checks. The platform
 // never answers config.headers or config.body (an HTTP check can carry an
-// Authorization header there), and a write replaces config as a whole, so
-// Terraform manages the rest of config and leaves those two to the app.
+// Authorization header there) and keeps them when a write leaves them out, so
+// Terraform manages the rest of config and leaves those two alone.
 var SyntheticCheck = engine.Spec{
 	Key: "synthetic_checks", TypeName: "synthetic_check", ListName: "synthetic_checks",
 	Description: "An HTTP, TCP or DNS probe run from the platform's regions. Needs the synthetic checks plan feature.",
@@ -27,11 +27,10 @@ var SyntheticCheck = engine.Spec{
 		{
 			Name: "config", Kind: engine.JSON,
 			HiddenKeys:  []string{"headers", "body"},
-			HiddenSetBy: []string{"config_header_names", "config_body_set"},
-			Description: "Method, TLS verification, redirects, port, record type, as jsonencode({...}). headers and body are set in the app: the platform never answers them, so they are refused here, and while the check holds either, a change to config is refused because the write would replace them.",
+			Description: "Method, TLS verification, redirects, port, record type, as jsonencode({...}). headers and body are set through the REST configuration API or MCP: the platform never answers them, so they are refused here, and a change to config keeps them.",
 		},
-		{Name: "config_header_names", Kind: engine.StringList, Computed: true, Description: "The names of the request headers set in the app; their values are never answered."},
-		{Name: "config_body_set", Kind: engine.Bool, Computed: true, Description: "Whether a request body is set in the app; its content is never answered."},
+		{Name: "config_header_names", Kind: engine.StringList, Computed: true, Description: "The names of the request headers the check sends; their values are never answered."},
+		{Name: "config_body_set", Kind: engine.Bool, Computed: true, Description: "Whether the check sends a request body; its content is never answered."},
 		{Name: "last_status", Kind: engine.String, Computed: true, Description: "The latest probe's result."},
 		{Name: "last_run_at", Kind: engine.String, Computed: true, Description: "When the latest probe ran."},
 		{Name: "last_error", Kind: engine.String, Computed: true, Description: "The latest probe's error."},

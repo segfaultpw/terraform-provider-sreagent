@@ -53,14 +53,10 @@ type Attr struct {
 	OneOf     []string
 	// HiddenKeys: top-level keys of a JSON attribute the platform stores but
 	// never answers, because they can carry a credential. Terraform could only
-	// hold them in state, so configuration naming one is refused. And because a
-	// write replaces the stored object as a whole, the attribute is sent on
+	// hold them in state, so configuration naming one is refused. The platform
+	// keeps them when a write leaves them out, and the attribute is sent on
 	// update only when it changed.
 	HiddenKeys []string
-	// HiddenSetBy: computed attributes that say hidden keys are stored (a true
-	// bool or a non-empty list). While one does, changing the attribute is
-	// refused, since the write would silently drop what the app set.
-	HiddenSetBy []string
 	// MergedObject: a JSON object the platform merges into what it stores, so
 	// a key left out is kept; an update names each dropped key with "".
 	MergedObject bool

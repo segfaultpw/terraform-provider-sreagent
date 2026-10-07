@@ -7528,7 +7528,7 @@
         "summary": "Read one synthetic_check"
       },
       "put": {
-        "description": "Update a synthetic check by id. Only the fields you pass are changed. Pass enabled:false to pause a check without deleting it and losing its history.",
+        "description": "Update a synthetic check by id. Only the fields you pass are changed. Pass enabled:false to pause a check without deleting it and losing its history. config replaces the whole map, except that config.headers and config.body are write-only: leave them out to keep the stored values, send null to remove one.",
         "operationId": "update_synthetic_check",
         "parameters": [
           {

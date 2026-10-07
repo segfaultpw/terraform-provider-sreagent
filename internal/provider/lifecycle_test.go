@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -226,7 +227,9 @@ func TestSyntheticCheckConfigIsSentOnlyWhenItChanges(t *testing.T) {
 	})
 }
 
-func TestSyntheticCheckConfigChangeIsRefusedWhileTheAppHoldsHeaders(t *testing.T) {
+// The platform keeps headers and body when a write leaves them out, so a check
+// that sends headers can still have the rest of its config changed here.
+func TestSyntheticCheckConfigChangesWhileTheCheckSendsHeaders(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	cfg := func(method string) string {
 		return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_synthetic_check\" \"c\" {\n  name = \"home\"\n  check_type = \"http\"\n  target = \"https://example.com\"\n  config = jsonencode({ method = %q })\n}\n", method)
@@ -240,12 +243,22 @@ func TestSyntheticCheckConfigChangeIsRefusedWhileTheAppHoldsHeaders(t *testing.T
 				return nil
 			}},
 			{
-				// An Authorization header added in the app, which reads back only by name.
+				// An Authorization header set through the API, which reads back only by name.
 				PreConfig: func() {
 					f.Mutate("synthetic_checks", id, func(r map[string]any) { r["config_header_names"] = []any{"Authorization"} })
 				},
-				Config:      cfg("HEAD"),
-				ExpectError: regexp.MustCompile(`would silently drop them`),
+				Config: cfg("HEAD"),
+				Check: func(*terraform.State) error {
+					sent, ok := f.LastBody("PUT", "synthetic_checks")["config"]
+					if !ok {
+						return fmt.Errorf("the changed config was not sent")
+					}
+					text := fmt.Sprint(sent)
+					if !strings.Contains(text, "HEAD") || strings.Contains(text, "headers") || strings.Contains(text, "body") {
+						return fmt.Errorf("unexpected config sent: %v", sent)
+					}
+					return nil
+				},
 			},
 		},
 	})
