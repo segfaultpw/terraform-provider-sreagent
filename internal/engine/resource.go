@@ -275,6 +275,12 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			continue
 		}
 		if a.Secret {
+			dropped, d := r.clearing(ctx, a, config, plan, state)
+			diags.Append(d...)
+			if dropped {
+				body[a.Name] = nil
+				continue
+			}
 			value, sent, d := r.secretBody(ctx, a, plan, config, state, o)
 			diags.Append(d...)
 			if value != nil {
@@ -367,6 +373,31 @@ func (r *facadeResource) secretBody(ctx context.Context, a Attr, plan, config, s
 	return parsed, append(sent, stringLeaves(parsed)...), diags
 }
 
+// clearing reports that the configuration drops a Clearable secret: its
+// write-only value and its version are both gone while state still records a
+// version and the platform still holds a value. Only an update that follows a
+// send from this configuration can clear, so an import (no recorded version),
+// a create, a value that is merely unknown, and an unchanged version never do.
+// A secret that is not Clearable keeps its value when both are removed. The
+// body and the plan both ask here, so they cannot disagree: a body that sends
+// null while the plan keeps the secret set fails the apply as inconsistent.
+func (r *facadeResource) clearing(ctx context.Context, a Attr, config, plan, state valueSource) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if !a.Secret || !a.Clearable || r.spec.Shape == Singleton || state == nil {
+		return false, diags
+	}
+	n := a.Attribute()
+	var wo types.String
+	var planned, prior types.Int64
+	diags.Append(config.GetAttribute(ctx, path.Root(n+"_wo"), &wo)...)
+	diags.Append(plan.GetAttribute(ctx, path.Root(n+"_wo_version"), &planned)...)
+	diags.Append(state.GetAttribute(ctx, path.Root(n+"_wo_version"), &prior)...)
+	if diags.HasError() {
+		return false, diags
+	}
+	return wo.IsNull() && planned.IsNull() && !prior.IsNull() && !prior.IsUnknown() && !r.lost(ctx, state, n), diags
+}
+
 // lost reports state saying the platform holds no value for the secret n.
 func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) bool {
 	var set types.Bool
@@ -379,7 +410,7 @@ func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) 
 // ModifyPlan plans a secret's send: when its version changes, and when state
 // says the platform lost a value the configuration still sets. The second is
 // the one drift a secret shows, since its value is never answered, and it
-// plans a re-send at the same version.
+// plans a re-send at the same version. A cleared secret plans _set false.
 func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
@@ -389,6 +420,12 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 			continue
 		}
 		n := a.Attribute()
+		dropped, d := r.clearing(ctx, a, req.Config, req.Plan, req.State)
+		resp.Diagnostics.Append(d...)
+		if dropped {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(n+"_set"), types.BoolValue(false))...)
+			continue
+		}
 		var wo types.String
 		var planned, prior types.Int64
 		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(n+"_wo"), &wo)...)

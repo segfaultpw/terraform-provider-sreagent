@@ -42,7 +42,8 @@ resource "sreagent_outbound_config" "pagerduty" {
 
 - `api_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The bearer token for a webhook or Grafana target. Write-only: never stored in state or plan.
 - `api_key_wo_version` (Number) Change this number to send api_key_wo again. Set it whenever api_key_wo is set.
-- `base_url` (String) The endpoint for a webhook or Grafana target.
+- `base_url_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The endpoint for a webhook or Grafana target; its path or query can carry a token. Never answered: a read answers base_url_set and base_url_host. Leaving base_url_wo out keeps the stored URL; removing base_url_wo and base_url_wo_version after it was set removes the URL. Write-only: never stored in state or plan.
+- `base_url_wo_version` (Number) Change this number to send base_url_wo again. Set it whenever base_url_wo is set.
 - `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}). Unset uses the built-in mapping.
 - `enabled` (Boolean) Whether the target receives pages.
 - `oncall_schedule_id` (String) The schedule for an on-call target.
@@ -54,6 +55,8 @@ resource "sreagent_outbound_config" "pagerduty" {
 ### Read-Only
 
 - `api_key_set` (Boolean) Whether the platform holds a value for api_key.
+- `base_url_host` (String) Scheme, host and a non-default port of the URL, never its path or query. Null when no URL is saved.
+- `base_url_set` (Boolean) Whether the platform holds a value for base_url.
 - `id` (String) The row's identifier on the platform.
 - `routing_key_set` (Boolean) Whether the platform holds a value for routing_key.
 - `rule_count` (Number) Escalation rules pointing at this target.

@@ -367,7 +367,7 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		}
 		switch {
 		case a.Secret:
-			row[a.Name+"_set"] = present
+			row[a.Name+"_set"] = present && v != nil && v != ""
 		case a.NotRead:
 		case present && a.Normalize != nil && v != nil:
 			row[a.Name] = a.Normalize(fmt.Sprint(v))
@@ -375,6 +375,11 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 			row[a.Name] = v
 		default:
 			row[a.Name] = zero(a)
+		}
+	}
+	for _, a := range spec.Attrs {
+		if a.Secret {
+			setHost(spec, row, a, body[a.Name])
 		}
 	}
 	if spec.Shape == engine.Generated {
@@ -392,6 +397,23 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 	f.rows[spec.Key][id] = row
 	w.Header().Set("Location", "/api/v1/config/"+spec.Key+"/"+id)
 	reply(w, 201, wrap(row), f.tag(spec, row))
+}
+
+// setHost answers the companion <secret>_host a platform derives from a secret
+// URL: scheme, host and a non-default port, null when no value is saved.
+func setHost(spec engine.Spec, row map[string]any, secret engine.Attr, sent any) {
+	for _, a := range spec.Attrs {
+		if !a.Computed || a.Name != secret.Name+"_host" {
+			continue
+		}
+		raw, _ := sent.(string)
+		u, err := url.Parse(raw)
+		if raw == "" || err != nil || u.Host == "" {
+			row[a.Name] = nil
+			return
+		}
+		row[a.Name] = u.Scheme + "://" + u.Host
+	}
 }
 
 func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, id string, body map[string]any) {
@@ -433,7 +455,8 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 	for k, v := range body {
 		a := byName[k]
 		if a.Secret {
-			row[k+"_set"] = true
+			row[k+"_set"] = v != nil && v != ""
+			setHost(spec, row, a, v)
 			continue
 		}
 		if a.MergedObject {

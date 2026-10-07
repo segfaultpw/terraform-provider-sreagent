@@ -152,7 +152,7 @@ func TestOutboundConfigLifecycle(t *testing.T) {
 func TestOutboundRuleLifecycle(t *testing.T) {
 	runLifecycle(t, lifecycle{
 		spec:        specs.OutboundRule,
-		prelude:     "resource \"sreagent_outbound_config\" \"pd\" {\n  name = \"pd\"\n  provider_type = \"webhook\"\n  base_url = \"https://hooks.example.com/x\"\n}\n",
+		prelude:     "resource \"sreagent_outbound_config\" \"pd\" {\n  name = \"pd\"\n  provider_type = \"webhook\"\n  base_url_wo = \"https://hooks.example.com/x\"\n  base_url_wo_version = 1\n}\n",
 		create:      "name = \"sev1\"\noutbound_config_id = sreagent_outbound_config.pd.id\nmatch_severity = \"critical\"",
 		update:      "name = \"sev1\"\noutbound_config_id = sreagent_outbound_config.pd.id",
 		after:       map[string]string{"match_severity": "critical"},

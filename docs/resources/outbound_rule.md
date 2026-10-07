@@ -15,7 +15,9 @@ Which alerts page which outbound target, and when.
 resource "sreagent_outbound_config" "hook" {
   name          = "incident-webhook"
   provider_type = "webhook"
-  base_url      = "https://hooks.example.com/incidents"
+  # A webhook URL carries its own token, so it is write-only: never stored in state.
+  base_url_wo         = "https://hooks.example.com/incidents"
+  base_url_wo_version = 1
 }
 
 resource "sreagent_outbound_rule" "sev1" {

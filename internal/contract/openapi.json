@@ -1061,11 +1061,14 @@
           "api_key_set": {
             "type": "boolean"
           },
-          "base_url": {
+          "base_url_host": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "base_url_set": {
+            "type": "boolean"
           },
           "default_severity_mapping": {
             "type": [
@@ -1134,12 +1137,13 @@
           "provider_type",
           "enabled",
           "priority",
-          "base_url",
           "slack_channel",
           "oncall_schedule_id",
           "default_severity_mapping",
           "api_key_set",
           "routing_key_set",
+          "base_url_set",
+          "base_url_host",
           "id",
           "inherited_from",
           "rule_count",
@@ -4750,7 +4754,7 @@
     },
     "/outbound_configs": {
       "get": {
-        "description": "Where this organization escalates its alerts, as the Settings page's Outbound Alerting card lists them: the system each target reaches, whether it is enabled and in what order it is tried, with rule_count saying how many escalation rules route through it. No token is ever returned; api_key_set and routing_key_set say whether one is stored.",
+        "description": "Where this organization escalates its alerts, as the Settings page's Outbound Alerting card lists them: the system each target reaches, whether it is enabled and in what order it is tried, with rule_count saying how many escalation rules route through it. No token and no URL is ever returned; api_key_set, routing_key_set and base_url_set say whether one is stored, and base_url_host says where the URL points, without its path or query.",
         "operationId": "list_outbound_configs",
         "parameters": [],
         "responses": {
@@ -4797,11 +4801,13 @@
                     "writeOnly": true
                   },
                   "base_url": {
-                    "description": "Where to send the calls: the endpoint for a webhook target, the Grafana instance for a Grafana one. PagerDuty does not use it. null clears it.",
+                    "description": "Where to send the calls: the endpoint for a webhook target, the Grafana instance for a Grafana one. PagerDuty does not use it. A webhook URL carries its own token, so this is write-only: it is never answered by any tool here (a read answers base_url_set and base_url_host), an omitted one keeps the stored URL, and null clears it.",
+                    "format": "password",
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "writeOnly": true
                   },
                   "default_severity_mapping": {
                     "description": "What each of this platform's severities is called at the provider, for PagerDuty. A severity this does not name uses the built-in mapping, and null means every one of them does.",
@@ -4907,7 +4913,7 @@
         "summary": "Delete an outbound_config"
       },
       "get": {
-        "description": "One outbound target by id, the same fields list_outbound_configs answers for it. No token is ever returned.",
+        "description": "One outbound target by id, the same fields list_outbound_configs answers for it. No token and no URL is ever returned.",
         "operationId": "get_outbound_config",
         "parameters": [
           {
@@ -4946,7 +4952,7 @@
         "summary": "Read one outbound_config"
       },
       "put": {
-        "description": "Change one target, named by the id list_outbound_configs reports; omitted fields keep their value. An omitted api_key or routing_key keeps the stored token, and an empty one is refused rather than read as a way to remove it.",
+        "description": "Change one target, named by the id list_outbound_configs reports; omitted fields keep their value. An omitted api_key or routing_key keeps the stored token, and an empty one is refused rather than read as a way to remove it. An omitted base_url keeps the stored URL, and null removes it.",
         "operationId": "update_outbound_config",
         "parameters": [
           {
@@ -4971,11 +4977,13 @@
                     "writeOnly": true
                   },
                   "base_url": {
-                    "description": "Where to send the calls: the endpoint for a webhook target, the Grafana instance for a Grafana one. PagerDuty does not use it. null clears it.",
+                    "description": "Where to send the calls: the endpoint for a webhook target, the Grafana instance for a Grafana one. PagerDuty does not use it. A webhook URL carries its own token, so this is write-only: it is never answered by any tool here (a read answers base_url_set and base_url_host), an omitted one keeps the stored URL, and null clears it.",
+                    "format": "password",
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "writeOnly": true
                   },
                   "default_severity_mapping": {
                     "description": "What each of this platform's severities is called at the provider, for PagerDuty. A severity this does not name uses the built-in mapping, and null means every one of them does.",
@@ -9205,6 +9213,10 @@
     "outbound_configs": {
       "action_args": [],
       "computed_fields": {
+        "base_url_host": [
+          "string",
+          "null"
+        ],
         "id": "string",
         "inherited_from": [
           "string",
@@ -9230,7 +9242,6 @@
         "provider_type",
         "enabled",
         "priority",
-        "base_url",
         "slack_channel",
         "oncall_schedule_id",
         "default_severity_mapping"
@@ -9247,7 +9258,8 @@
       },
       "secret_fields": [
         "api_key",
-        "routing_key"
+        "routing_key",
+        "base_url"
       ],
       "singleton": false,
       "terraform_names": {},

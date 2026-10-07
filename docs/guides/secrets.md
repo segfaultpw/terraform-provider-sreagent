@@ -55,6 +55,13 @@ The platform answers only whether a secret is stored, never its value. So:
 - A secret changed in the app to a different value cannot be detected. Bump `<name>_wo_version` to send the
   value your configuration holds.
 
+## Removing a secret
+
+Removing `<name>_wo` and `<name>_wo_version` from the configuration stops Terraform managing the secret, and the
+platform keeps the value it holds. The one exception is `sreagent_outbound_config`'s `base_url_wo`: removing it
+and `base_url_wo_version` after they were set removes the target's URL, as unsetting the old plain `base_url`
+did, and plans `base_url_set = false`. Removing `api_key_wo` and its version keeps the key.
+
 ## Credentials held as a whole
 
 `sreagent_connector`'s `config_wo` and `sreagent_data_source`'s `auth_credentials_wo` are JSON objects stored

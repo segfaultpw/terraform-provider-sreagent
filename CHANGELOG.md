@@ -19,3 +19,22 @@ FEATURES:
 * The `organization` pin refuses a key minted for another organization before anything is written.
 * `sreagent_ticket_integration` takes `auto_file`: every card created from then on is filed into the system without a button press.
 * `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.
+
+BREAKING CHANGES:
+
+* `sreagent_outbound_config`: `base_url` is replaced by the write-only `base_url_wo` with `base_url_wo_version`,
+  because a webhook URL carries its own token. The platform no longer answers the URL: a read answers the computed
+  `base_url_set` and `base_url_host` (scheme, host and a non-default port, never the path or query). Leaving
+  `base_url_wo` out keeps the stored URL.
+* Removing the URL: remove both `base_url_wo` and `base_url_wo_version` after they were set, and the next apply
+  sends `base_url: null` and plans `base_url_set = false`. This is asymmetric with the other secrets on purpose:
+  removing `api_key_wo` and `api_key_wo_version` (or any other secret's pair) keeps the stored value, and
+  `base_url_wo` alone cannot clear. A row imported or adopted without a recorded `base_url_wo_version` is never
+  cleared by leaving the pair out.
+
+UPGRADE NOTES:
+
+* If you adopted an earlier export, replace `base_url = var.<label>_base_url` and its `variable` block with
+  `base_url_wo = var.<label>_base_url` and `base_url_wo_version = 1`. Keep the variable and mark it
+  `sensitive = true`, or take the value from an ephemeral resource, then apply once. The export no longer writes a
+  `variable` block or a `base_url` line; it writes the commented `base_url_wo` and `base_url_wo_version` pair.

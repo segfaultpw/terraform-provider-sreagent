@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/fakefacade"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/specs"
@@ -124,5 +125,115 @@ func TestALostSecretIsSentAgain(t *testing.T) {
 			}},
 			{Config: cfg, PlanOnly: true},
 		},
+	})
+}
+
+const hookURL = "https://hooks.example.com/T0/B0/tokened-path"
+
+// A webhook URL carries its own token, so it is write-only. Removing its value
+// and its version clears it on the platform, the way unsetting the old plain
+// argument did; removing the api key's pair keeps the key.
+func TestRemovingTheURLsValueAndVersionClearsItButTheKeyIsKept(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(extra string) string {
+		return providerBlock(f.URL) + "resource \"sreagent_outbound_config\" \"hook\" {\n  name = \"hook\"\n  provider_type = \"webhook\"\n" + extra + "}\n"
+	}
+	both := fmt.Sprintf("  base_url_wo = %q\n  base_url_wo_version = 1\n  api_key_wo = \"whsec-unit\"\n  api_key_wo_version = 1\n", hookURL)
+	noURL := "  api_key_wo = \"whsec-unit\"\n  api_key_wo_version = 1\n"
+	neither := ""
+	noPut := func(*terraform.State) error {
+		if n := f.Calls("PUT", "outbound_configs"); n != 0 {
+			return fmt.Errorf("want no PUT, got %d", n)
+		}
+		return nil
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: cfg(both), Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "base_url_set", "true"),
+				resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "base_url_host", "https://hooks.example.com"),
+				resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "api_key_set", "true"),
+				func(s *terraform.State) error {
+					for k, v := range s.RootModule().Resources["sreagent_outbound_config.hook"].Primary.Attributes {
+						if strings.Contains(v, "tokened-path") {
+							return fmt.Errorf("state attribute %s holds the URL", k)
+						}
+					}
+					return nil
+				},
+				noPut,
+			)},
+			{
+				// The value left out with the version unchanged keeps the URL.
+				Config: cfg("  base_url_wo_version = 1\n  api_key_wo = \"whsec-unit\"\n  api_key_wo_version = 1\n"),
+				Check:  noPut,
+			},
+			{
+				// Both removed: one PUT with base_url null, and nothing for the key.
+				Config: cfg(noURL),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "base_url_set", "false"),
+					resource.TestCheckNoResourceAttr("sreagent_outbound_config.hook", "base_url_host"),
+					resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "api_key_set", "true"),
+					func(*terraform.State) error {
+						if n := f.Calls("PUT", "outbound_configs"); n != 1 {
+							return fmt.Errorf("want one PUT, got %d", n)
+						}
+						body := f.LastBody("PUT", "outbound_configs")
+						if v, present := body["base_url"]; !present || v != nil {
+							return fmt.Errorf("want base_url: null, sent %v", body)
+						}
+						if _, present := body["api_key"]; present {
+							return fmt.Errorf("the key must not be sent: %v", body)
+						}
+						return nil
+					},
+				),
+			},
+			{Config: cfg(noURL), PlanOnly: true},
+			{
+				// The key's pair removed as well keeps the key: only the required
+				// fields go out, never the key and never a second clear.
+				Config: cfg(neither),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "api_key_set", "true"),
+					func(*terraform.State) error {
+						body := f.LastBody("PUT", "outbound_configs")
+						for _, k := range []string{"api_key", "base_url"} {
+							if _, present := body[k]; present {
+								return fmt.Errorf("removing the key's pair sent %s: %v", k, body)
+							}
+						}
+						return nil
+					},
+				),
+			},
+			{Config: cfg(neither), PlanOnly: true},
+		},
+	})
+}
+
+// An adopted row has no recorded version, so a configuration that never names
+// the URL leaves the stored one alone.
+func TestAnAdoptedURLIsNeverClearedByLeavingItOut(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	id := seedOne(t, f.URL, "outbound_configs", map[string]any{"name": "hook", "provider_type": "webhook", "base_url": hookURL})
+	config := providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_outbound_config\" \"hook\" {\n  name = \"hook\"\n  provider_type = \"webhook\"\n}\n\nimport {\n  to = sreagent_outbound_config.hook\n  id = %q\n}\n", id)
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{{
+			Config: config,
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("sreagent_outbound_config.hook", "base_url_set", "true"),
+				func(*terraform.State) error {
+					if n := f.Calls("PUT", "outbound_configs"); n != 0 {
+						return fmt.Errorf("an adopted URL was written over: %d PUTs", n)
+					}
+					return nil
+				},
+			),
+		}},
 	})
 }

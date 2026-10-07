@@ -112,7 +112,7 @@ func diffKeys(before, after any) string {
 // The first must be imports only, and the second, after adoption, must
 // show no changes at all. The rows carry every trap the export has: an AI
 // provider at its platform defaults, a rule at the platform's own pacing,
-// a webhook whose URL is held in a variable, and the two settings a person
+// a webhook whose tokened URL the export never writes, and the two settings a person
 // decides in the app.
 func TestExportAdoptsCleanly(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
@@ -138,20 +138,11 @@ func TestExportAdoptsCleanly(t *testing.T) {
 	// max_tokens, temperature and timeout_ms left out (the provider reads
 	// an answer equal to one back as null), the rule's default cooldown,
 	// step order and empty label match left out, the webhook's empty
-	// severity mapping left out, its tokened URL held in a variable (with
-	// no sensitive marking: the marking propagates into the planned value,
-	// and the imported state is not marked, so the first plan would report
-	// an update with no visible diff), and the two settings a person
-	// decides left to the app.
+	// severity mapping left out, its tokened URL left out too (the platform
+	// answers base_url_set and base_url_host, never the URL, and the export
+	// writes only the commented base_url_wo pair), and the two settings a
+	// person decides left to the app.
 	resources := fmt.Sprintf(`
-variable "hook_base_url" {
-  type = string
-
-  # The export writes no default; a .tfvars file or the environment holds
-  # the value, and the test stands in for one here.
-  default = "https://hooks.example.com/T0/B0/token"
-}
-
 resource "sreagent_organization_settings" "organization_settings" {
   alert_storm_threshold           = 0
   alert_storm_window_seconds      = 0
@@ -182,7 +173,9 @@ resource "sreagent_outbound_config" "hook" {
   provider_type = "webhook"
   enabled       = true
   priority      = 0
-  base_url      = var.hook_base_url
+  # base_url is set on the platform and never exported. To manage it here:
+  # base_url_wo         = var.hook_base_url
+  # base_url_wo_version = 1
 }
 
 resource "sreagent_outbound_rule" "critical" {
