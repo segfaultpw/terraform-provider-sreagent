@@ -11,8 +11,13 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 )
+
+// keyPrefix is how much of an API key Settings shows (`sre_ak_` and five more),
+// so naming it in an error points at the key without disclosing it.
+const keyPrefix = 12
 
 func main() {
 	if len(os.Args) != 3 {
@@ -33,6 +38,9 @@ func main() {
 // run compares the live document with the vendored copy. It returns 0 when they
 // match, 1 when they differ, and 2 when the comparison could not be made.
 func run(client *http.Client, url, vendoredPath, apiKey string) (int, string) {
+	// A secret pasted with a stray space or newline is the common way to get a
+	// key the API never matches.
+	apiKey = strings.TrimSpace(apiKey)
 	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:gosec // the operator names the document to compare
 	if err != nil {
 		return 2, err.Error()
@@ -47,7 +55,10 @@ func run(client *http.Client, url, vendoredPath, apiKey string) (int, string) {
 	defer func() { _ = resp.Body.Close() }()
 	live, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return 2, fmt.Sprintf("the API refused the request (%d): the document needs an API key, set SRE_AGENT_API_KEY (a repository secret in CI)", resp.StatusCode)
+		if apiKey == "" {
+			return 2, fmt.Sprintf("the API refused the request (%d): the document needs an API key, set SRE_AGENT_API_KEY (a repository secret in CI)", resp.StatusCode)
+		}
+		return 2, fmt.Sprintf("the API refused the key starting %s (%d): it is not a live API key of an enabled organization; compare it with Settings, API Keys, or set SRE_AGENT_API_KEY again with the full key", publicPrefix(apiKey), resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return 2, fmt.Sprintf("unexpected status %d fetching the live document", resp.StatusCode)
@@ -64,4 +75,11 @@ func run(client *http.Client, url, vendoredPath, apiKey string) (int, string) {
 		return 1, "the live API contract differs from internal/contract/openapi.json; re-vendor it and run go test ./internal/contract/"
 	}
 	return 0, "contract current"
+}
+
+func publicPrefix(key string) string {
+	if len(key) <= keyPrefix {
+		return key[:len(key)/2] + "..."
+	}
+	return key[:keyPrefix]
 }
