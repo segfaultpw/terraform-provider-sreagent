@@ -3590,7 +3590,7 @@
         "summary": "List connectors"
       },
       "post": {
-        "description": "Create an infrastructure connector a runbook step can act through. connector_type is one of kubernetes, ssh, aws_ecs, aws_lambda, aws_ec2, aws_eks. aws_eks is for discovery: it lists EKS clusters and the workloads Container Insights reports, and like every AWS connector it also reads the account-wide inventory (VPCs, subnets, security groups, load balancers, target groups, RDS, ACM). Its role needs exactly these read grants and nothing that writes: acm:ListCertificates, cloudwatch:ListMetrics, ec2:DescribeSecurityGroups, ec2:DescribeSubnets, ec2:DescribeVpcs, eks:DescribeCluster, eks:ListClusters, elasticloadbalancing:DescribeLoadBalancers, elasticloadbalancing:DescribeTargetGroups, rds:DescribeDBInstances. Runbook actions through it need their own grants. To reach EC2 instances via SSM, use aws_ec2 and grant the AWS credentials ssm:SendCommand. `config` holds the type-specific credentials: kubernetes -> {\"kubeconfig\":\"...\"}; ssh -> {\"host\",\"user\",\"private_key\",\"port\"}; aws_* -> {\"auth_type\":\"aws_assume_role\"|\"aws_access_keys\", \"role_arn\"|\"access_key_id\"/\"secret_access_key\", \"region\"}. metadata labels drive connector selection when several of a type exist.",
+        "description": "Create an infrastructure connector a runbook step can act through. connector_type is one of kubernetes, ssh, aws_ecs, aws_lambda, aws_ec2, aws_eks, aws_iam. aws_iam is the IAM hygiene connector and only self-healing's Security area acts through it (no runbook step can use it, and no read of the account does): it reads a user's access keys and changes a key's status, with a role of its own that needs exactly iam:GetAccessKeyLastUsed, iam:GetUser, iam:ListAccessKeys, iam:UpdateAccessKey on the account's users. aws_eks is for discovery: it lists EKS clusters and the workloads Container Insights reports, and like every AWS connector it also reads the account-wide inventory (VPCs, subnets, security groups, load balancers, target groups, RDS, ACM). Its role needs exactly these read grants and nothing that writes: acm:ListCertificates, cloudwatch:ListMetrics, ec2:DescribeSecurityGroups, ec2:DescribeSubnets, ec2:DescribeVpcs, eks:DescribeCluster, eks:ListClusters, elasticloadbalancing:DescribeLoadBalancers, elasticloadbalancing:DescribeTargetGroups, rds:DescribeDBInstances. Runbook actions through it need their own grants. To reach EC2 instances via SSM, use aws_ec2 and grant the AWS credentials ssm:SendCommand. `config` holds the type-specific credentials: kubernetes -> {\"kubeconfig\":\"...\"}; ssh -> {\"host\",\"user\",\"private_key\",\"port\"}; aws_* -> {\"auth_type\":\"aws_assume_role\"|\"aws_access_keys\", \"role_arn\"|\"access_key_id\"/\"secret_access_key\", \"region\"}. metadata labels drive connector selection when several of a type exist.",
         "operationId": "create_connector",
         "parameters": [],
         "requestBody": {
@@ -3708,7 +3708,7 @@
         "summary": "Read one connector"
       },
       "put": {
-        "description": "Update a connector by id (name, config, metadata, enabled). Passing config replaces the stored credentials.",
+        "description": "Update a connector by id (name, config, metadata, enabled). Passing config replaces the stored config key by key: a key you leave out is removed, and a secret key (kubeconfig, password, private_key, secret_access_key) sent as null or \"********\" keeps its stored value.",
         "operationId": "update_connector",
         "parameters": [
           {
@@ -3936,7 +3936,7 @@
         "summary": "Read one data_source"
       },
       "put": {
-        "description": "Update a data source by id (name, url, enabled, regions, auth_type, auth_credentials). auth_credentials replaces the stored credentials; leave it out to keep them. For AWS assume-role the organization's ExternalId is applied automatically, as on create.",
+        "description": "Update a data source by id (name, url, enabled, regions, auth_type, auth_credentials). auth_credentials replaces the stored credentials key by key: a key you leave out is removed, and a key sent as null or \"********\" keeps its stored value. Leave auth_credentials out to keep them all. For AWS assume-role the organization's ExternalId is applied automatically, as on create.",
         "operationId": "update_data_source",
         "parameters": [
           {
@@ -8304,7 +8304,7 @@
     },
     "/ticket_integrations/{id}": {
       "delete": {
-        "description": "Remove this organization's credentials for one ticket system, with the board column mapping and the create destination stored beside them. Cards already linked to an item keep their link and stop syncing, and nothing is changed in the ticket system itself. To stop writing into it without giving up the credentials, send enabled: false to configure_ticket_integration instead. Needs confirm: true.",
+        "description": "Remove this organization's credentials for one ticket system, with the board column mapping and the create destination stored beside them. Cards already linked to an item keep their link and stop syncing, and nothing is changed in the ticket system itself. Saving the integration again does not resume them: each card must be unlinked and linked again. This includes the cards of child organizations that file through this integration. To change credentials, save over the existing integration with configure_ticket_integration; to stop writing into it without giving up the credentials, send enabled: false to configure_ticket_integration instead. Needs confirm: true.",
         "operationId": "delete_ticket_integration",
         "parameters": [
           {

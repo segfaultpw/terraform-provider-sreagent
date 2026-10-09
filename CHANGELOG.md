@@ -18,6 +18,7 @@ FEATURES:
 * A plan-only mode for CI with an `api:config_read` key.
 * The `organization` pin refuses a key minted for another organization before anything is written.
 * `sreagent_ticket_integration` takes `auto_file`: every card created from then on is filed into the system without a button press.
+* `sreagent_connector`: `connector_type = "aws_iam"` creates the IAM hygiene connector self-healing's Security area deactivates an unused access key through. Its role is built by the `aws-iam-hygiene` module of terraform-sre-agent; no runbook step can use the connector. The vendored API document is re-vendored with the description of the type.
 * `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.
 
 BREAKING CHANGES:

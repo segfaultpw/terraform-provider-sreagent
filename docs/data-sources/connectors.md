@@ -2,12 +2,12 @@
 page_title: "sreagent_connectors Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every connector row, read-only. An infrastructure connector runbooks act through.
+  Every connector row, read-only. An infrastructure connector runbooks act through, or, for aws_iam, self-healing's Security area.
 ---
 
 # sreagent_connectors (Data Source)
 
-Every connector row, read-only. An infrastructure connector runbooks act through.
+Every connector row, read-only. An infrastructure connector runbooks act through, or, for aws_iam, self-healing's Security area.
 
 ## Example Usage
 
@@ -34,7 +34,7 @@ output "connectors_count" {
 Read-Only:
 
 - `config_set` (Boolean) Whether the platform holds a value for config.
-- `connector_type` (String) aws_ec2, ssh, kubernetes and so on. Changing it replaces the connector.
+- `connector_type` (String) aws_ec2, ssh, kubernetes, aws_iam and so on. aws_iam is the IAM hygiene connector, used only by self-healing's Security area (no runbook step can use it). Changing it replaces the connector.
 - `enabled` (Boolean) Whether runbooks may use it.
 - `health_status` (String) The latest health check's verdict.
 - `id` (String) The row's identifier on the platform.

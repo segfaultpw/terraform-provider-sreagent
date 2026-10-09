@@ -15,3 +15,16 @@ resource "sreagent_connector" "bastion" {
   })
   config_wo_version = 1
 }
+
+# The connector self-healing's Security area deactivates an unused IAM access key through.
+# Its role comes from the terraform-sre-agent module aws-iam-hygiene. No runbook step can use it.
+resource "sreagent_connector" "iam_hygiene" {
+  name           = "iam hygiene"
+  connector_type = "aws_iam"
+  config_wo = jsonencode({
+    auth_type = "aws_assume_role"
+    role_arn  = "arn:aws:iam::123456789012:role/sre-agent-iam-hygiene"
+    region    = "us-east-1"
+  })
+  config_wo_version = 1
+}
