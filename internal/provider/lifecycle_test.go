@@ -138,6 +138,27 @@ func TestAlertRouteClearsItsScheduleWhenRemovedFromConfig(t *testing.T) {
 	})
 }
 
+func TestServiceBindingClearsItsInlineFieldsWhenRemovedFromConfig(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	base := providerBlock(f.URL) + "resource \"sreagent_service_binding\" \"b\" {\n  service = \"checkout\"\n%s}\n"
+	addr := "sreagent_service_binding.b"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(base, "  log_inline_fields = [\"trace_id\", \"user.id\"]\n"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "log_inline_fields.#", "2"),
+					resource.TestCheckResourceAttr(addr, "log_inline_fields.0", "trace_id"),
+					resource.TestCheckResourceAttr(addr, "log_inline_fields.1", "user.id"),
+				),
+			},
+			{Config: fmt.Sprintf(base, ""), Check: resource.TestCheckNoResourceAttr(addr, "log_inline_fields.#")},
+		},
+	})
+}
+
 func TestOutboundConfigLifecycle(t *testing.T) {
 	runLifecycle(t, lifecycle{
 		spec:         specs.OutboundConfig,

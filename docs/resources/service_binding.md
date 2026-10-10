@@ -12,10 +12,10 @@ Which log groups, traces and metrics belong to a service in the Observability Ex
 ## Example Usage
 
 ```terraform
-resource "sreagent_service_binding" "checkout_prod" {
-  service     = "checkout"
-  environment = "prod"
-  log_groups  = ["/aws/lambda/checkout"]
+resource "sreagent_service_binding" "checkout" {
+  service           = "checkout"
+  log_groups        = ["/aws/lambda/checkout"]
+  log_inline_fields = ["trace_id", "user.id"]
 }
 ```
 
@@ -32,6 +32,7 @@ resource "sreagent_service_binding" "checkout_prod" {
 - `environment` (String) The environment; empty for the default.
 - `log_filter` (String) A filter pattern applied to them.
 - `log_groups` (List of String) CloudWatch log groups.
+- `log_inline_fields` (List of String) Up to three JSON log fields the live stream and the Explorer show inline on a line of this service, in order (user.id for a nested field). Set on the binding with no environment only; it applies to every environment. Leave it out for the built-in choice: trace and request ids, then the first fields of the line.
 - `metric_selectors` (String) Metric selectors, as jsonencode([...]).
 - `region` (String) The AWS region the service lives in; pairs with account_id.
 - `trace_service_names` (List of String) Service names in traces.

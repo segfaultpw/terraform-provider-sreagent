@@ -1,5 +1,5 @@
-resource "sreagent_service_binding" "checkout_prod" {
-  service     = "checkout"
-  environment = "prod"
-  log_groups  = ["/aws/lambda/checkout"]
+resource "sreagent_service_binding" "checkout" {
+  service           = "checkout"
+  log_groups        = ["/aws/lambda/checkout"]
+  log_inline_fields = ["trace_id", "user.id"]
 }

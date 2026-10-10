@@ -17,5 +17,6 @@ var ServiceBinding = engine.Spec{
 		{Name: "metric_selectors", Kind: engine.JSON, Description: "Metric selectors, as jsonencode([...])."},
 		{Name: "account_id", Kind: engine.String, Clearable: true, Description: "The AWS account the service lives in; when set, logs and metrics are searched there only. Traces always search every account."},
 		{Name: "region", Kind: engine.String, Clearable: true, Description: "The AWS region the service lives in; pairs with account_id."},
+		{Name: "log_inline_fields", Kind: engine.StringList, Clearable: true, Description: "Up to three JSON log fields the live stream and the Explorer show inline on a line of this service, in order (user.id for a nested field). Set on the binding with no environment only; it applies to every environment. Leave it out for the built-in choice: trace and request ids, then the first fields of the line."},
 	},
 }

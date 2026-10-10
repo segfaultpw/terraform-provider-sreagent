@@ -29,6 +29,7 @@ FEATURES:
   platform release that serves `/api/v1/config/request_signing` (v0.395.0): a platform that does not (it answers 404) fails the
   read with an error naming the release it needs (v0.395.0 or later), and `configured` is always true when the read succeeds.
 * `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.
+* `sreagent_service_binding` takes `log_inline_fields`: up to three JSON log fields shown inline on the live stream and in the Explorer for the service, on the binding with no environment; removing it returns to the built-in choice. It needs platform v0.397.0 or later, and the vendored API document is re-vendored with the column.
 
 BREAKING CHANGES:
 

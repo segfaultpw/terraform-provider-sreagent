@@ -1518,6 +1518,15 @@
               "null"
             ]
           },
+          "log_inline_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "metric_selectors": {
             "items": {
               "properties": {
@@ -1580,6 +1589,7 @@
           "metric_selectors",
           "account_id",
           "region",
+          "log_inline_fields",
           "id",
           "updated_at"
         ],
@@ -6034,7 +6044,7 @@
         "summary": "List service_bindings"
       },
       "post": {
-        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). `account_id` and `region` pin where the service lives, so logs and metrics search only there (traces always search every account); null clears either. Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
+        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). `account_id` and `region` pin where the service lives, so logs and metrics search only there (traces always search every account); null clears either. `log_inline_fields` chooses the fields shown inline on a JSON log line of the service (the binding with no environment only); null clears it. Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
         "operationId": "set_service_binding_create",
         "parameters": [],
         "requestBody": {
@@ -6063,6 +6073,17 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "log_inline_fields": {
+                    "description": "Up to 3 JSON log field keys the live stream and the Explorer show inline on a line of this service, in order (a nested field by its dotted key, user.id). Set on the binding with no environment only: it applies to every environment. null or [] clears it back to the built-in choice (trace and request ids, then the first fields of the line).",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 3,
+                    "type": [
+                      "array",
+                      "null"
+                    ]
                   },
                   "metric_selectors": {
                     "description": "{namespace, metric_name, dimensions?: [{name, value}]} objects, replacing the stored list.",
@@ -6203,7 +6224,7 @@
         "summary": "Read one service_binding"
       },
       "put": {
-        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). `account_id` and `region` pin where the service lives, so logs and metrics search only there (traces always search every account); null clears either. Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
+        "description": "Correct what a service is called in one telemetry backend: the log groups, log filter, X-Ray service names and metric selectors the Explorer binds for `service` (and `environment`, default \"\"), overriding AWS discovery and the OpenTelemetry convention. An OMITTED column keeps its stored value (or stays unbound, for a fresh binding); log_groups, trace_service_names and metric_selectors each REPLACE the stored list when named, so an empty array deliberately overrides that column to nothing rather than leaving it alone. resolve_service_bindings shows the difference as origin \"override\" with an empty value, versus falling through to discovery or the convention. An empty log_filter clears it back to unbound (there is no way to bind an empty filter on purpose). `account_id` and `region` pin where the service lives, so logs and metrics search only there (traces always search every account); null clears either. `log_inline_fields` chooses the fields shown inline on a JSON log line of the service (the binding with no environment only); null clears it. Audited, and this organization's discovery cache is invalidated so the next read reflects it immediately.",
         "operationId": "set_service_binding_update",
         "parameters": [
           {
@@ -6238,6 +6259,17 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "log_inline_fields": {
+                    "description": "Up to 3 JSON log field keys the live stream and the Explorer show inline on a line of this service, in order (a nested field by its dotted key, user.id). Set on the binding with no environment only: it applies to every environment. null or [] clears it back to the built-in choice (trace and request ids, then the first fields of the line).",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 3,
+                    "type": [
+                      "array",
+                      "null"
+                    ]
                   },
                   "metric_selectors": {
                     "description": "{namespace, metric_name, dimensions?: [{name, value}]} objects, replacing the stored list.",
@@ -9586,6 +9618,7 @@
         "environment",
         "log_filter",
         "log_groups",
+        "log_inline_fields",
         "metric_selectors",
         "region",
         "service",
@@ -9599,7 +9632,8 @@
         "trace_service_names",
         "metric_selectors",
         "account_id",
-        "region"
+        "region",
+        "log_inline_fields"
       ],
       "id_args": [
         "service",
@@ -9622,6 +9656,7 @@
         "account_id",
         "log_filter",
         "log_groups",
+        "log_inline_fields",
         "metric_selectors",
         "region",
         "trace_service_names"
