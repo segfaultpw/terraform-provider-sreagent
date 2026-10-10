@@ -37,6 +37,7 @@ func All() []engine.Spec {
 		TicketImportRule,
 		GitHubSettings,
 		AWSExternalID,
+		RequestSigning,
 		CompliancePeriod,
 	}
 }

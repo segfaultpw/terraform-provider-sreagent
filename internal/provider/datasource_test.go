@@ -94,3 +94,47 @@ func TestASingletonWithARowReadsAsConfigured(t *testing.T) {
 		}},
 	})
 }
+
+// The request signing data source answers key ids, states and the destination list as JSON, and
+// has no attribute that could hold a key: the key is revealed on the platform's Settings page only.
+func TestRequestSigningDataSourceAnswersKidsAndNeverAKey(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("request_signing", "request_signing", func(row map[string]any) {
+		row["keys"] = []any{map[string]any{"kid": "k_abc", "state": "signing", "activates_at": "2026-10-10T00:00:00Z", "verify_until": nil}}
+		row["destinations"] = []any{map[string]any{"host": "metrics.acme.example", "outcome": "signed", "sources": []any{"data source Prom"}}}
+		row["header"] = "SRE-Agent-Signature: v=1,kid=...,t=...,n=...,b=...,s=..."
+		row["docs_url"] = "https://sreagent.app/docs/request-signing"
+	})
+	addr := "data.sreagent_request_signing.x"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config: providerBlock(f.URL) + "data \"sreagent_request_signing\" \"x\" {}\n" +
+				"output \"kid\" { value = jsondecode(data.sreagent_request_signing.x.keys)[0].kid }\n",
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(addr, "id", "request_signing"),
+				resource.TestCheckResourceAttr(addr, "configured", "true"),
+				resource.TestCheckResourceAttr(addr, "header", "SRE-Agent-Signature: v=1,kid=...,t=...,n=...,b=...,s=..."),
+				resource.TestCheckResourceAttr(addr, "docs_url", "https://sreagent.app/docs/request-signing"),
+				resource.TestCheckResourceAttrSet(addr, "keys"),
+				resource.TestCheckResourceAttrSet(addr, "destinations"),
+				resource.TestCheckOutput("kid", "k_abc"),
+				resource.TestCheckNoResourceAttr(addr, "key"),
+				resource.TestCheckNoResourceAttr(addr, "secret"),
+			),
+		}},
+	})
+}
+
+func TestRequestSigningSpecHasNoAttributeThatCouldHoldAKey(t *testing.T) {
+	for _, a := range specs.RequestSigning.Attrs {
+		if a.Secret || !a.Computed {
+			t.Fatalf("%s must be a plain computed attribute", a.Name)
+		}
+		for _, bad := range []string{"key", "secret", "token"} {
+			if a.Name == bad {
+				t.Fatalf("attribute %s could hold key material", a.Name)
+			}
+		}
+	}
+}

@@ -9,8 +9,9 @@ FEATURES:
   prompt templates, teams, team members, repo settings, service bindings, status page components, AI providers,
   ticket integrations and ticket import rules.
 * 8 organization singletons, adopted on create and forgotten on destroy.
-* 32 data sources: a list data source per collection (with `truncated` for capped lists), one per singleton,
-  and `sreagent_aws_external_id` for an IAM role's trust policy.
+* 33 data sources: a list data source per collection (with `truncated` for capped lists), one per singleton,
+  `sreagent_aws_external_id` for an IAM role's trust policy and `sreagent_request_signing` for the
+  organization's request signing key ids and states.
 * Secrets are write-only arguments (`<name>_wo`, `<name>_wo_version`, `<name>_set`); none is ever stored in
   state or plan.
 * Every update and delete carries the row's version, so a change made in the app after the last refresh is
@@ -19,6 +20,12 @@ FEATURES:
 * The `organization` pin refuses a key minted for another organization before anything is written.
 * `sreagent_ticket_integration` takes `auto_file`: every card created from then on is filed into the system without a button press.
 * `sreagent_connector`: `connector_type = "aws_iam"` creates the IAM hygiene connector self-healing's Security area deactivates an unused access key through. Its role is built by the `aws-iam-hygiene` module of terraform-sre-agent; no runbook step can use the connector. The vendored API document is re-vendored with the description of the type.
+* `data.sreagent_request_signing`: the organization's request signing key ids with their state and times, the hosts
+  its configuration sends requests to with whether each is signed, the header format and the address of the
+  verification guide. It never answers a key (reveal it on Settings, Request signing) and there is no resource: a
+  key is rotated on the Settings page or with the MCP tools. The vendored API document is re-vendored with the
+  `request_signing` resource and the description of the `aws_cleanup` connector type. Release this version after the
+  platform release that serves `/api/v1/config/request_signing`; an older platform answers 404 for the data source.
 * `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.
 
 BREAKING CHANGES:

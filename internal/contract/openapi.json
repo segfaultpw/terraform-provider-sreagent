@@ -1459,6 +1459,29 @@
         ],
         "type": "object"
       },
+      "request_signing_row": {
+        "properties": {
+          "destinations": {
+            "type": "array"
+          },
+          "docs_url": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "destinations",
+          "docs_url",
+          "header",
+          "keys"
+        ],
+        "type": "object"
+      },
       "service_bindings_row": {
         "properties": {
           "account_id": {
@@ -3590,7 +3613,7 @@
         "summary": "List connectors"
       },
       "post": {
-        "description": "Create an infrastructure connector a runbook step can act through. connector_type is one of kubernetes, ssh, aws_ecs, aws_lambda, aws_ec2, aws_eks, aws_iam. aws_iam is the IAM hygiene connector and only self-healing's Security area acts through it (no runbook step can use it, and no read of the account does): it reads a user's access keys and changes a key's status, with a role of its own that needs exactly iam:GetAccessKeyLastUsed, iam:GetUser, iam:ListAccessKeys, iam:UpdateAccessKey on the account's users. aws_eks is for discovery: it lists EKS clusters and the workloads Container Insights reports, and like every AWS connector it also reads the account-wide inventory (VPCs, subnets, security groups, load balancers, target groups, RDS, ACM). Its role needs exactly these read grants and nothing that writes: acm:ListCertificates, cloudwatch:ListMetrics, ec2:DescribeSecurityGroups, ec2:DescribeSubnets, ec2:DescribeVpcs, eks:DescribeCluster, eks:ListClusters, elasticloadbalancing:DescribeLoadBalancers, elasticloadbalancing:DescribeTargetGroups, rds:DescribeDBInstances. Runbook actions through it need their own grants. To reach EC2 instances via SSM, use aws_ec2 and grant the AWS credentials ssm:SendCommand. `config` holds the type-specific credentials: kubernetes -> {\"kubeconfig\":\"...\"}; ssh -> {\"host\",\"user\",\"private_key\",\"port\"}; aws_* -> {\"auth_type\":\"aws_assume_role\"|\"aws_access_keys\", \"role_arn\"|\"access_key_id\"/\"secret_access_key\", \"region\"}. metadata labels drive connector selection when several of a type exist.",
+        "description": "Create an infrastructure connector a runbook step can act through. connector_type is one of kubernetes, ssh, aws_ecs, aws_lambda, aws_ec2, aws_eks, aws_iam, aws_cleanup. aws_iam is the IAM hygiene connector and only self-healing's Security area acts through it (no runbook step can use it, and no read of the account does): it reads a user's access keys and changes a key's status, with a role of its own that needs exactly iam:GetAccessKeyLastUsed, iam:GetUser, iam:ListAccessKeys, iam:UpdateAccessKey on the account's users. aws_cleanup is the only role SRE Agent deletes with (IAM access keys and console passwords, unattached volumes, unassociated Elastic IPs, old snapshots and images, and the retention of log groups that never expire): without it nothing is ever deleted, whatever the autonomy tier. Only self-healing's Security and FinOps areas act through it, after an acknowledgement that names deletions; no runbook step can use it and no read of the account does. Its role is its own and needs exactly autoscaling:DescribeLaunchConfigurations, cloudtrail:DescribeTrails, cloudtrail:LookupEvents, ec2:CreateSnapshot, ec2:CreateTags, ec2:CreateVolume, ec2:DeleteSnapshot, ec2:DeleteVolume, ec2:DeregisterImage, ec2:DescribeAddresses, ec2:DescribeAddressesAttribute, ec2:DescribeImageAttribute, ec2:DescribeImages, ec2:DescribeInstances, ec2:DescribeLaunchTemplateVersions, ec2:DescribeLaunchTemplates, ec2:DescribeSnapshotAttribute, ec2:DescribeSnapshots, ec2:DescribeVolumes, ec2:ListImagesInRecycleBin, ec2:ListSnapshotsInRecycleBin, ec2:ReleaseAddress, ec2:RestoreImageFromRecycleBin, ec2:RestoreSnapshotFromRecycleBin, iam:DeleteAccessKey, iam:DeleteLoginProfile, iam:GetAccessKeyLastUsed, iam:GetGroupPolicy, iam:GetLoginProfile, iam:GetPolicy, iam:GetPolicyVersion, iam:GetUser, iam:GetUserPolicy, iam:ListAccessKeys, iam:ListAttachedGroupPolicies, iam:ListAttachedUserPolicies, iam:ListGroupPolicies, iam:ListGroupsForUser, iam:ListMFADevices, iam:ListUserPolicies, kms:CreateGrant, kms:Decrypt, kms:DescribeKey, kms:GenerateDataKeyWithoutPlaintext, kms:ReEncryptFrom, kms:ReEncryptTo, logs:DeleteRetentionPolicy, logs:DescribeLogGroups, logs:ListTagsForResource, logs:PutRetentionPolicy, rbin:GetRule, rbin:ListRules, with a Deny of every deletion on resources tagged sre-agent:protect. aws_eks is for discovery: it lists EKS clusters and the workloads Container Insights reports, and like every AWS connector it also reads the account-wide inventory (VPCs, subnets, security groups, load balancers, target groups, RDS, ACM). Its role needs exactly these read grants and nothing that writes: acm:ListCertificates, cloudwatch:ListMetrics, ec2:DescribeSecurityGroups, ec2:DescribeSubnets, ec2:DescribeVpcs, eks:DescribeCluster, eks:ListClusters, elasticloadbalancing:DescribeLoadBalancers, elasticloadbalancing:DescribeTargetGroups, rds:DescribeDBInstances. Runbook actions through it need their own grants. To reach EC2 instances via SSM, use aws_ec2 and grant the AWS credentials ssm:SendCommand. `config` holds the type-specific credentials: kubernetes -> {\"kubeconfig\":\"...\"}; ssh -> {\"host\",\"user\",\"private_key\",\"port\"}; aws_* -> {\"auth_type\":\"aws_assume_role\"|\"aws_access_keys\", \"role_arn\"|\"access_key_id\"/\"secret_access_key\", \"region\"}. metadata labels drive connector selection when several of a type exist.",
         "operationId": "create_connector",
         "parameters": [],
         "requestBody": {
@@ -5940,6 +5963,37 @@
           }
         },
         "summary": "Update a repo_setting"
+      }
+    },
+    "/request_signing": {
+      "get": {
+        "description": "The organization's request signing: its key ids with their state (signing, pending, verify_only, retired, revoked) and times, the hosts its configuration sends requests to with whether each is signed, the SRE-Agent-Signature header format and the address of the verification guide. Never a key: the key is revealed on Settings, Request signing, by an organization admin. Admin floor, like the page. Every plan.",
+        "operationId": "get_request_signing",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/request_signing_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the request_signing"
       }
     },
     "/service_bindings": {
@@ -9490,6 +9544,30 @@
         "service",
         "writable_extensions"
       ],
+      "upsert": false
+    },
+    "request_signing": {
+      "action_args": [],
+      "computed_fields": {
+        "destinations": "array",
+        "docs_url": "string",
+        "header": "string",
+        "keys": "array"
+      },
+      "create_fields": [],
+      "fields": [],
+      "id_args": [],
+      "import_key": "request_signing",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [],
       "upsert": false
     },
     "service_bindings": {

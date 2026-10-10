@@ -53,3 +53,18 @@ var AWSExternalID = engine.Spec{
 		ro("trust_principal_arn", engine.String, "The platform principal the role trusts."),
 	},
 }
+
+// RequestSigning is data.sreagent_request_signing: the organization's request signing key ids
+// and their states, for a verifier configured in the same apply. Never key material (the key
+// is revealed on Settings, Request signing, only).
+var RequestSigning = engine.Spec{
+	Key: "request_signing", TypeName: "request_signing", ListName: "request_signing",
+	Description: "The organization's request signing key ids and states, the hosts its requests are signed for, and the header format. Never a key.",
+	Shape:       engine.Singleton,
+	Attrs: []engine.Attr{
+		ro("keys", engine.JSON, "Key ids with their state (signing, pending, verify_only, retired, revoked) and times."),
+		ro("destinations", engine.JSON, "Hosts this organization's configuration sends requests to, with whether each is signed."),
+		ro("header", engine.String, "The header format."),
+		ro("docs_url", engine.String, "Where the verification snippets are."),
+	},
+}
