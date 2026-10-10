@@ -1472,13 +1472,17 @@
           },
           "keys": {
             "type": "array"
+          },
+          "remote_locations_pending": {
+            "type": "boolean"
           }
         },
         "required": [
           "destinations",
           "docs_url",
           "header",
-          "keys"
+          "keys",
+          "remote_locations_pending"
         ],
         "type": "object"
       },
@@ -5967,7 +5971,7 @@
     },
     "/request_signing": {
       "get": {
-        "description": "The organization's request signing: its key ids with their state (signing, pending, verify_only, retired, revoked) and times, the hosts its configuration sends requests to with whether each is signed, the SRE-Agent-Signature header format and the address of the verification guide. Never a key: the key is revealed on Settings, Request signing, by an organization admin. Admin floor, like the page. Every plan.",
+        "description": "The organization's request signing: its key ids with their state (signing, pending, verify_only, retired, revoked) and times, the hosts its configuration sends requests to with whether each is signed, remote_locations_pending (true while a check that runs from a remote location has not yet had its signature confirmed, so a signed host may still be reached unsigned from there), the SRE-Agent-Signature header format and the address of the verification guide. Never a key: the key is revealed on Settings, Request signing, by an organization admin. Admin floor, like the page. Every plan.",
         "operationId": "get_request_signing",
         "parameters": [],
         "responses": {
@@ -9552,7 +9556,8 @@
         "destinations": "array",
         "docs_url": "string",
         "header": "string",
-        "keys": "array"
+        "keys": "array",
+        "remote_locations_pending": "boolean"
       },
       "create_fields": [],
       "fields": [],

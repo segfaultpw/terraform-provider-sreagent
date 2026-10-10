@@ -63,10 +63,11 @@ var RequestSigning = engine.Spec{
 	Shape:       engine.Singleton,
 	// Every organization has signing keys; a 404 is a platform older than the resource.
 	AlwaysPresent: true,
-	MinPlatform:   "a release newer than v0.394.0 that serves /api/v1/config/request_signing",
+	MinPlatform:   "v0.395.0 or later",
 	Attrs: []engine.Attr{
 		ro("keys", engine.JSON, "Key ids with their state (signing, pending, verify_only, retired, revoked) and times."),
 		ro("destinations", engine.JSON, "Hosts this organization's configuration sends requests to, with whether each is signed."),
+		ro("remote_locations_pending", engine.Bool, "True while a check that runs from a remote location has not yet had its signature confirmed, so a signed host may still be reached unsigned from there."),
 		ro("header", engine.String, "The header format."),
 		ro("docs_url", engine.String, "Where the verification snippets are."),
 	},

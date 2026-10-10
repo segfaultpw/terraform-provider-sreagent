@@ -104,6 +104,7 @@ func TestRequestSigningDataSourceAnswersKidsAndNeverAKey(t *testing.T) {
 	f.Mutate("request_signing", "request_signing", func(row map[string]any) {
 		row["keys"] = []any{map[string]any{"kid": "k_abc", "state": "signing", "activates_at": "2026-10-10T00:00:00Z", "verify_until": nil}}
 		row["destinations"] = []any{map[string]any{"host": "metrics.acme.example", "outcome": "signed", "sources": []any{"data source Prom"}}}
+		row["remote_locations_pending"] = true
 		row["header"] = "SRE-Agent-Signature: v=1,kid=...,t=...,n=...,b=...,s=..."
 		row["docs_url"] = "https://sreagent.app/docs/request-signing"
 	})
@@ -116,6 +117,7 @@ func TestRequestSigningDataSourceAnswersKidsAndNeverAKey(t *testing.T) {
 			Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr(addr, "id", "request_signing"),
 				resource.TestCheckResourceAttr(addr, "configured", "true"),
+				resource.TestCheckResourceAttr(addr, "remote_locations_pending", "true"),
 				resource.TestCheckResourceAttr(addr, "header", "SRE-Agent-Signature: v=1,kid=...,t=...,n=...,b=...,s=..."),
 				resource.TestCheckResourceAttr(addr, "docs_url", "https://sreagent.app/docs/request-signing"),
 				resource.TestCheckResourceAttrSet(addr, "keys"),
@@ -155,7 +157,7 @@ func TestRequestSigningOnAPlatformWithoutTheResourceIsAnError(t *testing.T) {
 				ProtoV6ProviderFactories: factories,
 				Steps: []resource.TestStep{{
 					Config:      providerBlock(f.URL) + "data \"sreagent_request_signing\" \"x\" {}\n",
-					ExpectError: regexp.MustCompile(`platform does not serve request_signing`),
+					ExpectError: regexp.MustCompile(`(?s)platform does not serve request_signing.*v0\.395\.0 or later`),
 				}},
 			})
 		})

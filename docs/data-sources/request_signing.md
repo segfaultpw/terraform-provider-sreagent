@@ -46,3 +46,4 @@ output "request_signing_guide" {
 - `header` (String) The header format.
 - `id` (String) The row's identifier on the platform.
 - `keys` (String) Key ids with their state (signing, pending, verify_only, retired, revoked) and times.
+- `remote_locations_pending` (Boolean) True while a check that runs from a remote location has not yet had its signature confirmed, so a signed host may still be reached unsigned from there.

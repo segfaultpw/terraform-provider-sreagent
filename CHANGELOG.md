@@ -21,12 +21,13 @@ FEATURES:
 * `sreagent_ticket_integration` takes `auto_file`: every card created from then on is filed into the system without a button press.
 * `sreagent_connector`: `connector_type = "aws_iam"` creates the IAM hygiene connector self-healing's Security area deactivates an unused access key through. Its role is built by the `aws-iam-hygiene` module of terraform-sre-agent; no runbook step can use the connector. The vendored API document is re-vendored with the description of the type.
 * `data.sreagent_request_signing`: the organization's request signing key ids with their state and times, the hosts
-  its configuration sends requests to with whether each is signed, the header format and the address of the
+  its configuration sends requests to with whether each is signed, `remote_locations_pending` (true while a check
+  that runs from a remote location has not yet had its signature confirmed), the header format and the address of the
   verification guide. It never answers a key (reveal it on Settings, Request signing) and there is no resource: a
   key is rotated on the Settings page or with the MCP tools. The vendored API document is re-vendored with the
   `request_signing` resource and the description of the `aws_cleanup` connector type. Release this version after the
-  platform release that serves `/api/v1/config/request_signing`: a platform that does not (it answers 404) fails the
-  read with an error naming the release it needs, and `configured` is always true when the read succeeds.
+  platform release that serves `/api/v1/config/request_signing` (v0.395.0): a platform that does not (it answers 404) fails the
+  read with an error naming the release it needs (v0.395.0 or later), and `configured` is always true when the read succeeds.
 * `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.
 
 BREAKING CHANGES:
