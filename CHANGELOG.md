@@ -25,7 +25,8 @@ FEATURES:
   verification guide. It never answers a key (reveal it on Settings, Request signing) and there is no resource: a
   key is rotated on the Settings page or with the MCP tools. The vendored API document is re-vendored with the
   `request_signing` resource and the description of the `aws_cleanup` connector type. Release this version after the
-  platform release that serves `/api/v1/config/request_signing`; an older platform answers 404 for the data source.
+  platform release that serves `/api/v1/config/request_signing`: a platform that does not (it answers 404) fails the
+  read with an error naming the release it needs, and `configured` is always true when the read succeeds.
 * `sreagent_synthetic_check`: a change to `config` is applied while the check sends headers or a body set through the API; the platform keeps them, so the refusal that guarded them is gone.
 
 BREAKING CHANGES:

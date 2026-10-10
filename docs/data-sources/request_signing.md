@@ -15,6 +15,8 @@ The organization's request signing key ids and states, the hosts its requests ar
 # The key ids your verifier should accept, in the same apply that configures it.
 # The data source never answers a key: reveal it on Settings, Request signing, and
 # give it to the verifier as a sensitive variable.
+# A platform older than the resource fails this read with an error naming the release it needs;
+# it never reads as an empty answer.
 data "sreagent_request_signing" "this" {}
 
 locals {
@@ -38,7 +40,7 @@ output "request_signing_guide" {
 
 ### Read-Only
 
-- `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
+- `configured` (Boolean) Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead.
 - `destinations` (String) Hosts this organization's configuration sends requests to, with whether each is signed.
 - `docs_url` (String) Where the verification snippets are.
 - `header` (String) The header format.

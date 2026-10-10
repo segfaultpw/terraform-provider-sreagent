@@ -1,6 +1,8 @@
 # The key ids your verifier should accept, in the same apply that configures it.
 # The data source never answers a key: reveal it on Settings, Request signing, and
 # give it to the verifier as a sensitive variable.
+# A platform older than the resource fails this read with an error naming the release it needs;
+# it never reads as an empty answer.
 data "sreagent_request_signing" "this" {}
 
 locals {

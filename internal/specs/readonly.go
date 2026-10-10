@@ -61,6 +61,9 @@ var RequestSigning = engine.Spec{
 	Key: "request_signing", TypeName: "request_signing", ListName: "request_signing",
 	Description: "The organization's request signing key ids and states, the hosts its requests are signed for, and the header format. Never a key.",
 	Shape:       engine.Singleton,
+	// Every organization has signing keys; a 404 is a platform older than the resource.
+	AlwaysPresent: true,
+	MinPlatform:   "a release newer than v0.394.0 that serves /api/v1/config/request_signing",
 	Attrs: []engine.Attr{
 		ro("keys", engine.JSON, "Key ids with their state (signing, pending, verify_only, retired, revoked) and times."),
 		ro("destinations", engine.JSON, "Hosts this organization's configuration sends requests to, with whether each is signed."),

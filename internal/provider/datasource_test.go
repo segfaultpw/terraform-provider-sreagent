@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/fakefacade"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/specs"
 )
@@ -124,6 +126,40 @@ func TestRequestSigningDataSourceAnswersKidsAndNeverAKey(t *testing.T) {
 			),
 		}},
 	})
+}
+
+// Every organization has request signing, so a 404 means the platform is older than the
+// resource. That is an error naming the release needed, never configured = false with null
+// attributes that a jsondecode further down would trip over.
+func TestRequestSigningOnAPlatformWithoutTheResourceIsAnError(t *testing.T) {
+	cases := map[string]func(t *testing.T) *fakefacade.Fake{
+		"the row is missing": func(t *testing.T) *fakefacade.Fake {
+			f := fakefacade.New(t, specs.All())
+			f.Remove("request_signing", "request_signing")
+			return f
+		},
+		"the resource is unknown": func(t *testing.T) *fakefacade.Fake {
+			var older []engine.Spec
+			for _, s := range specs.All() {
+				if s.Key != "request_signing" {
+					older = append(older, s)
+				}
+			}
+			return fakefacade.New(t, older)
+		},
+	}
+	for name, build := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := build(t)
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config:      providerBlock(f.URL) + "data \"sreagent_request_signing\" \"x\" {}\n",
+					ExpectError: regexp.MustCompile(`platform does not serve request_signing`),
+				}},
+			})
+		})
+	}
 }
 
 func TestRequestSigningSpecHasNoAttributeThatCouldHoldAKey(t *testing.T) {

@@ -109,7 +109,11 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 	if !d.list {
 		if _, ok := fields["configured"]; !ok {
-			fields["configured"] = schema.BoolAttribute{Computed: true, Description: "False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null."}
+			description := "False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null."
+			if d.spec.AlwaysPresent {
+				description = "Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead."
+			}
+			fields["configured"] = schema.BoolAttribute{Computed: true, Description: description}
 		}
 		resp.Schema = schema.Schema{Description: d.spec.Description, Attributes: fields}
 		return
@@ -144,6 +148,13 @@ func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, r
 		name = "sreagent_" + d.spec.ListName
 	}
 	out, err := d.client.Do(ctx, client.Request{Method: http.MethodGet, Path: d.spec.Key})
+	if !d.list && d.spec.AlwaysPresent && client.IsNotFound(err) {
+		resp.Diagnostics.AddError(
+			"The platform does not serve "+d.spec.Key,
+			"Every organization has "+d.spec.Key+", so the platform answered 404 because it predates the resource. "+
+				"Upgrade the platform to "+d.spec.MinPlatform+" before reading "+name+".")
+		return
+	}
 	if !d.list && client.IsNotFound(err) {
 		// No row of its own (Slack not connected, or settings inherited from a
 		// parent): a fact to branch on in HCL, not an error.

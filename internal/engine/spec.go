@@ -102,6 +102,12 @@ type Spec struct {
 	// StartsEmpty: a singleton an organization has no row of until its first
 	// write. Read only by internal/fakefacade.
 	StartsEmpty bool
+	// AlwaysPresent: every organization has this singleton, so a 404 on read means the
+	// platform predates the resource. Its data source then fails naming the release needed
+	// instead of reading as configured = false with every attribute null.
+	AlwaysPresent bool
+	// MinPlatform names the platform release a read of an AlwaysPresent singleton needs.
+	MinPlatform string
 	// DiscoveredAttr is the computed boolean that, true in state, makes a
 	// destroy warn that a discovery sweep files the row again.
 	DiscoveredAttr string
