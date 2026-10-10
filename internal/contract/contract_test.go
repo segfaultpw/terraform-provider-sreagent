@@ -3,6 +3,7 @@ package contract
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -188,7 +189,80 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	}
 	checkSecrets(d, s, res, add)
 	checkAddressing(s, res, add)
+	checkListBounds(s, put.Properties, add)
+	checkReadOnlySingleton(s, res, add)
 	return p
+}
+
+// checkListBounds holds each list's MaxItems to the maxItems the update body
+// publishes, so a bound the platform changes fails here rather than at apply.
+func checkListBounds(s engine.Spec, props map[string]map[string]any, add func(string, ...any)) {
+	if !s.Lifecycle || s.Shape == engine.Singleton {
+		return
+	}
+	for _, a := range s.Attrs {
+		if a.Kind != engine.StringList {
+			continue
+		}
+		published := 0
+		if n, ok := props[a.Name]["maxItems"].(float64); ok {
+			published = int(n)
+		}
+		if a.MaxItems != published {
+			add("field %s MaxItems %d, contract maxItems %d", a.Name, a.MaxItems, published)
+		}
+	}
+}
+
+// computedKind is the attribute kind a published computed field type maps to.
+func computedKind(published any) engine.Kind {
+	name := fmt.Sprint(published)
+	if types, ok := published.([]any); ok {
+		for _, t := range types {
+			if t != "null" {
+				name = fmt.Sprint(t)
+			}
+		}
+	}
+	switch name {
+	case "boolean":
+		return engine.Bool
+	case "integer":
+		return engine.Int
+	case "number":
+		return engine.Float
+	case "string":
+		return engine.String
+	}
+	return engine.JSON
+}
+
+// checkReadOnlySingleton holds a read-only singleton, one with no writable
+// field, to every computed field the contract publishes: each needs a Computed
+// attribute of the published kind, so a field the platform adds cannot pass
+// the contract test unread.
+func checkReadOnlySingleton(s engine.Spec, res Resource, add func(string, ...any)) {
+	if s.Lifecycle || s.Shape != engine.Singleton || len(res.Fields) != 0 {
+		return
+	}
+	byName := map[string]engine.Attr{}
+	for _, a := range s.Attrs {
+		byName[a.Name] = a
+	}
+	for name, published := range res.ComputedFields {
+		if name == "id" {
+			continue
+		}
+		a, ok := byName[name]
+		switch {
+		case !ok:
+			add("computed field %s is published by the contract but has no attribute", name)
+		case !a.Computed:
+			add("computed field %s must be a Computed attribute", name)
+		case a.Kind != computedKind(published):
+			add("computed field %s kind %d, contract type %v", name, a.Kind, published)
+		}
+	}
 }
 
 func TestEverySpecMatchesTheContract(t *testing.T) {
@@ -308,6 +382,23 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r := d.Resources["ai_providers"]
 			r.NullMeans["temperature"] = 0.5
 			d.Resources["ai_providers"] = r
+		}},
+		{"a read-only singleton gains a computed field", "request_signing", func(d *Doc) {
+			r := d.Resources["request_signing"]
+			r.ComputedFields = maps.Clone(r.ComputedFields)
+			r.ComputedFields["rotation_due"] = "string"
+			d.Resources["request_signing"] = r
+		}},
+		{"a read-only singleton's computed field changes type", "request_signing", func(d *Doc) {
+			r := d.Resources["request_signing"]
+			r.ComputedFields = maps.Clone(r.ComputedFields)
+			r.ComputedFields["remote_locations_pending"] = "string"
+			d.Resources["request_signing"] = r
+		}},
+		{"a list's maxItems changes", "service_bindings", func(d *Doc) {
+			op := d.Paths["/service_bindings/{id}"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["log_inline_fields"]["maxItems"] = float64(5)
+			d.Paths["/service_bindings/{id}"]["put"] = op
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {

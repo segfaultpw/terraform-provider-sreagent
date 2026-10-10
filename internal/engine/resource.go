@@ -37,6 +37,8 @@ var (
 	_ resource.ResourceWithImportState = (*facadeResource)(nil)
 	_ resource.ResourceWithIdentity    = (*facadeResource)(nil)
 	_ resource.ResourceWithModifyPlan  = (*facadeResource)(nil)
+
+	_ resource.ResourceWithValidateConfig = (*facadeResource)(nil)
 )
 
 type facadeResource struct {
@@ -88,6 +90,35 @@ func (r *facadeResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		}
 	}
 	resp.Schema = schema.Schema{Description: r.spec.Description, Attributes: attrs}
+}
+
+// ValidateConfig refuses at plan a non-empty list the platform would refuse
+// beside another attribute (RefusedWith). Only a configuration that states both
+// is judged: an unknown value could still turn out empty.
+func (r *facadeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	for _, a := range r.spec.Attrs {
+		if a.RefusedWith == "" {
+			continue
+		}
+		var list types.List
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(a.Attribute()), &list)...)
+		var other types.String
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(a.RefusedWith), &other)...)
+		if resp.Diagnostics.HasError() || list.IsNull() || list.IsUnknown() || len(list.Elements()) == 0 || other.IsNull() || other.IsUnknown() {
+			continue
+		}
+		value := other.ValueString()
+		for _, o := range r.spec.Attrs {
+			if o.Name == a.RefusedWith && o.Normalize != nil {
+				value = o.Normalize(value)
+			}
+		}
+		if value == "" {
+			continue
+		}
+		resp.Diagnostics.AddAttributeError(path.Root(a.Attribute()), "Not allowed with "+a.RefusedWith,
+			fmt.Sprintf("%s Remove %s, or remove %s (now %q) and set it on the binding with none.", a.RefusedWhy, a.Attribute(), a.RefusedWith, other.ValueString()))
+	}
 }
 
 func (r *facadeResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
@@ -182,9 +213,18 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, listplanmodifier.RequiresReplace())
 		}
-		// The platform trims and deduplicates list entries, so a padded or
-		// repeated one would read back changed; refuse it at plan instead.
-		validators := []validator.List{listvalidator.UniqueValues(), listvalidator.ValueStringsAre(trimmed{})}
+		// The platform trims and deduplicates list entries (field names aside,
+		// which it keeps as written), so a padded or repeated one would read
+		// back changed; refuse it at plan instead.
+		validators := []validator.List{listvalidator.UniqueValues()}
+		if a.FieldNames {
+			validators = append(validators, listvalidator.ValueStringsAre(fieldName{}))
+		} else {
+			validators = append(validators, listvalidator.ValueStringsAre(trimmed{}))
+		}
+		if a.MaxItems > 0 {
+			validators = append(validators, listvalidator.SizeAtMost(a.MaxItems))
+		}
 		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods, Validators: validators}}
 	}
 	return nil
@@ -308,7 +348,12 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			continue
 		}
 		if v.IsNull() {
-			if o == opUpdate && a.Clearable && r.spec.Shape != Singleton {
+			// A null goes out only to clear a value the prior state held. An
+			// omitted field keeps what the platform stores, and a platform older
+			// than the field refuses a call that names it, so a binding that never
+			// sets it must not send it. A change made in the app after the refresh
+			// is refused by the row version.
+			if o == opUpdate && a.Clearable && r.spec.Shape != Singleton && holdsValue(prior) {
 				body[a.Name] = nil
 			}
 			continue

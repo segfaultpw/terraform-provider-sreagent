@@ -152,7 +152,7 @@ func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, r
 		resp.Diagnostics.AddError(
 			"The platform does not serve "+d.spec.Key,
 			"Every organization has "+d.spec.Key+", so the platform answered 404 because it predates the resource. "+
-				"Upgrade the platform to "+d.spec.MinPlatform+" before reading "+name+".")
+				"Upgrade the platform to "+d.spec.MinPlatform+" before reading "+name+".\n\nThe platform said: "+err.Error())
 		return
 	}
 	if !d.list && client.IsNotFound(err) {

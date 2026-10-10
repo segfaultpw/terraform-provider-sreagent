@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
@@ -36,6 +37,37 @@ func (v refuseKeys) ValidateString(_ context.Context, req validator.StringReques
 		}
 	}
 }
+
+// fieldName refuses what the platform refuses in a JSON field name it keeps as
+// written: a blank one, one over 128 code points, one with a control character.
+// Surrounding whitespace is not refused, because the platform does not strip it.
+type fieldName struct{}
+
+var _ validator.String = fieldName{}
+
+func (fieldName) Description(context.Context) string {
+	return "must be 1 to 128 characters, not blank, with no control character"
+}
+
+func (v fieldName) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (fieldName) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	v := req.ConfigValue.ValueString()
+	switch {
+	case strings.TrimSpace(v) == "":
+		resp.Diagnostics.AddAttributeError(req.Path, "Blank field name", fmt.Sprintf("%q is blank and names no field; write a JSON field such as \"user.id\".", v))
+	case utf8.RuneCountInString(v) > fieldNameMax:
+		resp.Diagnostics.AddAttributeError(req.Path, "Field name too long", fmt.Sprintf("A field name is 1 to %d characters, this one has %d.", fieldNameMax, utf8.RuneCountInString(v)))
+	case strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }):
+		resp.Diagnostics.AddAttributeError(req.Path, "Control character", fmt.Sprintf("%q holds a control character, which the platform refuses in a field name.", v))
+	}
+}
+
+// fieldNameMax is the platform's bound, in code points.
+const fieldNameMax = 128
 
 // trimmed refuses a string with surrounding whitespace, which the platform
 // would strip.

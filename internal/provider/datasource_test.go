@@ -134,13 +134,17 @@ func TestRequestSigningDataSourceAnswersKidsAndNeverAKey(t *testing.T) {
 // resource. That is an error naming the release needed, never configured = false with null
 // attributes that a jsondecode further down would trip over.
 func TestRequestSigningOnAPlatformWithoutTheResourceIsAnError(t *testing.T) {
-	cases := map[string]func(t *testing.T) *fakefacade.Fake{
-		"the row is missing": func(t *testing.T) *fakefacade.Fake {
+	cases := map[string]struct {
+		build func(t *testing.T) *fakefacade.Fake
+		// said is the platform's own sentence, which the error keeps.
+		said string
+	}{
+		"the row is missing": {func(t *testing.T) *fakefacade.Fake {
 			f := fakefacade.New(t, specs.All())
 			f.Remove("request_signing", "request_signing")
 			return f
-		},
-		"the resource is unknown": func(t *testing.T) *fakefacade.Fake {
+		}, `No\s+row\s+found`},
+		"the resource is unknown": {func(t *testing.T) *fakefacade.Fake {
 			var older []engine.Spec
 			for _, s := range specs.All() {
 				if s.Key != "request_signing" {
@@ -148,16 +152,16 @@ func TestRequestSigningOnAPlatformWithoutTheResourceIsAnError(t *testing.T) {
 				}
 			}
 			return fakefacade.New(t, older)
-		},
+		}, `No\s+such\s+configuration\s+resource:\s+request_signing`},
 	}
-	for name, build := range cases {
+	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			f := build(t)
+			f := c.build(t)
 			resource.UnitTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: factories,
 				Steps: []resource.TestStep{{
 					Config:      providerBlock(f.URL) + "data \"sreagent_request_signing\" \"x\" {}\n",
-					ExpectError: regexp.MustCompile(`(?s)platform does not serve request_signing.*v0\.395\.0 or later`),
+					ExpectError: regexp.MustCompile(`(?s)platform does not serve request_signing.*v0\.395\.0 or later.*` + c.said),
 				}},
 			})
 		})

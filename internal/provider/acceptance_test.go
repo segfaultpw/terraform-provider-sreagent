@@ -143,6 +143,42 @@ func TestAccResources(t *testing.T) {
 	}
 }
 
+func accBinding(service, body string) string {
+	return accProvider() + fmt.Sprintf("resource \"sreagent_service_binding\" \"test\" {\n  service = %q\n%s}\n", service, body)
+}
+
+// A binding that never sets log_inline_fields must create and update on a
+// platform older than the field (v0.396.0): the update sends no null for it.
+func TestAccServiceBindingWithoutInlineFields(t *testing.T) {
+	accPreCheck(t)
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{Config: accBinding("acc-plain", "  log_groups = [\"/a\"]\n")},
+			{Config: accBinding("acc-plain", "  log_groups = [\"/a\", \"/b\"]\n"), Check: resource.TestCheckResourceAttr("sreagent_service_binding.test", "log_groups.#", "2")},
+		},
+	})
+}
+
+// The platform stores [] as null: [] applies on create and update, plans
+// nothing afterwards, and removing the attribute clears a set value. Needs v0.397.0.
+func TestAccServiceBindingInlineFieldsEmptyListAndRemoval(t *testing.T) {
+	accPreCheck(t)
+	addr := "sreagent_service_binding.test"
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{Config: accBinding("acc-inline", "  log_inline_fields = []\n"), Check: resource.TestCheckResourceAttr(addr, "log_inline_fields.#", "0")},
+			{Config: accBinding("acc-inline", "  log_inline_fields = [\"trace_id\", \" padded\"]\n"), Check: resource.TestCheckResourceAttr(addr, "log_inline_fields.1", " padded")},
+			{Config: accBinding("acc-inline", "  log_inline_fields = []\n"), Check: resource.TestCheckResourceAttr(addr, "log_inline_fields.#", "0")},
+			{Config: accBinding("acc-inline", "  log_inline_fields = [\"trace_id\"]\n"), Check: resource.TestCheckResourceAttr(addr, "log_inline_fields.#", "1")},
+			{Config: accBinding("acc-inline", ""), Check: resource.TestCheckNoResourceAttr(addr, "log_inline_fields.#")},
+		},
+	})
+}
+
 // cli runs Terraform against a locally built provider through dev_overrides.
 type cli struct {
 	t   *testing.T

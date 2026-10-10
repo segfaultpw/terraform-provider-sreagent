@@ -60,6 +60,18 @@ type Attr struct {
 	// MergedObject: a JSON object the platform merges into what it stores, so
 	// a key left out is kept; an update names each dropped key with "".
 	MergedObject bool
+	// MaxItems: the longest list the platform stores, as its API document
+	// publishes it (maxItems); a longer one is refused at plan.
+	MaxItems int
+	// FieldNames: a list of JSON field names the platform stores as written. It
+	// does not trim them, so a padded name is valid; a name that is blank, over
+	// 128 code points or holds a control character is refused.
+	FieldNames bool
+	// RefusedWith names another attribute of the same resource that must be
+	// empty when this list is not. The platform refuses the pair with
+	// RefusedWhy; both are checked at plan, where the configuration says so.
+	RefusedWith string
+	RefusedWhy  string
 }
 
 // Attribute is the Terraform attribute name.

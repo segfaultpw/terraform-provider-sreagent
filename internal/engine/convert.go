@@ -184,6 +184,13 @@ func keep(a Attr, before, remote attr.Value) bool {
 	if a.Kind == JSON && a.Clearable && before != nil && before.IsNull() && isEmptyObject(remote) {
 		return true
 	}
+	// The platform stores an empty Clearable list as null: [] and null are one
+	// value, and Terraform requires state to equal the plan, so whichever the
+	// configuration wrote stays.
+	if a.Kind == StringList && a.Clearable && before != nil && remote != nil && !before.IsUnknown() &&
+		(before.IsNull() || isEmptyList(before)) && (remote.IsNull() || isEmptyList(remote)) {
+		return true
+	}
 	if a.NullMeans != "" && a.Clearable && before != nil && before.IsNull() && remote != nil && !remote.IsNull() {
 		d := json.NewDecoder(strings.NewReader(a.NullMeans))
 		d.UseNumber()
@@ -218,6 +225,20 @@ func keep(a Attr, before, remote attr.Value) bool {
 		return reflect.DeepEqual(x, y)
 	}
 	return false
+}
+
+// holdsValue reports that v is a value the platform holds: not null, not
+// unknown, and not an empty list, which the platform stores as null.
+func holdsValue(v attr.Value) bool {
+	if v == nil || v.IsNull() || v.IsUnknown() {
+		return false
+	}
+	return !isEmptyList(v)
+}
+
+func isEmptyList(v attr.Value) bool {
+	l, ok := v.(types.List)
+	return ok && !l.IsNull() && !l.IsUnknown() && len(l.Elements()) == 0
 }
 
 func isEmptyObject(v attr.Value) bool {

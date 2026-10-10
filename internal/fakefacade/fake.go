@@ -209,6 +209,13 @@ func zero(a engine.Attr) any {
 	return nil
 }
 
+// emptyClearableList is a [] sent for a Clearable list. The platform stores
+// null for it (log_inline_fields: "null or [] clears it"), and answers null.
+func emptyClearableList(a engine.Attr, v any) bool {
+	list, ok := v.([]any)
+	return ok && a.Clearable && a.Kind == engine.StringList && len(list) == 0
+}
+
 // merge folds an object into a stored one; an empty string clears its key.
 func merge(stored, sent any) any {
 	out := map[string]any{}
@@ -371,6 +378,8 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		case a.NotRead:
 		case present && a.Normalize != nil && v != nil:
 			row[a.Name] = a.Normalize(fmt.Sprint(v))
+		case present && emptyClearableList(a, v):
+			row[a.Name] = nil
 		case present:
 			row[a.Name] = v
 		default:
@@ -465,6 +474,9 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		}
 		if v != nil && a.Normalize != nil {
 			v = a.Normalize(fmt.Sprint(v))
+		}
+		if emptyClearableList(a, v) {
+			v = nil
 		}
 		row[k] = v
 	}

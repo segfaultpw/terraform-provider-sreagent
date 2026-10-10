@@ -38,7 +38,7 @@ Read-Only:
 - `id` (String) The row's identifier on the platform.
 - `log_filter` (String) A filter pattern applied to them.
 - `log_groups` (List of String) CloudWatch log groups.
-- `log_inline_fields` (List of String) Up to three JSON log fields the live stream and the Explorer show inline on a line of this service, in order (user.id for a nested field). Set on the binding with no environment only; it applies to every environment. Leave it out for the built-in choice: trace and request ids, then the first fields of the line.
+- `log_inline_fields` (List of String) Up to three JSON log fields the live stream and the Explorer show inline on a line of this service, in order (user.id for a nested field). Each is kept exactly as written. Set on the binding with no environment only; it applies to every environment. Leave it out, or write [], for the built-in choice: trace and request ids, then the first fields of the line.
 - `metric_selectors` (String) Metric selectors, as jsonencode([...]).
 - `region` (String) The AWS region the service lives in; pairs with account_id.
 - `service` (String) The service. Stored trimmed and lowercased.
