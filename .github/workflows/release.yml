@@ -128,7 +128,8 @@ jobs:
           if [ -z "$GPG_PRIVATE_KEY" ] || [ -z "$PASSPHRASE" ]; then
             echo "::error::The repository secrets GPG_PRIVATE_KEY and PASSPHRASE are not set." \
               "The Terraform Registry only accepts a release whose SHA256SUMS is signed by a key" \
-              "registered for the namespace. Nothing was tagged."
+              "registered for the namespace. Run scripts/setup-release-signing.sh to create the" \
+              "key and set both secrets. Nothing was tagged."
             exit 1
           fi
 
