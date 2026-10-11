@@ -1,29 +1,184 @@
+# Cuts a release when a releasable commit reaches main with green CI, and publishes it in the
+# same run (a tag pushed with GITHUB_TOKEN starts no other workflow, so tagging and the
+# goreleaser build cannot be split across workflows).
+#
+# The version comes from conventional commits since the last tag: a subject with `!` before
+# the colon or a BREAKING CHANGE footer is a breaking change, `feat:` a feature, `fix:` a fix;
+# anything else (docs, ci, chore, test) accumulates into the next real release. Before 1.0.0 a
+# breaking change bumps the minor and a feature or fix bumps the patch. With no tag yet, the
+# first version is the newest `## [x.y.z]` section of CHANGELOG.md.
+#
+# The changelog is the human gate: a releasable commit with no `## [x.y.z]` section for the
+# computed version FAILS this workflow instead of tagging a release nobody described. The
+# Registry needs a GPG-signed SHA256SUMS, so the run also refuses, before tagging, when the
+# signing secrets are missing. A tag that exists without a GitHub release (a run that failed
+# after tagging) is published on the next run instead of skipped. A tag pushed by hand is
+# published as it is.
 name: Release
+
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   push:
     tags: ["v*"]
+
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  goreleaser:
+  release:
+    name: Tag and publish
     runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
+    # A pull request from a fork whose branch is also named main fires workflow_run too, and
+    # this job checks that commit out and runs goreleaser (with the repository's own hooks) while
+    # the signing key is loaded: only a CI run of a push to this repository may release.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'push' && github.ref || github.event.workflow_run.head_sha }}
+
+      - name: Decide the version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = push ]; then
+            echo "next=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Hand-cut tag $REF_NAME."
+            exit 0
+          fi
+
+          last=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$last" ]; then
+            first=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '#[] ' || true)
+            if [ -z "$first" ]; then
+              echo "No tag and no ## [x.y.z] section in CHANGELOG.md: nothing to release."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            next="v$first"
+          else
+            subjects=$(git log --format=%s "$last"..HEAD)
+            bodies=$(git log --format=%b "$last"..HEAD)
+            level=none
+            if echo "$subjects" | grep -qE '^[a-z]+(\(.*\))?!:' || echo "$bodies" | grep -q 'BREAKING CHANGE'; then
+              level=breaking
+            elif echo "$subjects" | grep -qE '^feat(\(.*\))?:'; then
+              level=feature
+            elif echo "$subjects" | grep -qE '^fix(\(.*\))?:'; then
+              level=fix
+            fi
+            if [ "$level" = none ]; then
+              echo "Nothing releasable since $last."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            IFS=. read -r maj min pat <<< "${last#v}"
+            if [ "$maj" = 0 ]; then
+              case "$level" in
+                breaking) next="v0.$((min + 1)).0" ;;
+                *) next="v0.$min.$((pat + 1))" ;;
+              esac
+            else
+              case "$level" in
+                breaking) next="v$((maj + 1)).0.0" ;;
+                feature) next="v$maj.$((min + 1)).0" ;;
+                fix) next="v$maj.$min.$((pat + 1))" ;;
+              esac
+            fi
+          fi
+
+          if gh release view "$next" >/dev/null 2>&1; then
+            echo "$next is already published; nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! grep -q "^## \[${next#v}\]" CHANGELOG.md; then
+            echo "::error::The commits call for $next, but CHANGELOG.md has no ## [${next#v}]" \
+              "section. Write the entry (that IS the release decision) and push it; this" \
+              "workflow then tags and publishes it."
+            exit 1
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "Releasing $next."
+
+      - name: Refuse to tag without the signing key
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ] || [ -z "$PASSPHRASE" ]; then
+            echo "::error::The repository secrets GPG_PRIVATE_KEY and PASSPHRASE are not set." \
+              "The Terraform Registry only accepts a release whose SHA256SUMS is signed by a key" \
+              "registered for the namespace. Nothing was tagged."
+            exit 1
+          fi
+
+      - name: Extract the changelog section as release notes
+        if: steps.version.outputs.publish == 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          awk -v ver="${NEXT#v}" '
+            $0 == "## [" ver "]" {grab=1; next}
+            grab && /^## \[/ {exit}
+            grab {print}
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          test -s "$RUNNER_TEMP/notes.md"
+
+      - name: Tag
+        if: steps.version.outputs.publish == 'true' && github.event_name != 'push'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$NEXT" >/dev/null; then
+            echo "$NEXT is tagged but not published (an earlier run stopped after tagging); publishing it."
+            git checkout -q "$NEXT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$NEXT" -m "$NEXT"
+            git push origin "refs/tags/$NEXT"
+          fi
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.version.outputs.publish == 'true'
         with:
           go-version-file: go.mod
+
       - name: Import the signing key
+        if: steps.version.outputs.publish == 'true'
         id: gpg
         uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.PASSPHRASE }}
+
       # --detach-sign without --armor writes the binary signature the Registry requires.
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        if: steps.version.outputs.publish == 'true'
         with:
-          args: release --clean
+          args: release --clean --release-notes ${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}

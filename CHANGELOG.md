@@ -1,6 +1,6 @@
-## Unreleased
+## [0.1.0]
 
-The first version, not yet published to a registry.
+The first version published to the Terraform Registry.
 
 FEATURES:
 
