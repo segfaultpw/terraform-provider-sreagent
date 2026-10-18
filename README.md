@@ -28,7 +28,8 @@ The provider is not published to a registry yet. The documentation lives in [doc
 The provider talks to the platform's configuration API (`/api/v1/config`), the same door the app's MCP tools use.
 One generic resource and data source (`internal/engine`) read a declarative spec per API resource
 (`internal/specs`). `internal/contract` holds every spec to the API's OpenAPI document, vendored from
-sre-agent's committed snapshot; a daily job fails when production's document differs from it.
+sre-agent's committed snapshot; a daily job compares production's document with it by shape (a reworded
+description is not drift) and re-vendors it when anything differs, failing only when the tests do not pass against it.
 
 ## Development
 
