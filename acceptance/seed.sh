@@ -3,11 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export SREAGENT_IMAGE_TAG="${SREAGENT_IMAGE_TAG:-$(cat IMAGE)}"
-export SECRET_KEY_BASE="$(openssl rand -base64 64 | tr -d '\n')"
-export CLOAK_KEY="$(openssl rand -base64 32)"
-docker compose up -d db
-docker compose run --rm app bin/sre_agent eval 'SreData.Release.migrate()'
-docker compose up -d app
+SECRET_KEY_BASE="$(openssl rand -base64 64 | tr -d '\n')"
+CLOAK_KEY="$(openssl rand -base64 32)"
+export SECRET_KEY_BASE CLOAK_KEY
+# Only the env lines below may reach stdout: the caller appends stdout to $GITHUB_ENV, so the
+# stack's own output (migration log lines) goes to stderr.
+docker compose up -d db >&2
+docker compose run --rm app bin/sre_agent eval 'SreData.Release.migrate()' >&2
+docker compose up -d app >&2
 healthy=false
 for _ in $(seq 1 60); do
   if curl -sf http://127.0.0.1:4000/api/health >/dev/null; then healthy=true; break; fi
