@@ -2426,7 +2426,7 @@
         "summary": "List ai_providers"
       },
       "post": {
-        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing. Needs the plan's bring-your-own-provider feature.",
+        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting. Needs the plan's bring-your-own-provider feature.",
         "operationId": "create_ai_provider",
         "parameters": [],
         "requestBody": {
@@ -2470,7 +2470,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
                     "type": "object"
                   },
                   "name": {
@@ -2663,7 +2663,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
                     "type": "object"
                   },
                   "name": {
