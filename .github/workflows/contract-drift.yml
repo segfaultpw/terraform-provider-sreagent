@@ -1,23 +1,117 @@
+# Keeps internal/contract/openapi.json equal to the live API document.
+#
+# The drift tool compares the contract's shape (paths, methods, parameters, schemas, properties,
+# types, enums, required lists, formats, defaults), not its prose, so a reworded description is not
+# a failure. When the live document differs at all, the tool writes it over the vendored copy, the
+# job runs the whole test suite, and a green run commits `chore(contract): re-vendor the live API
+# contract` straight to main with the workflow token. A `chore` subject never cuts a release
+# (release.yml), and a push made with GITHUB_TOKEN starts no workflow, so the commit cannot start
+# this job again; if it did, the document would be current and nothing would be committed.
+#
+# A red run is therefore always real work: the job fails only when the document could not be
+# fetched or compared, or when the tests fail against the new contract (for example
+# TestEveryContractResourceHasASpec after the platform added a resource the provider does not
+# have). The failing tests are named in the run summary. Nothing is committed in that case.
+#
+# Only `schedule` and `push` trigger it: never a pull request, so a fork never reaches the key or
+# the write permission.
 name: Contract drift
 on:
   schedule:
     - cron: "17 6 * * *"
   push:
     branches: [main]
+# Write access is for this workflow only; every other workflow keeps contents: read.
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: contract-drift
+  cancel-in-progress: false
 jobs:
   drift:
     runs-on: ${{ vars.RUNNER_X64 || 'blacksmith-4vcpu-ubuntu-2404' }}
-    timeout-minutes: 10
+    timeout-minutes: 20
+    # A commit this job pushed starts nothing, but a run that does arrive for one has nothing to do.
+    if: github.actor != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
       # The document needs an API key now (it is not served to the public).
       # SRE_AGENT_API_KEY is a repository secret: a read-only key (`api:read`)
-      # from an organization on the platform.
-      - run: go run ./internal/contract/cmd/drift https://sreagent.app/api/openapi.json internal/contract/openapi.json
+      # from an organization on the platform. The tool prints the key's public
+      # prefix at most, never the key.
+      - name: Compare the live contract and write it over the vendored copy
+        id: compare
         env:
           SRE_AGENT_API_KEY: ${{ secrets.SRE_AGENT_API_KEY }}
+        run: |
+          set -uo pipefail
+          code=0
+          out=$(go run ./internal/contract/cmd/drift -write https://sreagent.app/api/openapi.json internal/contract/openapi.json 2>&1) || code=$?
+          echo "$out"
+          if [ "$code" -ge 2 ]; then
+            echo "::error::The live contract could not be compared: $out"
+            {
+              echo "### Contract drift: could not compare"
+              echo
+              echo "$out"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if git diff --quiet -- internal/contract/openapi.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "### Contract drift: current" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "shape_drift=$([ "$code" = 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Test the provider against the new contract
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          set -uo pipefail
+          go test ./... 2>&1 | tee "$RUNNER_TEMP/test.log"
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            failed=$(grep -E '^(--- FAIL|FAIL)' "$RUNNER_TEMP/test.log" | sort -u || true)
+            {
+              echo "### Contract drift: the tests fail against the live contract"
+              echo
+              echo "The live document was not committed. A test that names a resource, field or"
+              echo "type the provider lacks (for example \`TestEveryContractResourceHasASpec\`)"
+              echo "means the platform changed its contract and the provider needs the matching work."
+              echo
+              echo '```'
+              echo "$failed"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::go test fails against the live contract: $(echo "$failed" | tr '\n' ' ')"
+            exit 1
+          fi
+
+      - name: Commit the re-vendored contract
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          SHAPE_DRIFT: ${{ steps.compare.outputs.shape_drift }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$SHAPE_DRIFT" = true ]; then
+            kind="the contract's shape changed"
+          else
+            kind="descriptions only"
+          fi
+          git add internal/contract/openapi.json
+          git commit -m "chore(contract): re-vendor the live API contract" \
+            -m "Fetched from https://sreagent.app/api/openapi.json by the Contract drift workflow ($kind); go test ./... passed."
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "### Contract drift: re-vendored ($kind)" >> "$GITHUB_STEP_SUMMARY"
