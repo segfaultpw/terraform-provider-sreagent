@@ -72,6 +72,12 @@ type Attr struct {
 	// RefusedWhy; both are checked at plan, where the configuration says so.
 	RefusedWith string
 	RefusedWhy  string
+	// DroppedWhenAttr and DroppedWhenValue: for a Secret, the platform discards
+	// the stored secret when the string attribute DroppedWhenAttr (an API name)
+	// is DroppedWhenValue, whatever the configuration sends, so the plan says
+	// the secret is no longer set instead of keeping the prior state's true.
+	DroppedWhenAttr  string
+	DroppedWhenValue string
 }
 
 // Attribute is the Terraform attribute name.
@@ -80,6 +86,31 @@ func (a Attr) Attribute() string {
 		return a.TFName
 	}
 	return a.Name
+}
+
+// Presence is how a configuration states one attribute.
+type Presence int
+
+// An attribute the configuration leaves out is Absent, one whose value is not
+// known until apply is Unknown, and one it sets is Present.
+const (
+	Absent Presence = iota
+	Unknown
+	Present
+)
+
+// Config is the configuration a Check judges. Names are the API's field names,
+// so a secret's write-only argument is read under the secret's own name.
+type Config interface {
+	String(name string) (string, Presence)
+}
+
+// Issue is one refusal a Check raises at plan, against the attribute named by
+// Attr (an API field name).
+type Issue struct {
+	Attr    string
+	Summary string
+	Detail  string
 }
 
 // Shape is how a row is addressed.
@@ -109,6 +140,11 @@ type Spec struct {
 	Upsert    bool
 	Attrs     []Attr
 	ListAttrs []Attr
+	// Checks refuse at plan what the platform refuses across attributes (a
+	// field required for one provider and refused for the others). A Check
+	// judges only what the configuration states: an Unknown value is never
+	// refused, since it could still turn out right.
+	Checks []func(Config) []Issue
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
 	// StartsEmpty: a singleton an organization has no row of until its first

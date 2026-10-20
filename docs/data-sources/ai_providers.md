@@ -45,5 +45,7 @@ Read-Only:
 - `priority` (Number) Routing order.
 - `provider_type` (String) The provider.
 - `rate_limit_rpm` (Number) Requests per minute.
+- `region` (String) Bedrock only, and required for it: the region the models are called in, such as us-east-1 (lowercase, one of the regions the platform supports). Refused for every other provider.
+- `role_arn` (String) Bedrock only, and required for it: the ARN of the IAM role in your own AWS account that SRE Agent assumes to call Bedrock. Its trust policy allows the principal and the ExternalId from data.sreagent_aws_external_id. Not a secret. Refused for every other provider.
 - `temperature` (Number) Sampling temperature; a new provider starts at 0.7.
 - `timeout_ms` (Number) Request timeout; a new provider starts at 60000.

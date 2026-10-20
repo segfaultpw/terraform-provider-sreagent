@@ -134,6 +134,7 @@ func TestAccResources(t *testing.T) {
 		{name: "service_binding", typeName: "service_binding", key: "service_bindings", create: "service = \"Acc-Checkout\"\nlog_groups = [\"/aws/lambda/acc\"]", update: "service = \"Acc-Checkout\"\nlog_groups = [\"/aws/lambda/acc\", \"/aws/ecs/acc\"]\nlog_inline_fields = [\"trace_id\"]", importIgnore: []string{"service"}},
 		{name: "status_page_component", typeName: "status_page_component", key: "status_page_components", create: "display_name = \"Acc API\"", update: "display_name = \"Acc Public API\""},
 		{name: "ai_provider", typeName: "ai_provider", key: "ai_providers", create: "name = \"acc-main\"\nprovider_type = \"anthropic\"\nmodel = \"claude-sonnet-5\"\napi_key_wo = \"sk-ant-acc-0000\"\napi_key_wo_version = 1", update: "name = \"acc-main\"\nprovider_type = \"anthropic\"\nmodel = \"claude-opus-5\"\napi_key_wo = \"sk-ant-acc-0000\"\napi_key_wo_version = 1", importIgnore: []string{"api_key_wo_version"}},
+		{name: "ai_provider_bedrock", typeName: "ai_provider", key: "ai_providers", create: "name = \"acc-bedrock\"\nprovider_type = \"bedrock\"\nrole_arn = \"arn:aws:iam::123456789012:role/acc-sre-agent-bedrock\"\nregion = \"us-east-1\"", update: "name = \"acc-bedrock\"\nprovider_type = \"bedrock\"\nrole_arn = \"arn:aws:iam::123456789012:role/acc-sre-agent-bedrock\"\nregion = \"eu-west-1\""},
 		{name: "ticket_integration", typeName: "ticket_integration", key: "ticket_integrations", create: "provider_type = \"jira\"\nbase_url = \"https://acme.atlassian.net\"\naccount_email = \"ops@example.com\"\napi_token_wo = \"tok-acc-0000\"\napi_token_wo_version = 1", update: "provider_type = \"jira\"\nbase_url = \"https://acme.atlassian.net\"\naccount_email = \"sre@example.com\"\napi_token_wo = \"tok-acc-0000\"\napi_token_wo_version = 1", importIgnore: []string{"api_token_wo_version"}},
 		{name: "image_target", typeName: "image_target", key: "image_targets", create: "image_ref = \"nginx:1.27\"", update: "image_ref = \"nginx:1.27\""},
 		{name: "ticket_import_rule", typeName: "ticket_import_rule", key: "ticket_import_rules", prelude: "resource \"sreagent_ticket_integration\" \"jira\" {\n  provider_type = \"jira\"\n  base_url = \"https://acme.atlassian.net\"\n  account_email = \"ops@example.com\"\n  api_token_wo = \"tok-acc-0000\"\n  api_token_wo_version = 1\n}\n", create: "provider_type = sreagent_ticket_integration.jira.provider_type\nenabled = false\nconfig = jsonencode({ project = \"OPS\" })", update: "provider_type = sreagent_ticket_integration.jira.provider_type\nenabled = true\nconfig = jsonencode({ project = \"OPS\" })"},
@@ -175,6 +176,38 @@ func TestAccServiceBindingInlineFieldsEmptyListAndRemoval(t *testing.T) {
 			{Config: accBinding("acc-inline", "  log_inline_fields = []\n"), Check: resource.TestCheckResourceAttr(addr, "log_inline_fields.#", "0")},
 			{Config: accBinding("acc-inline", "  log_inline_fields = [\"trace_id\"]\n"), Check: resource.TestCheckResourceAttr(addr, "log_inline_fields.#", "1")},
 			{Config: accBinding("acc-inline", ""), Check: resource.TestCheckNoResourceAttr(addr, "log_inline_fields.#")},
+		},
+	})
+}
+
+func accAIProvider(body string) string {
+	return accProvider() + "resource \"sreagent_ai_provider\" \"test\" {\n  name = \"acc-switch\"\n" + body + "}\n"
+}
+
+// A row moved between a keyed provider and Bedrock: the platform clears the
+// role and region on the way out, and discards the key on the way in, and the
+// plan says so before the apply.
+func TestAccAIProviderSwitchesBetweenKeyedAndBedrock(t *testing.T) {
+	accPreCheck(t)
+	addr := "sreagent_ai_provider.test"
+	keyed := accAIProvider("  provider_type = \"anthropic\"\n  api_key_wo = \"sk-ant-acc-0000\"\n  api_key_wo_version = 1\n")
+	bedrock := accAIProvider("  provider_type = \"bedrock\"\n  role_arn = \"arn:aws:iam::123456789012:role/acc-sre-agent-bedrock\"\n  region = \"us-east-1\"\n")
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{Config: keyed, Check: resource.TestCheckResourceAttr(addr, "api_key_set", "true")},
+			{Config: bedrock, Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(addr, "api_key_set", "false"),
+				resource.TestCheckResourceAttr(addr, "region", "us-east-1"),
+			)},
+			{Config: bedrock, PlanOnly: true},
+			{Config: keyed, Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(addr, "api_key_set", "true"),
+				resource.TestCheckNoResourceAttr(addr, "role_arn"),
+				resource.TestCheckNoResourceAttr(addr, "region"),
+			)},
+			{Config: keyed, PlanOnly: true},
 		},
 	})
 }

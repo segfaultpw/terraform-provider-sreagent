@@ -79,6 +79,18 @@
               "null"
             ]
           },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role_arn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "temperature": {
             "type": [
               "number",
@@ -108,6 +120,8 @@
           "temperature",
           "timeout_ms",
           "rate_limit_rpm",
+          "role_arn",
+          "region",
           "api_key_set",
           "id",
           "inherited_from",
@@ -2435,7 +2449,7 @@
               "schema": {
                 "properties": {
                   "api_key": {
-                    "description": "The provider's key. Write-only: it is never answered by any tool here, an omitted one keeps the stored key, and an empty one is refused rather than read as a way to remove it. To remove it, delete the provider. Paste the key itself; a URL goes in base_url and is refused here.",
+                    "description": "The provider's key. Write-only: it is never answered by any tool here, an omitted one keeps the stored key, and an empty one is refused rather than read as a way to remove it. To remove it, delete the provider. Paste the key itself; a URL goes in base_url and is refused here. Not for bedrock, which has no key and is refused one: it takes role_arn and region.",
                     "format": "password",
                     "type": "string",
                     "writeOnly": true
@@ -2499,6 +2513,20 @@
                     "description": "Requests per minute this provider will accept. null means no limit.",
                     "type": [
                       "integer",
+                      "null"
+                    ]
+                  },
+                  "region": {
+                    "description": "bedrock only, and required for it: the region the models are called in, such as us-east-1.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "role_arn": {
+                    "description": "bedrock only, and required for it: the ARN of the IAM role in your own AWS account that SRE Agent assumes to call Bedrock, such as arn:aws:iam::123456789012:role/sre-agent-bedrock. Its trust policy must allow the principal and the ExternalId get_aws_external_id answers. Not a secret.",
+                    "type": [
+                      "string",
                       "null"
                     ]
                   },
@@ -2628,7 +2656,7 @@
               "schema": {
                 "properties": {
                   "api_key": {
-                    "description": "The provider's key. Write-only: it is never answered by any tool here, an omitted one keeps the stored key, and an empty one is refused rather than read as a way to remove it. To remove it, delete the provider. Paste the key itself; a URL goes in base_url and is refused here.",
+                    "description": "The provider's key. Write-only: it is never answered by any tool here, an omitted one keeps the stored key, and an empty one is refused rather than read as a way to remove it. To remove it, delete the provider. Paste the key itself; a URL goes in base_url and is refused here. Not for bedrock, which has no key and is refused one: it takes role_arn and region.",
                     "format": "password",
                     "type": "string",
                     "writeOnly": true
@@ -2692,6 +2720,20 @@
                     "description": "Requests per minute this provider will accept. null means no limit.",
                     "type": [
                       "integer",
+                      "null"
+                    ]
+                  },
+                  "region": {
+                    "description": "bedrock only, and required for it: the region the models are called in, such as us-east-1.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "role_arn": {
+                    "description": "bedrock only, and required for it: the ARN of the IAM role in your own AWS account that SRE Agent assumes to call Bedrock, such as arn:aws:iam::123456789012:role/sre-agent-bedrock. Its trust policy must allow the principal and the ExternalId get_aws_external_id answers. Not a secret.",
+                    "type": [
+                      "string",
                       "null"
                     ]
                   },
@@ -8603,6 +8645,8 @@
         "priority",
         "provider",
         "rate_limit_rpm",
+        "region",
+        "role_arn",
         "temperature",
         "timeout_ms"
       ],
@@ -8618,7 +8662,9 @@
         "max_tokens",
         "temperature",
         "timeout_ms",
-        "rate_limit_rpm"
+        "rate_limit_rpm",
+        "role_arn",
+        "region"
       ],
       "id_args": [
         "id"
@@ -8653,6 +8699,8 @@
         "priority",
         "provider",
         "rate_limit_rpm",
+        "region",
+        "role_arn",
         "temperature",
         "timeout_ms"
       ],

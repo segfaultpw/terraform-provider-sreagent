@@ -92,10 +92,62 @@ func (r *facadeResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 	resp.Schema = schema.Schema{Description: r.spec.Description, Attributes: attrs}
 }
 
-// ValidateConfig refuses at plan a non-empty list the platform would refuse
-// beside another attribute (RefusedWith). Only a configuration that states both
-// is judged: an unknown value could still turn out empty.
+// configView reads the configuration being validated by API field name.
+type configView struct {
+	ctx   context.Context
+	cfg   tfsdk.Config
+	attrs []Attr
+	diags *diag.Diagnostics
+}
+
+func (c configView) path(name string) (path.Path, bool) {
+	for _, a := range c.attrs {
+		if a.Name != name {
+			continue
+		}
+		if a.Secret {
+			return path.Root(a.Attribute() + "_wo"), true
+		}
+		if a.Kind != String {
+			return path.Path{}, false
+		}
+		return path.Root(a.Attribute()), true
+	}
+	return path.Path{}, false
+}
+
+func (c configView) String(name string) (string, Presence) {
+	p, ok := c.path(name)
+	if !ok {
+		c.diags.AddError("Provider bug", fmt.Sprintf("a configuration check names %q, which is not a string attribute of the resource", name))
+		return "", Absent
+	}
+	var v types.String
+	c.diags.Append(c.cfg.GetAttribute(c.ctx, p, &v)...)
+	switch {
+	case v.IsUnknown():
+		return "", Unknown
+	case v.IsNull():
+		return "", Absent
+	}
+	return v.ValueString(), Present
+}
+
+// ValidateConfig runs the spec's Checks, then refuses at plan a non-empty list
+// the platform would refuse beside another attribute (RefusedWith). Only a
+// configuration that states both is judged: an unknown value could still turn
+// out empty.
 func (r *facadeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	view := configView{ctx: ctx, cfg: req.Config, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+	for _, check := range r.spec.Checks {
+		for _, issue := range check(view) {
+			if p, ok := view.path(issue.Attr); ok {
+				resp.Diagnostics.AddAttributeError(p, issue.Summary, issue.Detail)
+			} else {
+				resp.Diagnostics.AddError(issue.Summary, issue.Detail)
+			}
+		}
+	}
 	for _, a := range r.spec.Attrs {
 		if a.RefusedWith == "" {
 			continue
@@ -443,6 +495,25 @@ func (r *facadeResource) clearing(ctx context.Context, a Attr, config, plan, sta
 	return wo.IsNull() && planned.IsNull() && !prior.IsNull() && !prior.IsUnknown() && !r.lost(ctx, state, n), diags
 }
 
+// discarded reports that the plan puts the row where the platform discards the
+// secret a (DroppedWhenAttr is DroppedWhenValue), so no send can keep it.
+func (r *facadeResource) discarded(ctx context.Context, a Attr, plan tfsdk.Plan) bool {
+	if a.DroppedWhenAttr == "" {
+		return false
+	}
+	for _, o := range r.spec.Attrs {
+		if o.Name != a.DroppedWhenAttr {
+			continue
+		}
+		var v types.String
+		if plan.GetAttribute(ctx, path.Root(o.Attribute()), &v).HasError() {
+			return false
+		}
+		return !v.IsNull() && !v.IsUnknown() && v.ValueString() == a.DroppedWhenValue
+	}
+	return false
+}
+
 // lost reports state saying the platform holds no value for the secret n.
 func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) bool {
 	var set types.Bool
@@ -465,6 +536,10 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 			continue
 		}
 		n := a.Attribute()
+		if r.discarded(ctx, a, req.Plan) {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(n+"_set"), types.BoolValue(false))...)
+			continue
+		}
 		dropped, d := r.clearing(ctx, a, req.Config, req.Plan, req.State)
 		resp.Diagnostics.Append(d...)
 		if dropped {

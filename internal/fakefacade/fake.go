@@ -391,6 +391,7 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 			setHost(spec, row, a, body[a.Name])
 		}
 	}
+	discardSecrets(spec, row)
 	if spec.Shape == engine.Generated {
 		f.nextID++
 		row["id"] = fmt.Sprintf("00000000-0000-0000-0000-%012d", f.nextID)
@@ -480,5 +481,16 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		}
 		row[k] = v
 	}
+	discardSecrets(spec, row)
 	reply(w, 200, wrap(row), f.tag(spec, row))
+}
+
+// discardSecrets drops a stored secret the platform discards for the row's
+// value of a discriminating field (engine.Attr.DroppedWhenAttr).
+func discardSecrets(spec engine.Spec, row map[string]any) {
+	for _, a := range spec.Attrs {
+		if a.Secret && a.DroppedWhenAttr != "" && row[a.DroppedWhenAttr] == a.DroppedWhenValue {
+			row[a.Name+"_set"] = false
+		}
+	}
 }
