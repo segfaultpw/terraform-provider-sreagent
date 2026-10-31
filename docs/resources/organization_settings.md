@@ -32,6 +32,7 @@ resource "sreagent_organization_settings" "this" {
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
+- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.
 - `investigation_paused` (Boolean) Pause automatic investigations.
 - `monthly_ai_budget_usd` (Number) The monthly AI budget.
@@ -39,6 +40,7 @@ resource "sreagent_organization_settings" "this" {
 
 ### Read-Only
 
+- `fix_request_floor` (String) Who may ask SRE Agent for a fix pull request, or to change one it opened: org_admin for org admins only, member for members too. Changed by an org admin in the app. One of: org_admin, member.
 - `id` (String) The row's identifier on the platform.
 - `restrict_domain_signups` (Boolean) Only allow sign-ups from the organization's domains. Changed by an admin in the app.
 - `social_joins_enabled` (Boolean) Allow joining through social sign-in. Changed by an admin in the app.

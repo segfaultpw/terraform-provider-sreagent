@@ -41,6 +41,10 @@ var OrganizationSettings = singleton("organization_settings", "The organization'
 	computed(b("social_joins_enabled", "Allow joining through social sign-in. Changed by an admin in the app.")),
 	computed(b("restrict_domain_signups", "Only allow sign-ups from the organization's domains. Changed by an admin in the app.")),
 	s("timezone", "An IANA time zone."),
+	// The platform lists fix_request_floor as terraform_read_only: only an
+	// org admin's own session changes it, so it is read here, never written.
+	computed(engine.Attr{Name: "fix_request_floor", Kind: engine.String, OneOf: []string{"org_admin", "member"}, Description: "Who may ask SRE Agent for a fix pull request, or to change one it opened: org_admin for org admins only, member for members too. Changed by an org admin in the app."}),
+	l("inheritance_stopped", "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app."),
 )
 
 // NotificationSettings mirrors x-sreagent-resources.notification_settings.

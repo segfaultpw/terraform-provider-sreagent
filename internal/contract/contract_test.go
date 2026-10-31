@@ -378,6 +378,21 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "social_joins_enabled" })
 			d.Resources["organization_settings"] = r
 		}},
+		{"fix_request_floor leaves terraform_read_only", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "fix_request_floor" })
+			d.Resources["organization_settings"] = r
+		}},
+		{"fix_request_floor gains an enum value", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["fix_request_floor"]["enum"] = []any{"org_admin", "member", "viewer"}
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"inheritance_stopped becomes terraform_read_only", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformReadOnly = append(slices.Clone(r.TerraformReadOnly), "inheritance_stopped")
+			d.Resources["organization_settings"] = r
+		}},
 		{"a null meaning changes", "ai_providers", func(d *Doc) {
 			r := d.Resources["ai_providers"]
 			r.NullMeans["temperature"] = 0.5
