@@ -42,6 +42,7 @@ Read-Only:
 - `match_severity` (String) Only alerts at this severity.
 - `match_source` (String) Only alerts from this source.
 - `name` (String) Unique within the organization.
+- `not_delivering` (String) Why a rule on a parent organization's target pages nothing: this organization stopped using the parent's paging targets. Null while the rule delivers.
 - `outbound_config_id` (String) The target this rule pages.
 - `outbound_config_name` (String) The target's name.
 - `step_order` (Number) This rule's step in an escalation chain; unset means 0, the first step.

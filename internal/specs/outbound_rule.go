@@ -18,6 +18,7 @@ var OutboundRule = engine.Spec{
 		{Name: "escalate_after_minutes", Kind: engine.Int, Clearable: true, Description: "Page only when the alert is still unacknowledged after this many minutes."},
 		{Name: "step_order", Kind: engine.Int, Clearable: true, NullMeans: "0", Description: "This rule's step in an escalation chain; unset means 0, the first step."},
 		{Name: "outbound_config_name", Kind: engine.String, Computed: true, Description: "The target's name."},
+		{Name: "not_delivering", Kind: engine.String, Computed: true, Description: "Why a rule on a parent organization's target pages nothing: this organization stopped using the parent's paging targets. Null while the rule delivers."},
 		{Name: "last_triggered_at", Kind: engine.String, Computed: true, Description: "When the rule last paged."},
 	},
 }

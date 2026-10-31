@@ -50,6 +50,7 @@ resource "sreagent_outbound_rule" "sev1" {
 
 - `id` (String) The row's identifier on the platform.
 - `last_triggered_at` (String) When the rule last paged.
+- `not_delivering` (String) Why a rule on a parent organization's target pages nothing: this organization stopped using the parent's paging targets. Null while the rule delivers.
 - `outbound_config_name` (String) The target's name.
 
 ## Import

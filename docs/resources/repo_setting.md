@@ -14,10 +14,16 @@ One repository branch mapping for fix requests. fix_runner is per repository: ev
 ```terraform
 # Needs the organization's GitHub App installed on the repository.
 resource "sreagent_repo_setting" "api_main" {
-  repo        = "acme/api"
-  branch      = "main"
-  service     = "api"
-  path_prefix = "services/api"
+  repo    = "acme/api"
+  branch  = "main"
+  service = "api"
+
+  # Several directories a fix may change; use path_prefix for exactly one.
+  path_prefixes = ["services/api/", "services/web/"]
+
+  # Open fix pull requests ready for review on this branch (leave it out to
+  # follow the GitHub installation's draft_prs setting).
+  draft_prs = false
 }
 ```
 
@@ -31,12 +37,17 @@ resource "sreagent_repo_setting" "api_main" {
 ### Optional
 
 - `alerting_sns_topic_arn` (String) An SNS topic alarms for this repository publish to.
+- `allow_ci_config` (Boolean) Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside the directories. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent; with this on, the repository's CI runs that change, with the repository's secrets, as soon as the branch is pushed and before anyone reviews the pull request.
 - `auto_dispatch` (Boolean) Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Defaults to true.
 - `branch` (String) The branch; omit for the all-branches row.
-- `ci_fallback_to_platform` (Boolean) With the opencode_ci runner, fall back to the SRE Agent runner once when no CI run starts within five minutes. Defaults to false.
+- `check_network` (Boolean) Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Turning it on is accepted only where the Integrations page offers it; turning it off always is.
+- `ci_fallback_to_platform` (Boolean) Stored and unused: the platform no longer reads it. Defaults to false.
+- `draft_prs` (Boolean) Whether a fix pull request for this row opens as a draft (true), ready for review (false), or as the GitHub installation's draft_prs setting says (unset, the default). A branch row that leaves it unset follows the repository's all-branches row. A change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft whatever this says.
 - `environment` (String) The environment this branch deploys to.
-- `fix_runner` (String) platform, opencode_ci or self_hosted.
-- `path_prefix` (String) Only paths under this prefix may be changed.
+- `fix_runner` (String) Who executes the repository's fix requests: platform (SRE Agent's own agent) or self_hosted (a runner on your own machine, which needs one registered for the organization). Applies to the whole repository, so every mapping of it must name the same runner.
+- `path_prefix` (String) One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; use path_prefixes for several, and set only one of the two.
+- `path_prefixes` (List of String) The directories a proposed fix may change, relative to the repository root, such as ["services/api/", "services/web/"], or ["."] for the whole repository. At most 20; no entry may sit inside another, start with a slash or contain "..". Sending it replaces the whole list; [] clears it, and the directories are then detected from the repository's layout the first time a fix runs. Set only one of path_prefix and path_prefixes.
+- `platform_fallback` (Boolean) Defaults to true: a request this repository's own runner could not finish may run on SRE Agent's own runner, so it still gets an answer. false keeps the repository's code on your machines and the request fails instead. Applies to the whole repository.
 - `service` (String) The service this repository deploys.
 - `writable_extensions` (List of String) File extensions a fix may write.
 

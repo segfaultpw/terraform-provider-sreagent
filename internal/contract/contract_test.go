@@ -410,6 +410,16 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r.ComputedFields["remote_locations_pending"] = "string"
 			d.Resources["request_signing"] = r
 		}},
+		{"the fence list's maxItems changes", "repo_settings", func(d *Doc) {
+			op := d.Paths["/repo_settings/{id}"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["path_prefixes"]["maxItems"] = float64(50)
+			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"draft_prs stops being nullable", "repo_settings", func(d *Doc) {
+			op := d.Paths["/repo_settings/{id}"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["draft_prs"]["type"] = "boolean"
+			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
 		{"a list's maxItems changes", "service_bindings", func(d *Doc) {
 			op := d.Paths["/service_bindings/{id}"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["log_inline_fields"]["maxItems"] = float64(5)

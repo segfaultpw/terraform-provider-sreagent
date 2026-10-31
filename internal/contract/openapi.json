@@ -768,6 +768,18 @@
               "null"
             ]
           },
+          "stopped_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stopped_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "webhook_secret_set": {
             "type": "boolean"
           }
@@ -787,6 +799,8 @@
           "installation_id",
           "repos",
           "repos_refreshed_at",
+          "stopped_from",
+          "stopped_note",
           "webhook_secret_set"
         ],
         "type": "object"
@@ -1243,6 +1257,12 @@
           "name": {
             "type": "string"
           },
+          "not_delivering": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "outbound_config_id": {
             "type": "string"
           },
@@ -1274,6 +1294,7 @@
           "step_order",
           "id",
           "last_triggered_at",
+          "not_delivering",
           "outbound_config_name",
           "updated_at"
         ],
@@ -1424,6 +1445,12 @@
               "null"
             ]
           },
+          "allow_ci_config": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "auto_dispatch": {
             "type": [
               "boolean",
@@ -1439,7 +1466,19 @@
           "branches": {
             "type": "array"
           },
+          "check_network": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "ci_fallback_to_platform": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "draft_prs": {
             "type": [
               "boolean",
               "null"
@@ -1463,6 +1502,21 @@
           "path_prefix": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "path_prefixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "platform_fallback": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -1491,11 +1545,16 @@
           "service",
           "environment",
           "path_prefix",
+          "path_prefixes",
+          "allow_ci_config",
           "writable_extensions",
           "alerting_sns_topic_arn",
           "fix_runner",
           "auto_dispatch",
           "ci_fallback_to_platform",
+          "platform_fallback",
+          "draft_prs",
+          "check_network",
           "branches",
           "id"
         ],
@@ -2468,7 +2527,7 @@
         "summary": "List ai_providers"
       },
       "post": {
-        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting. Needs the plan's bring-your-own-provider feature.",
+        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review. Needs the plan's bring-your-own-provider feature.",
         "operationId": "create_ai_provider",
         "parameters": [],
         "requestBody": {
@@ -2512,7 +2571,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose, except remediation_review (a fix's review of its own diff), which follows the remediation pin when empty and does not take \"auto\".",
                     "type": "object"
                   },
                   "name": {
@@ -2719,7 +2778,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose.",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose, except remediation_review (a fix's review of its own diff), which follows the remediation pin when empty and does not take \"auto\".",
                     "type": "object"
                   },
                   "name": {
@@ -5811,7 +5870,7 @@
     },
     "/repo_settings": {
       "get": {
-        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (path prefix and writable extensions). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, \"opencode_ci\", your own CI (this organization's GitHub Actions runners), or \"self_hosted\", your own machine. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that the repository's workflow is set up for your own CI before saving \"opencode_ci\". A repository with no settings is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; ci_fallback_to_platform true means a request its CI never starts goes to SRE Agent's own agent after 5 minutes.",
+        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (directories and writable extensions, and allow_ci_config, which says whether fixes may change CI configuration inside those directories). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, or \"self_hosted\", your own machine. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that a runner is registered for your organization before saving \"self_hosted\". A repository with no settings is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; platform_fallback true (the default) means a request the repository's own runner could not finish may run on SRE Agent's own runner; false keeps the code on your machines and the request fails instead. Each branch row also reports check_network, whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified; off unless an admin turned it on. It also reports draft_prs, whether a fix pull request for that row opens as a draft (true), ready for review (false), or by the installation's setting (null, the default). ci_fallback_to_platform is stored and has no effect today: nothing reads it.",
         "operationId": "list_repo_settings",
         "parameters": [],
         "responses": {
@@ -5855,29 +5914,56 @@
                     "description": "The SNS topic ARN an \"Alarm on this\" pull request for this repository should name in a generated alarm's alarm_actions, when one already exists for this repository's AWS account and region. Left unset, that pull request creates its own topic and subscription the first time and reuses it (by name) after that.",
                     "type": "string"
                   },
+                  "allow_ci_config": {
+                    "description": "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside path_prefixes. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent, and CI files are never pushed onto a pull request whose auto-merge is on. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
+                    "type": "boolean"
+                  },
                   "auto_dispatch": {
-                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
+                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository.",
                     "type": "boolean"
                   },
                   "branch": {
                     "description": "The branch this row applies to. Leave it out (or send null) for the all-branches row, which is what a repository with one fence wants.",
                     "type": "string"
                   },
-                  "ci_fallback_to_platform": {
-                    "description": "For a repository on \"opencode_ci\": when no CI run starts within 5 minutes of the handover, send the same request to SRE Agent's own agent once, instead of failing it. false (the default) fails it, naming the likely causes. Applies to the whole repository.",
+                  "check_network": {
+                    "description": "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default: setup commands always reach those hosts to install dependencies, and every command after setup reaches no network. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Applies to the row it is sent for. Turning it on is accepted only where the Integrations page offers it (code improvement on your plan and check sessions running on the platform); turning it off always is.",
                     "type": "boolean"
+                  },
+                  "ci_fallback_to_platform": {
+                    "description": "Stored and unused: this setting has no effect today, and no fix request reads it. false is the default. Applies to the whole repository.",
+                    "type": "boolean"
+                  },
+                  "draft_prs": {
+                    "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the default) as the installation's draft_prs setting says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   },
                   "environment": {
                     "description": "The environment this row describes, e.g. production. Optional.",
                     "type": "string"
                   },
                   "fix_runner": {
-                    "description": "Who executes this repository's fix requests: platform, opencode_ci, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"opencode_ci\" runs in your own CI. Included in the Business and Enterprise plans. It needs a workflow in the repository referencing the published package segfaultpw/sre-agent-opencode. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
+                    "description": "Who executes this repository's fix requests: platform, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
                     "type": "string"
                   },
                   "path_prefix": {
-                    "description": "The one directory a proposed fix may write in, e.g. \"terraform/\", or \".\" for the whole repository. Left out, it is detected from the repository's layout the first time a fix runs and recorded here. A leading slash matches nothing, and .github/ is never writable whatever this says.",
+                    "description": "One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; read path_prefixes for the full list.",
                     "type": "string"
+                  },
+                  "path_prefixes": {
+                    "description": "The directories a proposed fix may change in this repository, relative to its root, for example [\"services/api/\", \"services/web/\"], or [\".\"] for the whole repository. At most 20. No entry may sit inside another, start with a slash or contain ..; CI configuration paths need allow_ci_config. Sending it replaces the whole list; [] clears it, and the directories are then detected from the repository's layout the first time a fix runs. Send path_prefixes or path_prefix, not both.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 20,
+                    "type": "array"
+                  },
+                  "platform_fallback": {
+                    "description": "true (the default) lets a request that this repository's own runner could not finish run on SRE Agent's own runner, so the request still gets an answer. false means the repository's code never runs on SRE Agent's own runner: the request waits for your runner and fails with a plain sentence when that runner is not registered, is switched off, or could not finish it. Applies to the whole repository.",
+                    "type": "boolean"
                   },
                   "repo": {
                     "description": "The repository as owner/name (acme/api). It must be one this organization's GitHub App installation reaches.",
@@ -6008,29 +6094,56 @@
                     "description": "The SNS topic ARN an \"Alarm on this\" pull request for this repository should name in a generated alarm's alarm_actions, when one already exists for this repository's AWS account and region. Left unset, that pull request creates its own topic and subscription the first time and reuses it (by name) after that.",
                     "type": "string"
                   },
+                  "allow_ci_config": {
+                    "description": "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside path_prefixes. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent, and CI files are never pushed onto a pull request whose auto-merge is on. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
+                    "type": "boolean"
+                  },
                   "auto_dispatch": {
-                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Applies to the whole repository.",
+                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository.",
                     "type": "boolean"
                   },
                   "branch": {
                     "description": "The branch this row applies to. Leave it out (or send null) for the all-branches row, which is what a repository with one fence wants.",
                     "type": "string"
                   },
-                  "ci_fallback_to_platform": {
-                    "description": "For a repository on \"opencode_ci\": when no CI run starts within 5 minutes of the handover, send the same request to SRE Agent's own agent once, instead of failing it. false (the default) fails it, naming the likely causes. Applies to the whole repository.",
+                  "check_network": {
+                    "description": "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default: setup commands always reach those hosts to install dependencies, and every command after setup reaches no network. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Applies to the row it is sent for. Turning it on is accepted only where the Integrations page offers it (code improvement on your plan and check sessions running on the platform); turning it off always is.",
                     "type": "boolean"
+                  },
+                  "ci_fallback_to_platform": {
+                    "description": "Stored and unused: this setting has no effect today, and no fix request reads it. false is the default. Applies to the whole repository.",
+                    "type": "boolean"
+                  },
+                  "draft_prs": {
+                    "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the default) as the installation's draft_prs setting says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   },
                   "environment": {
                     "description": "The environment this row describes, e.g. production. Optional.",
                     "type": "string"
                   },
                   "fix_runner": {
-                    "description": "Who executes this repository's fix requests: platform, opencode_ci, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"opencode_ci\" runs in your own CI. Included in the Business and Enterprise plans. It needs a workflow in the repository referencing the published package segfaultpw/sre-agent-opencode. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
+                    "description": "Who executes this repository's fix requests: platform, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
                     "type": "string"
                   },
                   "path_prefix": {
-                    "description": "The one directory a proposed fix may write in, e.g. \"terraform/\", or \".\" for the whole repository. Left out, it is detected from the repository's layout the first time a fix runs and recorded here. A leading slash matches nothing, and .github/ is never writable whatever this says.",
+                    "description": "One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; read path_prefixes for the full list.",
                     "type": "string"
+                  },
+                  "path_prefixes": {
+                    "description": "The directories a proposed fix may change in this repository, relative to its root, for example [\"services/api/\", \"services/web/\"], or [\".\"] for the whole repository. At most 20. No entry may sit inside another, start with a slash or contain ..; CI configuration paths need allow_ci_config. Sending it replaces the whole list; [] clears it, and the directories are then detected from the repository's layout the first time a fix runs. Send path_prefixes or path_prefix, not both.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 20,
+                    "type": "array"
+                  },
+                  "platform_fallback": {
+                    "description": "true (the default) lets a request that this repository's own runner could not finish run on SRE Agent's own runner, so the request still gets an answer. false means the repository's code never runs on SRE Agent's own runner: the request waits for your runner and fails with a plain sentence when that runner is not registered, is switched off, or could not finish it. Applies to the whole repository.",
+                    "type": "boolean"
                   },
                   "service": {
                     "description": "The alias SLIs, deploy events and fix requests may name this repository by. Optional: with no alias the repository's short name is used.",
@@ -9214,6 +9327,14 @@
           "string",
           "null"
         ],
+        "stopped_from": [
+          "string",
+          "null"
+        ],
+        "stopped_note": [
+          "string",
+          "null"
+        ],
         "webhook_secret_set": "boolean"
       },
       "create_fields": [],
@@ -9480,6 +9601,10 @@
           "string",
           "null"
         ],
+        "not_delivering": [
+          "string",
+          "null"
+        ],
         "outbound_config_name": [
           "string",
           "null"
@@ -9637,12 +9762,17 @@
       },
       "create_fields": [
         "alerting_sns_topic_arn",
+        "allow_ci_config",
         "auto_dispatch",
         "branch",
+        "check_network",
         "ci_fallback_to_platform",
+        "draft_prs",
         "environment",
         "fix_runner",
         "path_prefix",
+        "path_prefixes",
+        "platform_fallback",
         "repo",
         "service",
         "writable_extensions"
@@ -9653,11 +9783,16 @@
         "service",
         "environment",
         "path_prefix",
+        "path_prefixes",
+        "allow_ci_config",
         "writable_extensions",
         "alerting_sns_topic_arn",
         "fix_runner",
         "auto_dispatch",
-        "ci_fallback_to_platform"
+        "ci_fallback_to_platform",
+        "platform_fallback",
+        "draft_prs",
+        "check_network"
       ],
       "id_args": [
         "id"
@@ -9674,12 +9809,17 @@
       "terraform_type": "repo_setting",
       "update_fields": [
         "alerting_sns_topic_arn",
+        "allow_ci_config",
         "auto_dispatch",
         "branch",
+        "check_network",
         "ci_fallback_to_platform",
+        "draft_prs",
         "environment",
         "fix_runner",
         "path_prefix",
+        "path_prefixes",
+        "platform_fallback",
         "service",
         "writable_extensions"
       ],

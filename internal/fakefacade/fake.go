@@ -200,7 +200,7 @@ func zero(a engine.Attr) any {
 		return 0
 	case engine.Bool:
 		// Every enabled column on the platform defaults to true.
-		return a.Name == "enabled"
+		return a.Name == "enabled" || a.Name == "platform_fallback"
 	case engine.StringList:
 		return []any{}
 	case engine.JSON:
@@ -366,6 +366,10 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 			return
 		}
 	}
+	if msg := bothFences(spec, body); msg != "" {
+		fail(w, 422, "unprocessable_entity", msg)
+		return
+	}
 	for _, a := range spec.Attrs {
 		v, present := body[a.Name]
 		if a.Required && (!present || v == nil) {
@@ -392,6 +396,7 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		}
 	}
 	discardSecrets(spec, row)
+	mirrorFence(spec, row, body)
 	if spec.Shape == engine.Generated {
 		f.nextID++
 		row["id"] = fmt.Sprintf("00000000-0000-0000-0000-%012d", f.nextID)
@@ -462,6 +467,10 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 			return
 		}
 	}
+	if msg := bothFences(spec, body); msg != "" {
+		fail(w, 422, "unprocessable_entity", msg)
+		return
+	}
 	for k, v := range body {
 		a := byName[k]
 		if a.Secret {
@@ -482,7 +491,42 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		row[k] = v
 	}
 	discardSecrets(spec, row)
+	mirrorFence(spec, row, body)
 	reply(w, 200, wrap(row), f.tag(spec, row))
+}
+
+// bothFences is the platform's refusal of a repository write that names the
+// fence as one directory and as a list.
+func bothFences(spec engine.Spec, body map[string]any) string {
+	if spec.Key != "repo_settings" {
+		return ""
+	}
+	one, many := body["path_prefix"], body["path_prefixes"]
+	if one != nil && many != nil {
+		return "Send path_prefixes or path_prefix, not both."
+	}
+	return ""
+}
+
+// mirrorFence keeps path_prefix equal to the list the way the platform does:
+// writing one directory replaces the list with it, and path_prefix answers the
+// list's only entry, null for any other length.
+func mirrorFence(spec engine.Spec, row, body map[string]any) {
+	if spec.Key != "repo_settings" {
+		return
+	}
+	if one, ok := body["path_prefix"].(string); ok && one != "" {
+		row["path_prefixes"] = []any{one}
+		return
+	}
+	if _, ok := body["path_prefixes"]; !ok {
+		return
+	}
+	if list, ok := row["path_prefixes"].([]any); ok && len(list) == 1 {
+		row["path_prefix"] = list[0]
+		return
+	}
+	row["path_prefix"] = nil
 }
 
 // discardSecrets drops a stored secret the platform discards for the row's

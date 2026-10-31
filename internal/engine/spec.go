@@ -43,6 +43,11 @@ type Attr struct {
 	NullMeans string
 	// Computed: answered, never written.
 	Computed bool
+	// Recomputed: the platform derives this attribute from another one the
+	// same write can change (path_prefix from path_prefixes), so a prior value
+	// is not carried into a plan that changes the resource: it stays unknown
+	// until the answer, instead of keeping a value the write is about to move.
+	Recomputed bool
 	// Secret: exposed as <name>_wo, <name>_wo_version and <name>_set.
 	Secret bool
 	// NotRead: an action argument the server never answers; state keeps config.
@@ -103,6 +108,8 @@ const (
 // so a secret's write-only argument is read under the secret's own name.
 type Config interface {
 	String(name string) (string, Presence)
+	// List reports whether a list attribute is stated; an empty list is stated.
+	List(name string) Presence
 }
 
 // Issue is one refusal a Check raises at plan, against the attribute named by

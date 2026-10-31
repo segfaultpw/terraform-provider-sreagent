@@ -128,6 +128,8 @@ var GitHubSettings = singleton("github_settings", "The GitHub App installation's
 	computed(b("connected", "Whether an installation is connected.")),
 	computed(s("account", "The installation's account.")),
 	computed(i("installation_id", "The installation id.")),
+	computed(s("stopped_from", "The id of the parent organization whose GitHub App this organization stopped using, null when it has not stopped.")),
+	computed(s("stopped_note", "Why the installation reads as not connected after the organization stopped using its parent's GitHub App; null otherwise. A child organization changes this in the app (inheritance_stopped).")),
 )
 
 // StatusPageSettings mirrors x-sreagent-resources.status_page_settings.

@@ -39,6 +39,8 @@ resource "sreagent_github_settings" "this" {
 - `connected` (Boolean) Whether an installation is connected.
 - `id` (String) The row's identifier on the platform.
 - `installation_id` (Number) The installation id.
+- `stopped_from` (String) The id of the parent organization whose GitHub App this organization stopped using, null when it has not stopped.
+- `stopped_note` (String) Why the installation reads as not connected after the organization stopped using its parent's GitHub App; null otherwise. A child organization changes this in the app (inheritance_stopped).
 
 ## Import
 

@@ -133,6 +133,26 @@ func (c configView) String(name string) (string, Presence) {
 	return v.ValueString(), Present
 }
 
+// List reports whether the configuration states a list attribute.
+func (c configView) List(name string) Presence {
+	for _, a := range c.attrs {
+		if a.Name != name || a.Kind != StringList {
+			continue
+		}
+		var v types.List
+		c.diags.Append(c.cfg.GetAttribute(c.ctx, path.Root(a.Attribute()), &v)...)
+		switch {
+		case v.IsUnknown():
+			return Unknown
+		case v.IsNull():
+			return Absent
+		}
+		return Present
+	}
+	c.diags.AddError("Provider bug", fmt.Sprintf("a configuration check names %q, which is not a list attribute of the resource", name))
+	return Absent
+}
+
 // ValidateConfig runs the spec's Checks, then refuses at plan a non-empty list
 // the platform would refuse beside another attribute (RefusedWith). Only a
 // configuration that states both is judged: an unknown value could still turn
@@ -209,7 +229,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	// A NotRead argument is never answered, so the platform can never fill it:
 	// left out of the configuration it stays null rather than unknown.
 	computed := a.Computed || (!required && !clearable && !a.NotRead)
-	stable := computed && !a.Computed
+	stable := computed && !a.Computed && !a.Recomputed
 	switch a.Kind {
 	case String, JSON:
 		mods := []planmodifier.String{}

@@ -32,3 +32,5 @@ data "sreagent_github_settings" "this" {}
 - `link_comments_enabled` (Boolean) Comment links on linked issues.
 - `review_enabled` (Boolean) Review pull requests.
 - `review_severity_floor` (String) The lowest severity a review comments on.
+- `stopped_from` (String) The id of the parent organization whose GitHub App this organization stopped using, null when it has not stopped.
+- `stopped_note` (String) Why the installation reads as not connected after the organization stopped using its parent's GitHub App; null otherwise. A child organization changes this in the app (inheritance_stopped).
