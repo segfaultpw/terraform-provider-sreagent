@@ -1,3 +1,10 @@
+## [Unreleased]
+
+FEATURES:
+
+* `sreagent_organization_settings` and `data.sreagent_organization_settings` answer `fix_request_floor` (`org_admin` or `member`): who may ask SRE Agent for a fix pull request, or to change one it opened. It is read only: an org admin changes it in the app, the platform refuses it from an API key, so the provider reads it into state and never sends it, and a configuration that names it is refused at validate.
+* `sreagent_organization_settings` takes `inheritance_stopped`, the whole set of a parent organization's connections (`slack`, `github_installation`, `ai_providers`, `outbound_targets`, `ticket_integrations`) that a child organization does not use. It is sent only when configured, and the platform lists it as writable in its API document, but it refuses a change of the set from an API key (the same rule as the two sign-up policies), so a value that differs from the stored one fails the apply with the platform's sentence; naming the set as it already is passes. Both need a platform release that carries the fields, which is newer than v0.469.2; an older platform answers neither, so they read as null. The vendored API document is updated with both fields.
+
 ## [0.1.1]
 
 FEATURES:
