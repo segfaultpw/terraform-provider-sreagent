@@ -1186,12 +1186,19 @@
           },
           "updated_at": {
             "type": "string"
+          },
+          "card_events": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
           "name",
           "provider_type",
           "enabled",
+          "card_events",
           "priority",
           "slack_channel",
           "oncall_schedule_id",
@@ -5046,6 +5053,10 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "card_events": {
+                    "description": "Webhook targets only: also POST the organization's card approval events (card.approval_requested, card.approval_decided) here, signed and retried. Refused for any other provider.",
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -5222,6 +5233,10 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "card_events": {
+                    "description": "Webhook targets only: also POST the organization's card approval events (card.approval_requested, card.approval_decided) here, signed and retried. Refused for any other provider.",
+                    "type": "boolean"
                   }
                 },
                 "required": [],
@@ -9542,6 +9557,7 @@
       "create_fields": [
         "api_key",
         "base_url",
+        "card_events",
         "default_severity_mapping",
         "enabled",
         "name",
@@ -9555,6 +9571,7 @@
         "name",
         "provider_type",
         "enabled",
+        "card_events",
         "priority",
         "slack_channel",
         "oncall_schedule_id",
@@ -9582,6 +9599,7 @@
       "update_fields": [
         "api_key",
         "base_url",
+        "card_events",
         "default_severity_mapping",
         "enabled",
         "name",

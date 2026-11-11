@@ -36,6 +36,7 @@ Read-Only:
 - `api_key_set` (Boolean) Whether the platform holds a value for api_key.
 - `base_url_host` (String) Scheme, host and a non-default port of the URL, never its path or query. Null when no URL is saved.
 - `base_url_set` (Boolean) Whether the platform holds a value for base_url.
+- `card_events` (Boolean) Webhook targets only: also send the organization's card approval events here. Refused for any other provider_type.
 - `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}). Unset uses the built-in mapping.
 - `enabled` (Boolean) Whether the target receives pages.
 - `id` (String) The row's identifier on the platform.

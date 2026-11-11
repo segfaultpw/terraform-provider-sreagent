@@ -44,6 +44,7 @@ resource "sreagent_outbound_config" "pagerduty" {
 - `api_key_wo_version` (Number) Change this number to send api_key_wo again. Set it whenever api_key_wo is set.
 - `base_url_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The endpoint for a webhook or Grafana target; its path or query can carry a token. Never answered: a read answers base_url_set and base_url_host. Leaving base_url_wo out keeps the stored URL; removing base_url_wo and base_url_wo_version after it was set removes the URL. Write-only: never stored in state or plan.
 - `base_url_wo_version` (Number) Change this number to send base_url_wo again. Set it whenever base_url_wo is set.
+- `card_events` (Boolean) Webhook targets only: also send the organization's card approval events here. Refused for any other provider_type.
 - `default_severity_mapping` (String) Platform severity to provider severity, as jsonencode({...}). Unset uses the built-in mapping.
 - `enabled` (Boolean) Whether the target receives pages.
 - `oncall_schedule_id` (String) The schedule for an on-call target.

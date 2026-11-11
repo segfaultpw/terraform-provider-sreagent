@@ -1,3 +1,9 @@
+## [Unreleased]
+
+FEATURES:
+
+* `sreagent_outbound_config` takes `card_events` (webhook targets only): also send the organization's card approval events to the target. The platform refuses it for any other `provider_type`, and it is answered on `data.sreagent_outbound_configs`. Needs a platform release that carries it; the vendored API document is updated with the field.
+
 ## [0.1.2]
 
 FEATURES:
