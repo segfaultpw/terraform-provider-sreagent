@@ -25,7 +25,7 @@ resource "sreagent_notification_settings" "this" {
 ### Optional
 
 - `enabled` (Boolean) Send notification emails.
-- `muted_events` (List of String) Event types never emailed.
+- `muted_events` (List of String) Event types never emailed (for example security_digest, the weekly or daily security digest).
 - `notify_automation` (Boolean) Email on automation events.
 - `notify_incidents` (Boolean) Email on incidents.
 - `notify_security` (Boolean) Email on security events.

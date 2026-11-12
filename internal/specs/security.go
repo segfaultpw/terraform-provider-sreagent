@@ -1,0 +1,118 @@
+package specs
+
+import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
+
+// The security and code detection settings are read here and written in the
+// app, over MCP or the configuration API; the provider reads them as data
+// sources only. Every attribute is Computed, so a spec with a writable field in
+// the contract still declares it as an answer.
+
+// infrastructureRefusal is the plan gate of the security tools: the facade answers 403 with the
+// platform's sentence for an organization whose plan lacks the infrastructure suite.
+const infrastructureRefusal = "the organization's plan does not include the infrastructure suite (the platform answers 403)"
+
+// readSingleton is a data source for one row per organization that has the feature, so a
+// platform that answers 404 predates the resource. The security singletons are gated by the
+// infrastructure suite, which answers 403, never 404.
+func readSingleton(key, desc, minPlatform, refusedWhen string, attrs ...engine.Attr) engine.Spec {
+	return engine.Spec{Key: key, TypeName: key, ListName: key, Description: desc, Shape: engine.Singleton, AlwaysPresent: true, MinPlatform: minPlatform, RefusedWhen: refusedWhen, Attrs: attrs}
+}
+
+// CodeDetectionSettings is data.sreagent_code_detection_settings. Code improvement is not
+// every platform's or every organization's: the platform answers 404 when the feature is
+// not offered (no verifier configured, or the organization outside the rollout), and 404
+// again with its own sentence when the plan lacks code improvement or no verifier is set up.
+var CodeDetectionSettings = withAbsentWhen(readSingleton("code_detection_settings",
+	"The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app. Only organizations that are offered code improvement have these settings; the read is an error for the others.",
+	"v0.475.0 or later", "",
+	ro("weekly_enabled", engine.Bool, "Whether the weekly run is on."),
+	ro("scan_all", engine.Bool, "Whether a repository with no override is in scope."),
+	ro("run_day", engine.Int, "The day of the run, 0 (Sunday) to 6 (Saturday), UTC."),
+	ro("run_hour", engine.Int, "The hour of the run, 0 to 23, UTC."),
+	ro("default_classes", engine.StringList, "The static kinds the run looks for; empty means every kind."),
+	ro("open_ended_enabled", engine.Bool, "Whether the open-ended AI pass is on."),
+	ro("available_classes", engine.JSON, "Every static kind that can be named in default_classes."),
+	ro("jitter_minutes", engine.Int, "The organization's fixed offset from the run hour, in minutes."),
+	ro("manual_runs_today", engine.Int, "Runs a person started today."),
+	ro("updated_at", engine.String, "When the settings last changed."),
+),
+	"the platform does not offer code improvement (no verifier is configured), the organization is outside its rollout, "+
+		"its plan does not include code improvement, or code improvement is not set up for it (the platform answers 404 for each)")
+
+// withAbsentWhen names the conditions under which the platform answers 404 beside being older.
+func withAbsentWhen(s engine.Spec, absentWhen string) engine.Spec {
+	s.AbsentWhen = absentWhen
+	return s
+}
+
+// SecuritySLAPolicy is data.sreagent_security_sla_policy.
+var SecuritySLAPolicy = readSingleton("security_sla_policy",
+	"The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA.",
+	"v0.476.3 or later", infrastructureRefusal,
+	ro("critical_days", engine.Int, "Days for a critical finding, 1 to 365, or null for no SLA."),
+	ro("high_days", engine.Int, "Days for a high finding, or null."),
+	ro("medium_days", engine.Int, "Days for a medium finding, or null."),
+	ro("low_days", engine.Int, "Days for a low finding, or null."),
+	ro("info_days", engine.Int, "Days for an info finding, or null."),
+	ro("defaults", engine.Bool, "True while the organization has not saved a policy of its own and the platform's defaults apply."),
+	ro("updated_at", engine.String, "When the policy last changed."),
+)
+
+// SecurityDigestSettings is data.sreagent_security_digest_settings.
+var SecurityDigestSettings = readSingleton("security_digest_settings",
+	"The security digest: how often it is sent and where.",
+	"v0.476.4 or later", infrastructureRefusal,
+	ro("enabled", engine.Bool, "Whether the digest is sent."),
+	ro("cadence", engine.String, "daily or weekly."),
+	ro("weekday", engine.Int, "For a weekly digest, 1 (Monday) to 7 (Sunday)."),
+	ro("hour", engine.Int, "The hour, 0 to 23, in the organization's time zone."),
+	ro("slack_channel", engine.String, "The Slack channel, such as #security, or null for none."),
+	ro("email", engine.Bool, "Whether the digest is emailed."),
+	ro("timezone", engine.String, "The time zone the hour is read in."),
+	ro("last_sent_at", engine.String, "When the last digest was sent."),
+	ro("last_sent_period", engine.String, "The period the last digest covered."),
+)
+
+// SecurityCodeClasses is data.sreagent_security_code_classes.
+var SecurityCodeClasses = readSingleton("security_code_classes",
+	"The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes.",
+	"v0.476.6 or later", infrastructureRefusal,
+	ro("classes", engine.StringList, "The marked classes; the built-in classes always count and are not listed."),
+	ro("available_classes", engine.JSON, "The classes that can be marked."),
+	ro("built_in_classes", engine.JSON, "The classes that always count as security findings."),
+	ro("limit", engine.Int, "The most classes that can be marked."),
+)
+
+// SecurityNotificationRules is data.sreagent_security_notification_rules.
+var SecurityNotificationRules = engine.Spec{
+	Key: "security_notification_rules", TypeName: "security_notification_rule", ListName: "security_notification_rules",
+	Description: "The rules that decide which security findings notify whom. Read only here.",
+	Shape:       engine.Generated,
+	Attrs: []engine.Attr{
+		ro("name", engine.String, "The rule's name, unique in the organization."),
+		ro("enabled", engine.Bool, "Whether the rule is on."),
+		ro("areas", engine.StringList, "The areas the rule covers; empty means every area."),
+		ro("min_severity", engine.String, "The lowest severity that matches."),
+		ro("events", engine.StringList, "The events that notify: new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified."),
+		ro("slack", engine.Bool, "Whether the rule posts to Slack."),
+		ro("slack_channel", engine.String, "The Slack channel, or null for the default channels."),
+		ro("email", engine.Bool, "Whether the rule emails."),
+		ro("page", engine.Bool, "Whether the rule pages on call (critical findings only)."),
+		ro("updated_at", engine.String, "When the rule last changed."),
+	},
+}
+
+// SecretAllowRules is data.sreagent_secret_allow_rules.
+var SecretAllowRules = engine.Spec{
+	Key: "secret_allow_rules", TypeName: "secret_allow_rule", ListName: "secret_allow_rules",
+	Description: "The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector. Read only here.",
+	Shape:       engine.Generated,
+	Attrs: []engine.Attr{
+		ro("path_glob", engine.String, "The paths the rule covers (** matches any run of characters including /, * any run without /, ? one character)."),
+		ro("reason", engine.String, "Why the match is not a credential."),
+		ro("repository", engine.String, "owner/name, or null for every repository."),
+		ro("detector_type", engine.String, "A detector type, or null for every kind."),
+		ro("expires_at", engine.String, "When the rule ends, or null for never."),
+		ro("created_at", engine.String, "When the rule was added."),
+	},
+}

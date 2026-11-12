@@ -83,6 +83,34 @@ type Attr struct {
 	// the secret is no longer set instead of keeping the prior state's true.
 	DroppedWhenAttr  string
 	DroppedWhenValue string
+	// WriteOnly: a list action argument the API never answers. It is read from
+	// the configuration, never held in plan or state, and sent only when the
+	// resource decides to (Spec.FollowsDefault), so it can never be a diff by
+	// itself and an import has nothing to plan for it. Its OneOf bounds the
+	// items.
+	WriteOnly bool
+	// Complement: Computed. The members of this list that the answered list
+	// named Name does not hold, in this list's order; null when the API answers
+	// no such list.
+	Complement []string
+	// NullUnlessIn: for a Clearable attribute whose answer is the value in force
+	// rather than the value the row holds. When the answered list named here does
+	// not hold this attribute's name and the prior value is null, the attribute
+	// stays null: the row follows a default, and a configuration that leaves the
+	// attribute out is satisfied by it.
+	NullUnlessIn string
+	// IgnoredValues: entries of a list that the platform keeps through every
+	// write of this attribute. A read drops them and a write never sends them,
+	// and a configuration that names one is refused at validate with IgnoredWhy.
+	IgnoredValues []string
+	IgnoredWhy    string
+	// Kept: an Optional list of the configuration that the provider keeps in
+	// state and never sends or reads from the API: a value a later operation
+	// that has no configuration (a destroy) needs. It is never a write by itself.
+	Kept bool
+	// Local: Computed and kept by the provider alone. It is never sent, never read
+	// from the API, and carried through a refresh from the prior state.
+	Local bool
 }
 
 // Attribute is the Terraform attribute name.
@@ -161,11 +189,72 @@ type Spec struct {
 	// platform predates the resource. Its data source then fails naming the release needed
 	// instead of reading as configured = false with every attribute null.
 	AlwaysPresent bool
-	// MinPlatform names the platform release a read of an AlwaysPresent singleton needs.
+	// AbsentWhen: the platform also answers 404 for an organization that is not
+	// offered the resource (a feature that is off on the platform, outside its
+	// rollout, or not in the plan), so the 404 error and the configured
+	// description name that cause beside an older platform. Set with AlwaysPresent.
+	AbsentWhen string
+	// RefusedWhen: the platform answers 403 with its own sentence, not 404, when
+	// the organization's plan lacks the feature. Only the configured description
+	// reads it; the refusal reaches the read as the platform wrote it.
+	RefusedWhen string
+	// MinPlatform names the platform release the resource first appeared in: a
+	// read of an AlwaysPresent singleton, and a Previewed one's 404, say so.
 	MinPlatform string
+	// FollowsDefault names the WriteOnly list attribute (an API name) that puts
+	// settings back on the organization default, and SetHere the answered list of
+	// the settings a row holds itself. ModifyPlan turns a name in the first that
+	// the second holds into a planned change, and Update sends exactly those.
+	FollowsDefault string
+	SetHere        string
+	// FollowsMinPlatform is the platform release that answers SetHere; an older
+	// platform ignores FollowsDefault, which the plan says.
+	FollowsMinPlatform string
+	// RepositoryWide names the settings the platform applies to every row of the
+	// repository the row belongs to (the String attribute RepositoryAttr names)
+	// whenever one row writes or resets them, so a plan that sends one warns.
+	RepositoryWide []string
+	RepositoryAttr string
+	// Previewed: the API applies a write only against a preview the caller has
+	// read. A PUT with no expected_fingerprint answers 428 and the preview, a stale
+	// fingerprint 409 and the fresh one, and a matching one writes. The plan takes
+	// the preview (the Local attribute preview_fingerprint holds its fingerprint)
+	// and the apply sends that fingerprint. The WriteOnly attribute confirm names
+	// the confirmations the preview asks for.
+	Previewed bool
+	// Confirmations maps each confirm value to the setting whose turning on needs
+	// it and the platform's sentence for a configuration that lacks it.
+	Confirmations map[string]Confirmation
+	// DestroyBody and DestroyWhen: a destroy of a Previewed singleton sends this
+	// body, as a previewed write, when the attribute DestroyWhen (an API name) is
+	// not null in state; without it the row is left in place.
+	DestroyBody map[string]any
+	DestroyWhen string
+	// DestroyWarning is said when the destroy took effect.
+	DestroyWarning string
+	// Cursor names the key of the answer that holds the next page's cursor; a spec
+	// that sets it is a paged list, read until that key is null. PageSize is the
+	// limit asked for each page (the API's list_max) and MaxPages the pages read
+	// before the read fails naming the bound.
+	Cursor   string
+	PageSize int
+	MaxPages int
+	// QueryAttrs are the optional arguments of the list data source, sent as
+	// query values under their API names (String and Bool only).
+	QueryAttrs []Attr
+	// ExtraAttrs are the computed attributes of the list data source read from
+	// the keys beside the rows in the first page's answer.
+	ExtraAttrs []Attr
 	// DiscoveredAttr is the computed boolean that, true in state, makes a
 	// destroy warn that a discovery sweep files the row again.
 	DiscoveredAttr string
+}
+
+// Confirmation is what a Previewed write needs from the configuration before it
+// turns Attr on.
+type Confirmation struct {
+	Attr     string
+	Sentence string
 }
 
 // LowerTrim is the platform's normalization of service names.

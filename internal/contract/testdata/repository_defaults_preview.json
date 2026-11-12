@@ -1,0 +1,20 @@
+{
+  "source": "sre-agent apps/sre_core/lib/sre_core/remediation/repository_defaults.ex, public/1, wrapped by apps/sre_web/lib/sre_web/controllers/api/config_controller.ex (the 428 and 409 bodies carry it as preview.data); applied and stale are added by the MCP tool update_repository_defaults",
+  "preview": {
+    "fingerprint": "5d41402abc4b2a76b9719d911017c592",
+    "changes": {
+      "fix_runner": {"from": "platform", "to": "self_hosted"},
+      "draft_prs": {"from": null, "to": true}
+    },
+    "moved": ["acme/api", "acme/web"],
+    "kept": 1,
+    "differs_by_branch": ["acme/web"],
+    "children": [
+      {"organization_id": "00000000-0000-0000-0000-000000000001", "organization_name": "Acme EU", "moved": 3, "ci_pinned": 1, "no_runner": false}
+    ],
+    "needs_confirm": ["ci_config"],
+    "refusals": [],
+    "leaves_parent": false,
+    "applied": false
+  }
+}

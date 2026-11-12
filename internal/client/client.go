@@ -70,6 +70,10 @@ type Response struct {
 	Organization Organization
 	Data         json.RawMessage
 	Truncated    bool
+	// Extras holds every top-level key of the answer other than the organization,
+	// the data and the truncation flag: the paging cursor and whatever totals a
+	// list carries beside its rows.
+	Extras map[string]json.RawMessage
 }
 
 // APIError is a non-2xx answer.
@@ -79,6 +83,9 @@ type APIError struct {
 	Message  string
 	Existing map[string]any
 	Current  map[string]any
+	// Preview is the preview.data of a 428 or a 409: what a previewed write
+	// would change, with the fingerprint that applies it.
+	Preview map[string]any
 	// Retried: an earlier attempt of this call ended in a gateway or
 	// transport error, so it may have been applied before this answer.
 	Retried bool
@@ -98,6 +105,10 @@ func IsNotFound(err error) bool { return statusIs(err, http.StatusNotFound) }
 
 // IsConflict reports a 409.
 func IsConflict(err error) bool { return statusIs(err, http.StatusConflict) }
+
+// IsPreconditionRequired reports a 428, the answer of a previewed write that
+// carries no fingerprint.
+func IsPreconditionRequired(err error) bool { return statusIs(err, http.StatusPreconditionRequired) }
 
 // IsPreconditionFailed reports a 412.
 func IsPreconditionFailed(err error) bool { return statusIs(err, http.StatusPreconditionFailed) }
@@ -274,6 +285,7 @@ type envelope struct {
 	Error        string          `json:"error"`
 	Message      string          `json:"message"`
 	Existing     map[string]any  `json:"existing"`
+	Preview      json.RawMessage `json:"preview"`
 }
 
 func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []string) (*Response, error) {
@@ -293,7 +305,7 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 		return nil, fmt.Errorf("%s %s answered without naming its organization, so the pin to %q cannot be checked; nothing was recorded in state", r.Method, r.Path, c.org)
 	}
 	if success {
-		out := &Response{Status: resp.StatusCode, ETag: resp.Header.Get("ETag"), Data: env.Data, Truncated: env.Truncated}
+		out := &Response{Status: resp.StatusCode, ETag: resp.Header.Get("ETag"), Data: env.Data, Truncated: env.Truncated, Extras: extras(body)}
 		if env.Organization != nil {
 			out.Organization = *env.Organization
 		}
@@ -303,6 +315,14 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 	if apiErr.Message == "" {
 		apiErr.Message = http.StatusText(resp.StatusCode)
 	}
+	if resp.StatusCode == http.StatusPreconditionRequired || resp.StatusCode == http.StatusConflict {
+		var wrapped struct {
+			Data map[string]any `json:"data"`
+		}
+		if json.Unmarshal(env.Preview, &wrapped) == nil {
+			apiErr.Preview = wrapped.Data
+		}
+	}
 	if resp.StatusCode == http.StatusPreconditionFailed && len(env.Data) > 0 {
 		var current map[string]any
 		if json.Unmarshal(env.Data, &current) == nil {
@@ -310,6 +330,22 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 		}
 	}
 	return nil, apiErr
+}
+
+// extras is every top-level key of a success body that the envelope does not
+// name.
+func extras(body []byte) map[string]json.RawMessage {
+	var all map[string]json.RawMessage
+	if json.Unmarshal(body, &all) != nil {
+		return nil
+	}
+	for _, k := range []string{"organization", "data", "truncated"} {
+		delete(all, k)
+	}
+	if len(all) == 0 {
+		return nil
+	}
+	return all
 }
 
 func redact(s string, secrets []string) string {

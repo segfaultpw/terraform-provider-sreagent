@@ -1,0 +1,934 @@
+package provider
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
+
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/client"
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/fakefacade"
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/specs"
+)
+
+const repoDefaults = "sreagent_repository_defaults.d"
+
+func defaultsConfig(url, body string) string {
+	return providerBlock(url) + fmt.Sprintf("resource \"sreagent_repository_defaults\" \"d\" {\n%s\n}\n", body)
+}
+
+// bodies are the PUT bodies the defaults received, in order.
+func defaultsPuts(f *fakefacade.Fake) []map[string]any { return f.PutBodies("repository_defaults") }
+
+func fingerprintOf(body map[string]any) string {
+	s, _ := body["expected_fingerprint"].(string)
+	return s
+}
+
+func withoutFingerprint(body map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range body {
+		if k != "expected_fingerprint" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func seedRepo(t *testing.T, f *fakefacade.Fake, repo string) {
+	t.Helper()
+	seedOne(t, f.URL, "repo_settings", map[string]any{"repo": repo})
+}
+
+// The plan takes the platform's preview and the apply writes against that
+// fingerprint. Terraform plans the change again when it applies a saved plan, so
+// the preview is taken twice (once at the plan, once at the re-plan) and the
+// write once, and the write carries the fingerprint both previews gave.
+func TestRepositoryDefaultsPlanPreviewsAndTheApplySendsThatFingerprint(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	seedRepo(t, f, "acme/web")
+	seedRepo(t, f, "acme/api")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{
+			{
+				Config: defaultsConfig(f.URL, "  auto_dispatch = false"),
+				Check: tfresource.ComposeTestCheckFunc(
+					tfresource.TestCheckResourceAttr(repoDefaults, "auto_dispatch", "false"),
+					tfresource.TestCheckResourceAttr(repoDefaults, "source", "own"),
+					func(*terraform.State) error {
+						puts := defaultsPuts(f)
+						if f.Previews() != 2 || len(puts) != 3 {
+							return fmt.Errorf("want two previews and one write, got %d previews and %d PUTs: %v", f.Previews(), len(puts), puts)
+						}
+						for _, p := range puts[:2] {
+							if fingerprintOf(p) != "" {
+								return fmt.Errorf("a preview carried a fingerprint: %v", p)
+							}
+						}
+						write := puts[2]
+						if fingerprintOf(write) == "" || fingerprintOf(write) != f.LastFingerprint() {
+							return fmt.Errorf("the write carried %q, the preview gave %q", fingerprintOf(write), f.LastFingerprint())
+						}
+						if want := map[string]any{"auto_dispatch": false}; !reflect.DeepEqual(withoutFingerprint(write), want) {
+							return fmt.Errorf("the write was %v, want %v", withoutFingerprint(write), want)
+						}
+						return nil
+					},
+				),
+			},
+			{
+				Config:           defaultsConfig(f.URL, "  auto_dispatch = false"),
+				ConfigPlanChecks: emptyPlan,
+				Check: func(*terraform.State) error {
+					if n := len(defaultsPuts(f)); n != 3 {
+						return fmt.Errorf("a clean plan sent %d PUTs in all, want the 3 of the first step", n)
+					}
+					return nil
+				},
+			},
+			{ResourceName: repoDefaults, ImportState: true, ImportStateId: "repository_defaults", ImportStateVerify: true, ImportStateVerifyIgnore: []string{"preview_fingerprint"}, Config: defaultsConfig(f.URL, "  auto_dispatch = false")},
+		},
+	})
+}
+
+// A change that happens between the preview and the write fails the apply: the
+// platform answers 409, nothing is written, and the error says to plan again.
+func TestRepositoryDefaultsMovedSinceThePlanFailsTheApply(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	seedRepo(t, f, "acme/web")
+	f.RepositoryAppearsOnNextFingerprintedPut("acme/late")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+			ExpectError: regexp.MustCompile(`(?s)changed\s+since\s+the\s+plan.*nothing\s+was\s+written.*terraform\s+plan\s+again`),
+		}},
+	})
+	if got := f.Defaults()["auto_dispatch"]; got != true {
+		t.Fatalf("a refused apply still wrote auto_dispatch = %v", got)
+	}
+}
+
+// With a key that can plan but not apply, the plan succeeds without a preview.
+func TestRepositoryDefaultsReadOnlyKeyPlansWithAWarning(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.ReadOnly()
+	cfg := defaultsConfig(f.URL, "  auto_dispatch = false")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{
+			{Config: cfg, PlanOnly: true, ExpectNonEmptyPlan: true},
+			{Config: cfg, ExpectError: regexp.MustCompile(`api:config_read, which can plan but not apply`)},
+		},
+	})
+	if f.Previews() != 0 {
+		t.Fatalf("a read-only key was given %d previews", f.Previews())
+	}
+}
+
+// When the plan could not preview (a plan-only key), the apply previews, judges
+// the preview as a plan would and applies the fingerprint it took.
+func TestRepositoryDefaultsApplyPreviewsWhenThePlanCouldNot(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	seedRepo(t, f, "acme/web")
+	f.RefusePreviews(2)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config: defaultsConfig(f.URL, "  auto_dispatch = false"),
+			Check: func(*terraform.State) error {
+				puts := defaultsPuts(f)
+				if len(puts) != 4 {
+					return fmt.Errorf("want two refused previews, one preview and one write, got %v", puts)
+				}
+				if fingerprintOf(puts[3]) == "" || fingerprintOf(puts[3]) != f.LastFingerprint() {
+					return fmt.Errorf("the write carried %q, the apply's preview gave %q", fingerprintOf(puts[3]), f.LastFingerprint())
+				}
+				if got := f.Defaults()["auto_dispatch"]; got != false {
+					return fmt.Errorf("auto_dispatch is %v", got)
+				}
+				return nil
+			},
+		}},
+	})
+}
+
+// Even without a preview at plan time, the apply refuses a change the preview
+// says needs a confirmation the configuration lacks.
+func TestRepositoryDefaultsApplyWithoutAPlanPreviewStillAsksForTheConfirmation(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.RefusePreviews(2)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  check_network = true"),
+			ExpectError: regexp.MustCompile(`(?s)Confirmation\s+needed.*network\s+access.*confirm\s*=\s*\["check_network"\]`),
+		}},
+	})
+	if got := f.Defaults()["check_network"]; got != false {
+		t.Fatalf("check_network is %v after a refused apply", got)
+	}
+}
+
+func TestTurningCIOnWithoutConfirmFailsThePlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  allow_ci_config = true"),
+			PlanOnly:    true,
+			ExpectError: regexp.MustCompile(`(?s)Confirmation\s+needed.*CI\s+configuration.*needs\s+confirmation:\s+pass\s+confirm\s+ci_config.*confirm\s*=\s*\["ci_config"\]`),
+		}},
+	})
+	if n := len(defaultsPuts(f)); n != 1 {
+		t.Fatalf("the failing plan sent %d PUTs, want its one preview", n)
+	}
+}
+
+func TestTurningCIOnWithConfirmApplies(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := defaultsConfig(f.URL, "  allow_ci_config = true\n  confirm = [\"ci_config\"]")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{
+			{
+				Config: cfg,
+				Check: tfresource.ComposeTestCheckFunc(
+					tfresource.TestCheckResourceAttr(repoDefaults, "allow_ci_config", "true"),
+					tfresource.TestCheckNoResourceAttr(repoDefaults, "confirm"),
+					func(*terraform.State) error {
+						puts := defaultsPuts(f)
+						write := puts[len(puts)-1]
+						if !reflect.DeepEqual(write["confirm"], []any{"ci_config"}) || write["allow_ci_config"] != true {
+							return fmt.Errorf("the write was %v", write)
+						}
+						return nil
+					},
+				),
+			},
+			{Config: cfg, ConfigPlanChecks: emptyPlan},
+		},
+	})
+}
+
+// A confirmation names a change, it never makes one: a configuration that only
+// adds or drops it plans nothing and sends nothing.
+func TestConfirmAloneNeverWrites(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{
+			{Config: defaultsConfig(f.URL, "  auto_dispatch = false")},
+			{
+				Config:           defaultsConfig(f.URL, "  auto_dispatch = false\n  confirm = [\"ci_config\", \"check_network\"]"),
+				ConfigPlanChecks: emptyPlan,
+				Check: func(*terraform.State) error {
+					if n := len(defaultsPuts(f)); n != 3 {
+						return fmt.Errorf("naming a confirmation sent PUTs: %d in all, want the 3 of the first step", n)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+func TestAPreviewRefusalFailsThePlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.RefuseDefaults("Your own runner needs a fix runner registered first.")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  fix_runner = \"self_hosted\""),
+			PlanOnly:    true,
+			ExpectError: regexp.MustCompile(`(?s)The\s+platform\s+refuses\s+this\s+change.*needs\s+a\s+fix\s+runner\s+registered\s+first`),
+		}},
+	})
+}
+
+func TestAStaleIfMatchAtPlanFailsThePlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{
+			{Config: defaultsConfig(f.URL, "  auto_dispatch = false")},
+			{
+				PreConfig:   func() { f.ChangeDefaultsOnNextPut(map[string]any{"platform_fallback": false}) },
+				Config:      defaultsConfig(f.URL, "  auto_dispatch = true"),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`(?s)changed\s+outside\s+Terraform.*Nothing\s+was\s+written`),
+			},
+		},
+	})
+}
+
+// A child organization that follows its parent reads 404. Creating the resource
+// gives it its own defaults for all six settings and stops it following; the
+// write carries no If-Match, because the row is not the child's.
+func TestRepositoryDefaultsInAFollowingChildWarnsItLeavesTheParent(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", map[string]any{"platform_fallback": false})
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config: defaultsConfig(f.URL, "  auto_dispatch = false"),
+			Check: tfresource.ComposeTestCheckFunc(
+				tfresource.TestCheckResourceAttr(repoDefaults, "source", "own"),
+				tfresource.TestCheckResourceAttr(repoDefaults, "parent_name", "Acme Parent"),
+				tfresource.TestCheckResourceAttr(repoDefaults, "platform_fallback", "false"),
+				func(*terraform.State) error {
+					for _, im := range f.IfMatches() {
+						if im != "" {
+							return fmt.Errorf("a write to a row the organization does not own carried If-Match %q", im)
+						}
+					}
+					return nil
+				},
+			),
+		}},
+	})
+}
+
+func TestRepositoryDefaultsImportInAFollowingChildSaysWhy(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", nil)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []tfresource.TestStep{{
+			Config: defaultsConfig(f.URL, "  auto_dispatch = true") + `
+import {
+  to = sreagent_repository_defaults.d
+  id = "repository_defaults"
+}
+`,
+			ExpectError: regexp.MustCompile(`(?s)Nothing\s+to\s+import.*follows\s+its\s+parent`),
+		}},
+	})
+}
+
+// An exported file adopts with an import and plans clean afterwards.
+func TestImportedRepositoryDefaultsPlanClean(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "", nil)
+	f.SetDefaults(map[string]any{"fix_runner": "platform", "platform_fallback": false, "auto_dispatch": false, "check_network": false, "allow_ci_config": false})
+	block := `
+resource "sreagent_repository_defaults" "d" {
+  fix_runner        = "platform"
+  platform_fallback = false
+  auto_dispatch     = false
+  check_network     = false
+  allow_ci_config   = false
+}
+`
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []tfresource.TestStep{
+			{
+				Config: providerBlock(f.URL) + block + `
+import {
+  to = sreagent_repository_defaults.d
+  id = "repository_defaults"
+}
+`,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{importsOnly{}}},
+			},
+			{Config: providerBlock(f.URL) + block, ConfigPlanChecks: emptyPlan},
+		},
+	})
+	if n := len(defaultsPuts(f)); n != 0 {
+		t.Fatalf("adopting an exported file sent %d PUTs", n)
+	}
+}
+
+// Destroying the resource in a child that has its own defaults hands the child
+// back to its parent, as a previewed write of follow_parent.
+func TestRepositoryDefaultsDestroyInAChildFollowsTheParent(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", nil)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		CheckDestroy: func(*terraform.State) error {
+			puts := defaultsPuts(f)
+			if len(puts) < 2 {
+				return fmt.Errorf("no destroy writes: %v", puts)
+			}
+			preview, write := puts[len(puts)-2], puts[len(puts)-1]
+			if !reflect.DeepEqual(preview, map[string]any{"follow_parent": true}) || fingerprintOf(write) == "" || write["follow_parent"] != true {
+				return fmt.Errorf("the destroy wrote %v then %v", preview, write)
+			}
+			if got := f.Defaults()["source"]; got != "parent" {
+				return fmt.Errorf("the organization reads its defaults from %v", got)
+			}
+			return nil
+		},
+		Steps: []tfresource.TestStep{{Config: defaultsConfig(f.URL, "  auto_dispatch = false")}},
+	})
+}
+
+func TestRepositoryDefaultsDestroyWithoutAParentLeavesThem(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		CheckDestroy: func(*terraform.State) error {
+			for _, p := range defaultsPuts(f) {
+				if _, sent := p["follow_parent"]; sent {
+					return fmt.Errorf("a destroy with no parent sent %v", p)
+				}
+			}
+			if got := f.Defaults(); got["auto_dispatch"] != false || got["source"] != "own" {
+				return fmt.Errorf("the defaults were not left in place: %v", got)
+			}
+			return nil
+		},
+		Steps: []tfresource.TestStep{{Config: defaultsConfig(f.URL, "  auto_dispatch = false")}},
+	})
+}
+
+func TestRepositoryDefaultsDataSourceInAFollowingChildIsNotConfigured(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", nil)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config: providerBlock(f.URL) + "data \"sreagent_repository_defaults\" \"d\" {}\n",
+			Check: tfresource.ComposeTestCheckFunc(
+				tfresource.TestCheckResourceAttr("data.sreagent_repository_defaults.d", "configured", "false"),
+			),
+		}},
+	})
+}
+
+func TestRepositoryDefaultsDataSourceReadsTheRow(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "", nil)
+	f.SetDefaults(map[string]any{"auto_dispatch": false})
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config: providerBlock(f.URL) + "data \"sreagent_repository_defaults\" \"d\" {}\n",
+			Check: tfresource.ComposeTestCheckFunc(
+				tfresource.TestCheckResourceAttr("data.sreagent_repository_defaults.d", "configured", "true"),
+				tfresource.TestCheckResourceAttr("data.sreagent_repository_defaults.d", "auto_dispatch", "false"),
+				tfresource.TestCheckResourceAttr("data.sreagent_repository_defaults.d", "source", "own"),
+				tfresource.TestCheckNoResourceAttr("data.sreagent_repository_defaults.d", "confirm"),
+				tfresource.TestCheckNoResourceAttr("data.sreagent_repository_defaults.d", "preview_fingerprint"),
+			),
+		}},
+	})
+}
+
+// A platform from before the repository defaults answers 404 to the singleton
+// itself, and the resource says which release it needs.
+func TestRepositoryDefaultsOnAPlatformWithoutThemNamesTheRelease(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("missing", "", nil)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+			PlanOnly:    true,
+			ExpectError: regexp.MustCompile(`needs\s+platform\s+v0\.477\.0\s+or\s+later`),
+		}},
+	})
+}
+
+// The warnings are read by a person; they are checked on the resource itself,
+// because Terraform's test harness discards them.
+
+func planDiagnostics(t *testing.T, f *fakefacade.Fake, config map[string]tftypes.Value, plan map[string]tftypes.Value) diag.Diagnostics {
+	t.Helper()
+	return modifyPlan(t, f, nil, config, plan, false)
+}
+
+// destroyDiagnostics are the diagnostics of the plan of a destroy of a resource
+// that holds state.
+func destroyDiagnostics(t *testing.T, f *fakefacade.Fake, state map[string]tftypes.Value) diag.Diagnostics {
+	t.Helper()
+	return modifyPlan(t, f, state, nil, nil, true)
+}
+
+func modifyPlan(t *testing.T, f *fakefacade.Fake, state map[string]tftypes.Value, config map[string]tftypes.Value, plan map[string]tftypes.Value, destroy bool) diag.Diagnostics {
+	t.Helper()
+	return modifyPlanOf(t, f, "repository_defaults", state, config, plan, destroy)
+}
+
+func modifyPlanOf(t *testing.T, f *fakefacade.Fake, key string, state map[string]tftypes.Value, config map[string]tftypes.Value, plan map[string]tftypes.Value, destroy bool) diag.Diagnostics {
+	t.Helper()
+	c, err := client.New(client.Config{BaseURL: f.URL, APIKey: "sre_ak_unit", UserAgent: "test"}) //nolint:gosec // the fake facade accepts any sre_ak_ key
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec engine.Spec
+	for _, s := range specs.All() {
+		if s.Key == key {
+			spec = s
+		}
+	}
+	r := engine.NewResource(spec)()
+	r.(resource.ResourceWithConfigure).Configure(context.Background(), resource.ConfigureRequest{ProviderData: c}, &resource.ConfigureResponse{})
+	var schemaResp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+	typ := schemaResp.Schema.Type().TerraformType(context.Background()).(tftypes.Object)
+	build := func(overrides map[string]tftypes.Value) tftypes.Value {
+		vals := map[string]tftypes.Value{}
+		for name, at := range typ.AttributeTypes {
+			vals[name] = tftypes.NewValue(at, nil)
+		}
+		for k, v := range overrides {
+			vals[k] = v
+		}
+		return tftypes.NewValue(typ, vals)
+	}
+	null := tfsdk.State{Raw: tftypes.NewValue(typ, nil), Schema: schemaResp.Schema}
+	req := resource.ModifyPlanRequest{
+		Config: tfsdk.Config{Raw: build(config), Schema: schemaResp.Schema},
+		Plan:   tfsdk.Plan{Raw: build(plan), Schema: schemaResp.Schema},
+		State:  tfsdk.State{Raw: build(state), Schema: schemaResp.Schema},
+	}
+	if state == nil {
+		req.State = null
+	}
+	if destroy {
+		req.Config = tfsdk.Config{Raw: tftypes.NewValue(typ, nil), Schema: schemaResp.Schema}
+		req.Plan = tfsdk.Plan{Raw: tftypes.NewValue(typ, nil), Schema: schemaResp.Schema}
+	}
+	resp := resource.ModifyPlanResponse{Plan: req.Plan}
+	r.(resource.ResourceWithModifyPlan).ModifyPlan(context.Background(), req, &resp)
+	return resp.Diagnostics
+}
+
+func str(s string) tftypes.Value   { return tftypes.NewValue(tftypes.String, s) }
+func boolean(b bool) tftypes.Value { return tftypes.NewValue(tftypes.Bool, b) }
+
+func warningText(d diag.Diagnostics) string {
+	var b strings.Builder
+	for _, x := range d.Warnings() {
+		b.WriteString(x.Summary() + ": " + x.Detail() + "\n")
+	}
+	return b.String()
+}
+
+func TestAPlanNamesWhatMovesAndLeavingTheParentInTheWarning(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", nil)
+	for _, repo := range []string{"acme/web", "acme/api"} {
+		seedRepo(t, f, repo)
+	}
+	f.FollowingChildren(map[string]any{"organization_id": "c1", "organization_name": "Acme EU", "moved": 4, "ci_pinned": 1, "no_runner": false})
+	set := map[string]tftypes.Value{"auto_dispatch": boolean(false), "id": str("repository_defaults")}
+	d := planDiagnostics(t, f, set, set)
+	if d.HasError() {
+		t.Fatalf("the plan failed: %v", d)
+	}
+	text := warningText(d)
+	for _, want := range []string{"auto_dispatch from true to false", "2 repositories will read a different value: acme/api, acme/web", "Child organization Acme EU", "gives it its own for all six settings", "destroy this resource to follow the parent again"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, text)
+		}
+	}
+	if f.Previews() != 1 {
+		t.Fatalf("one plan took %d previews", f.Previews())
+	}
+}
+
+func TestAPlanWithAReadOnlyKeyWarnsThatTheApplyPreviews(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.ReadOnly()
+	set := map[string]tftypes.Value{"auto_dispatch": boolean(false), "id": str("repository_defaults")}
+	d := planDiagnostics(t, f, set, set)
+	if d.HasError() {
+		t.Fatalf("a read-only key must plan: %v", d)
+	}
+	if text := warningText(d); !strings.Contains(text, "needs an api:admin key; the apply previews it and applies what it finds") {
+		t.Fatalf("the warning is %q", text)
+	}
+}
+
+func TestAPlanWithAReadOnlyKeyStillRefusesATurnedOnSettingWithoutItsConfirmation(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.ReadOnly()
+	set := map[string]tftypes.Value{"allow_ci_config": boolean(true), "id": str("repository_defaults")}
+	d := planDiagnostics(t, f, set, set)
+	if !d.HasError() || !strings.Contains(fmt.Sprint(d.Errors()), "pass confirm ci_config") {
+		t.Fatalf("want the confirmation refused at plan, got %v", d)
+	}
+}
+
+// A platform that renamed a key of its preview must not read as "nothing
+// moves": the plan fails and says the preview cannot be read.
+func TestAPreviewTheProviderCannotReadFailsThePlan(t *testing.T) {
+	for _, key := range []string{"fingerprint", "changes", "moved", "needs_confirm"} {
+		t.Run(key, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			seedRepo(t, f, "acme/web")
+			f.DropPreviewKey(key)
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []tfresource.TestStep{{
+					Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+					ExpectError: regexp.MustCompile(`(?s)preview\s+this\s+provider\s+version\s+cannot\s+read.*` + key + `\s+is\s+missing`),
+				}},
+			})
+			if got := f.Defaults()["auto_dispatch"]; got != true {
+				t.Fatalf("the defaults were written: auto_dispatch = %v", got)
+			}
+			for _, p := range defaultsPuts(f) {
+				if fingerprintOf(p) != "" {
+					t.Fatalf("a write was sent: %v", p)
+				}
+			}
+		})
+	}
+}
+
+// The apply that previews for itself (the plan key could not) takes the same
+// stand: it never falls back to applying what it could not read.
+func TestAnApplyThatCannotReadItsOwnPreviewWritesNothing(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.RefusePreviews(2)
+	f.DropPreviewKey("fingerprint")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+			ExpectError: regexp.MustCompile(`(?s)cannot\s+read.*fingerprint\s+is\s+missing`),
+		}},
+	})
+	if got := f.Defaults()["auto_dispatch"]; got != true {
+		t.Fatalf("the defaults were written: auto_dispatch = %v", got)
+	}
+}
+
+// A destroy is planned like a change: the plan asks the platform what handing
+// the organization back to its parent moves and says so before anything is
+// written.
+
+// childState is the state of a child organization that gave itself its own defaults.
+func childState(extra map[string]tftypes.Value) map[string]tftypes.Value {
+	state := map[string]tftypes.Value{
+		"id": str("repository_defaults"), "source": str("own"), "parent_name": str("Acme Parent"),
+		"stopped": boolean(false), "fix_runner": str("self_hosted"), "platform_fallback": boolean(false),
+	}
+	for k, v := range extra {
+		state[k] = v
+	}
+	return state
+}
+
+func TestADestroyInAChildWarnsAtPlanWhatMoves(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "Acme Parent", map[string]any{"fix_runner": "platform"})
+	f.SetDefaults(map[string]any{"fix_runner": "self_hosted", "platform_fallback": false})
+	for _, repo := range []string{"acme/web", "acme/api"} {
+		seedRepo(t, f, repo)
+	}
+	d := destroyDiagnostics(t, f, childState(map[string]tftypes.Value{"stopped": boolean(true)}))
+	if d.HasError() {
+		t.Fatalf("the destroy plan failed: %v", d)
+	}
+	text := warningText(d)
+	for _, want := range []string{
+		"hands the organization back to its parent's repository defaults",
+		"fix_runner from self_hosted to platform",
+		"platform_fallback from false to true",
+		"2 repositories will read a different value: acme/api, acme/web",
+		"stop this organization made is ended too",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, text)
+		}
+	}
+	if f.Previews() != 1 {
+		t.Fatalf("one destroy plan took %d previews", f.Previews())
+	}
+	for _, p := range defaultsPuts(f) {
+		if fingerprintOf(p) != "" {
+			t.Fatalf("the destroy plan wrote: %v", p)
+		}
+	}
+}
+
+func TestADestroyThatMovesNothingIsSilent(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "Acme Parent", nil)
+	seedRepo(t, f, "acme/web")
+	d := destroyDiagnostics(t, f, childState(nil))
+	if len(d) != 0 {
+		t.Fatalf("a destroy that moves nothing said %v", d)
+	}
+	if f.Previews() != 1 {
+		t.Fatalf("the destroy was not previewed: %d previews", f.Previews())
+	}
+}
+
+// A stop the organization made is ended by the destroy even when no value
+// moves, so later changes of the parent's defaults reach it: the plan says so.
+func TestADestroyThatMovesNothingButEndsAStopSaysSo(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "Acme Parent", nil)
+	seedRepo(t, f, "acme/web")
+	d := destroyDiagnostics(t, f, childState(map[string]tftypes.Value{"stopped": boolean(true)}))
+	if d.HasError() {
+		t.Fatalf("the destroy plan failed: %v", d)
+	}
+	text := warningText(d)
+	for _, want := range []string{"moves no value now", "stop this organization made is ended too", "later changes of the parent's defaults reach it again"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// With no parent a destroy asks the platform nothing, and the plan says the
+// defaults stay in force.
+func TestADestroyWithoutAParentAsksNothingAndSaysTheDefaultsStay(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "", nil)
+	state := childState(nil)
+	delete(state, "parent_name")
+	d := destroyDiagnostics(t, f, state)
+	if d.HasError() || f.Previews() != 0 {
+		t.Fatalf("a destroy that leaves the defaults in place asked the platform (%d previews) or failed: %v", f.Previews(), d)
+	}
+	text := warningText(d)
+	for _, want := range []string{"stops Terraform managing the defaults", "platform keeps them", "every repository that follows them keeps reading them"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// A destroy plan the platform answers with an error other than a refusal (a
+// state that still names a parent the organization no longer has) names the
+// exits too.
+func TestADestroyPlanThatFailsOtherwiseNamesTheExits(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "", nil)
+	d := destroyDiagnostics(t, f, childState(nil))
+	if !d.HasError() {
+		t.Fatalf("a destroy the platform answered 422 planned: %v", d)
+	}
+	msg := fmt.Sprint(d.Errors())
+	for _, want := range []string{"only for an organization that has a parent", "removed {", "destroy = false", "terraform state rm"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the error lacks %q: %s", want, msg)
+		}
+	}
+}
+
+// Only a change that needs no unknown value can be held: a plan whose only
+// unknown is the confirmation changes nothing and plans nothing.
+func TestAPlanWhoseOnlyUnknownIsTheConfirmationPlansNoChange(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.SetDefaults(map[string]any{"auto_dispatch": true})
+	unknownList := tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, tftypes.UnknownValue)
+	state := map[string]tftypes.Value{"id": str("repository_defaults"), "auto_dispatch": boolean(true), "preview_fingerprint": str("held")}
+	d := modifyPlan(t, f, state, map[string]tftypes.Value{"auto_dispatch": boolean(true), "confirm": unknownList},
+		map[string]tftypes.Value{"auto_dispatch": boolean(true), "id": str("repository_defaults"), "preview_fingerprint": str("held")}, false)
+	if len(d) != 0 || f.Previews() != 0 {
+		t.Fatalf("an unknown confirmation with nothing to write said %v after %d previews", d, f.Previews())
+	}
+}
+
+// Handing the organization back to a parent that has CI configuration changes
+// on needs a confirmation. A destroy cannot carry one, so it fails at plan and
+// names the attribute that holds it; the provider never gives it on its own.
+func TestADestroyThatNeedsAConfirmationFailsAtPlanWithoutItAndWorksWithIt(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", map[string]any{"allow_ci_config": true})
+	seedRepo(t, f, "acme/web")
+	own := "  auto_dispatch = false\n  allow_ci_config = false"
+	confirmed := own + "\n  confirm_on_destroy = [\"ci_config\"]"
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		CheckDestroy: func(*terraform.State) error {
+			var writes []map[string]any
+			for _, p := range defaultsPuts(f) {
+				if p["follow_parent"] == true && fingerprintOf(p) != "" {
+					writes = append(writes, p)
+				}
+			}
+			if len(writes) != 1 || !reflect.DeepEqual(writes[0]["confirm"], []any{"ci_config"}) {
+				return fmt.Errorf("want one confirmed follow_parent write, got %v", writes)
+			}
+			if got := f.Defaults()["source"]; got != "parent" {
+				return fmt.Errorf("the organization reads its defaults from %v", got)
+			}
+			return nil
+		},
+		Steps: []tfresource.TestStep{
+			{Config: defaultsConfig(f.URL, own)},
+			{
+				Config: defaultsConfig(f.URL, own), Destroy: true,
+				ExpectError: regexp.MustCompile(`(?s)pre-apply\s+plan.*Confirmation\s+needed\s+to\s+destroy.*confirm_on_destroy\s+=\s+\["ci_config"\].*terraform\s+apply,\s+then\s+destroy`),
+			},
+			{Config: defaultsConfig(f.URL, confirmed), Check: tfresource.TestCheckResourceAttr(repoDefaults, "confirm_on_destroy.0", "ci_config")},
+			{Config: defaultsConfig(f.URL, confirmed), ConfigPlanChecks: emptyPlan},
+			{Config: defaultsConfig(f.URL, confirmed), Destroy: true},
+		},
+	})
+	if got := f.Defaults()["source"]; got != "parent" {
+		t.Fatalf("the destroy did not hand the defaults back: %v", got)
+	}
+}
+
+// What the destroy plan previewed is what the destroy writes: the fingerprint
+// travels in private state, so the apply does not ask again.
+func TestTheDestroyWritesAgainstThePlansFingerprint(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", map[string]any{"auto_dispatch": true})
+	seedRepo(t, f, "acme/web")
+	var before int
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		CheckDestroy: func(*terraform.State) error {
+			puts := defaultsPuts(f)
+			write := puts[len(puts)-1]
+			if write["follow_parent"] != true || fingerprintOf(write) == "" || fingerprintOf(write) != f.LastFingerprint() {
+				return fmt.Errorf("the destroy wrote %v, the last preview gave %q", write, f.LastFingerprint())
+			}
+			if f.Previews()-before != 1 {
+				return fmt.Errorf("the destroy took %d previews, want the plan's one", f.Previews()-before)
+			}
+			return nil
+		},
+		Steps: []tfresource.TestStep{
+			{Config: defaultsConfig(f.URL, "  auto_dispatch = false")},
+			{PreConfig: func() { before = f.Previews() }, Config: defaultsConfig(f.URL, "  auto_dispatch = false"), Destroy: true},
+		},
+	})
+}
+
+// A plan key that cannot preview still lets the destroy through: the apply
+// previews, judges and says what moves before it writes.
+func TestADestroyThatCouldNotBePreviewedAtPlanPreviewsAtApply(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", map[string]any{"auto_dispatch": true})
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		CheckDestroy: func(*terraform.State) error {
+			puts := defaultsPuts(f)
+			write := puts[len(puts)-1]
+			if write["follow_parent"] != true || fingerprintOf(write) == "" {
+				return fmt.Errorf("the destroy wrote %v", write)
+			}
+			return nil
+		},
+		Steps: []tfresource.TestStep{
+			{Config: defaultsConfig(f.URL, "  auto_dispatch = false")},
+			{PreConfig: func() { f.RefusePreviews(1) }, Config: defaultsConfig(f.URL, "  auto_dispatch = false"), Destroy: true},
+		},
+	})
+}
+
+// The destroy writes against what its plan previewed: when more would move by
+// the time it writes, it stops and writes nothing, as an update does.
+func TestADestroyThatMovesMoreSinceThePlanFailsAndWritesNothing(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("parent", "Acme Parent", map[string]any{"auto_dispatch": true})
+	seedRepo(t, f, "acme/web")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{
+			{Config: defaultsConfig(f.URL, "  auto_dispatch = false")},
+			{
+				PreConfig:   func() { f.RepositoryAppearsOnNextFingerprintedPut("acme/late") },
+				Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+				Destroy:     true,
+				ExpectError: regexp.MustCompile(`(?s)Error\s+running\s+destroy.*changed\s+since\s+the\s+plan.*nothing\s+was\s+written.*terraform\s+plan\s+-destroy`),
+			},
+		},
+	})
+}
+
+func TestADestroyThePlatformWouldRefuseFailsAtPlanAndNamesTheExits(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "Acme Parent", nil)
+	f.RefuseDefaults("Your own runner needs a registered fix runner, and this organization has none.")
+	d := destroyDiagnostics(t, f, childState(nil))
+	if !d.HasError() {
+		t.Fatalf("a refused destroy planned: %v", d)
+	}
+	msg := fmt.Sprint(d.Errors())
+	for _, want := range []string{"registered fix runner", "removed {", "from = sreagent_repository_defaults.<name>", "destroy = false", "terraform state rm"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the error lacks %q: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "set confirm =") {
+		t.Errorf("the error tells a destroy to set confirm: %s", msg)
+	}
+	if strings.Contains(msg, "follow the parent in the app") {
+		t.Errorf("the error offers the app's follow, which meets the same refusal: %s", msg)
+	}
+	if strings.Contains(msg, "{ from") || strings.Contains(msg, ", lifecycle") {
+		t.Errorf("the removed block is not written as valid HCL: %s", msg)
+	}
+}
+
+func TestADestroyPlanWithAReadOnlyKeyWarnsItIsNotPreviewed(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "Acme Parent", nil)
+	f.ReadOnly()
+	d := destroyDiagnostics(t, f, childState(nil))
+	if d.HasError() || !strings.Contains(warningText(d), "This destroy is not previewed") {
+		t.Fatalf("%v", d)
+	}
+}
+
+// A value known only at apply keeps the plan from asking the platform, and the
+// plan says so; what it can judge from the configuration it still judges.
+func TestAPlanWithAnUnknownSettingWarnsThatTheApplyPreviews(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	unknown := tftypes.NewValue(tftypes.Bool, tftypes.UnknownValue)
+	set := map[string]tftypes.Value{"auto_dispatch": unknown, "id": str("repository_defaults")}
+	d := planDiagnostics(t, f, set, set)
+	if d.HasError() || !strings.Contains(warningText(d), "known only at apply") {
+		t.Fatalf("want the warning that the apply previews: %v", d)
+	}
+	if f.Previews() != 0 {
+		t.Fatalf("the plan asked for %d previews with a value it did not know", f.Previews())
+	}
+}
+
+func TestAPlanWithAnUnknownSettingStillRefusesATurnedOnSettingWithoutItsConfirmation(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	unknown := tftypes.NewValue(tftypes.Bool, tftypes.UnknownValue)
+	set := map[string]tftypes.Value{"auto_dispatch": unknown, "allow_ci_config": boolean(true), "id": str("repository_defaults")}
+	d := planDiagnostics(t, f, set, set)
+	if !d.HasError() || !strings.Contains(fmt.Sprint(d.Errors()), "pass confirm ci_config") {
+		t.Fatalf("want the confirmation refused at plan, got %v", d)
+	}
+}
+
+// Adopting a setting that is already on is not turning it on.
+func TestAReadOnlyPlanKeyAdoptingASettingAlreadyOnNeedsNoConfirmation(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "", nil)
+	f.SetDefaults(map[string]any{"allow_ci_config": true})
+	f.ReadOnly()
+	set := map[string]tftypes.Value{"allow_ci_config": boolean(true), "id": str("repository_defaults")}
+	d := planDiagnostics(t, f, set, set)
+	if d.HasError() {
+		t.Fatalf("a setting the organization already has on was refused: %v", d)
+	}
+	off := map[string]tftypes.Value{"check_network": boolean(true), "id": str("repository_defaults")}
+	if d := planDiagnostics(t, f, off, off); !d.HasError() || !strings.Contains(fmt.Sprint(d.Errors()), "pass confirm check_network") {
+		t.Fatalf("a setting that is off must still need its confirmation: %v", d)
+	}
+}

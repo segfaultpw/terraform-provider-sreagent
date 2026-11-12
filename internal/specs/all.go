@@ -23,6 +23,7 @@ func All() []engine.Spec {
 		Team,
 		TeamMember,
 		RepoSetting,
+		RepositoryDefaults,
 		ServiceBinding,
 		StatusPageSettings,
 		StatusPageComponent,
@@ -39,5 +40,12 @@ func All() []engine.Spec {
 		AWSExternalID,
 		RequestSigning,
 		CompliancePeriod,
+		EffectiveRepoSettings,
+		CodeDetectionSettings,
+		SecuritySLAPolicy,
+		SecurityDigestSettings,
+		SecurityCodeClasses,
+		SecurityNotificationRules,
+		SecretAllowRules,
 	}
 }

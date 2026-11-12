@@ -2,12 +2,24 @@
 page_title: "sreagent_repo_settings Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every repo_setting row, read-only. One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.
+  Every repo_setting row, read-only. One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.
+  fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest.
+  For fix_runner, platform_fallback, auto_dispatch, check_network and allow_ci_config, a setting the configuration leaves out is left as it is, whether the row holds a value or follows, and a setting it states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. A stated value is kept, though: when the default later changes, the next apply writes the stated value and the row then holds it, so remove a stated value that should follow the default. To put a setting back on the default, remove it from the configuration and name it in follows_default.
+  draft_prs is the exception: leaving it out returns it to the default (a row that holds a value plans a change to null), and stating it writes it, even with the value the row follows, so the row then holds it.
+  fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, branch entries included (the plan warns), and every mapping of one repository must name the same runner. State them on the repository's all-branches block only, and leave them out of its other blocks: a block that leaves one out follows along with no change, a block that states a different value fights the other, and two blocks that both change one in a single apply need a second apply, because the first write changes the version of the other row and the second write is refused (412).
 ---
 
 # sreagent_repo_settings (Data Source)
 
-Every repo_setting row, read-only. One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.
+Every repo_setting row, read-only. One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.
+
+fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest.
+
+For fix_runner, platform_fallback, auto_dispatch, check_network and allow_ci_config, a setting the configuration leaves out is left as it is, whether the row holds a value or follows, and a setting it states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. A stated value is kept, though: when the default later changes, the next apply writes the stated value and the row then holds it, so remove a stated value that should follow the default. To put a setting back on the default, remove it from the configuration and name it in follows_default.
+
+draft_prs is the exception: leaving it out returns it to the default (a row that holds a value plans a change to null), and stating it writes it, even with the value the row follows, so the row then holds it.
+
+fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, branch entries included (the plan warns), and every mapping of one repository must name the same runner. State them on the repository's all-branches block only, and leave them out of its other blocks: a block that leaves one out follows along with no change, a block that states a different value fights the other, and two blocks that both change one in a single apply need a second apply, because the first write changes the version of the other row and the second write is refused (412).
 
 ## Example Usage
 

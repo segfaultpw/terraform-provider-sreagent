@@ -22,6 +22,11 @@ var CompliancePeriod = engine.Spec{
 		ro("ends_on", engine.String, "Last day."),
 		ro("status", engine.String, "open or exported."),
 		ro("export_top_hash", engine.String, "The exported bundle's manifest hash."),
+		ro("state", engine.String, "Where the window is in its life: open, frozen after it ended, or exported."),
+		ro("frozen_at", engine.String, "When the window's evidence was frozen, or null while it is open."),
+		ro("freeze_kind", engine.String, "How it was frozen: on time, late, or by an administrator."),
+		ro("catalogue_version", engine.String, "The control catalogue the frozen results were judged against."),
+		ro("fill_present_with_current", engine.Bool, "Whether an administrator chose to fill controls with no record at the end of the window with today's answer."),
 	},
 }
 

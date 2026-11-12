@@ -20,8 +20,22 @@ resource "sreagent_alert_route" "checkout" {
 }
 ```
 
-The provider is not published to a registry yet. The documentation lives in [docs/](docs/index.md), generated from
-[templates/](templates) and [examples/](examples) by `go generate ./...`.
+The provider is published on the Terraform Registry as `segfaultpw/sreagent` (OpenTofu reads it from the same
+address). The documentation lives in [docs/](docs/index.md), generated from [templates/](templates) and
+[examples/](examples) by `go generate ./...`.
+
+## Platform releases
+
+Most of the provider works against any platform that serves the configuration API. These parts need a release:
+
+| Part | Platform release |
+| --- | --- |
+| `sreagent_repository_defaults`, `data.sreagent_repository_defaults` | v0.477.0 |
+| `follows_default`, `set_here` and `following` on `sreagent_repo_setting` | v0.482.0 |
+| `data.sreagent_effective_repo_settings` | v0.477.0 |
+| The security, code detection and allow rule data sources | the release that first served each, named in the error an older platform answers |
+
+On a platform from before a part, the provider says which release the part needs; nothing else is affected.
 
 ## How it works
 

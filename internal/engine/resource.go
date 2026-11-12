@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -168,6 +169,22 @@ func (r *facadeResource) ValidateConfig(ctx context.Context, req resource.Valida
 			}
 		}
 	}
+	r.validateFollows(ctx, req, resp)
+	for _, a := range r.spec.Attrs {
+		if len(a.IgnoredValues) == 0 {
+			continue
+		}
+		var list types.List
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(a.Attribute()), &list)...)
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		for _, e := range list.Elements() {
+			if v, ok := e.(types.String); ok && !v.IsUnknown() && slices.Contains(a.IgnoredValues, v.ValueString()) {
+				resp.Diagnostics.AddAttributeError(path.Root(a.Attribute()), fmt.Sprintf("%q is not managed by this list", v.ValueString()), a.IgnoredWhy)
+			}
+		}
+	}
 	for _, a := range r.spec.Attrs {
 		if a.RefusedWith == "" {
 			continue
@@ -222,6 +239,23 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			// Stable until ModifyPlan says the secret is being sent.
 			n + "_set": schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a value for %s.", n), PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()}},
 		}
+	}
+	if a.Local {
+		return map[string]schema.Attribute{a.Attribute(): schema.StringAttribute{Computed: true, Description: a.Description}}
+	}
+	if a.Kept {
+		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{
+			ElementType: types.StringType, Optional: true,
+			Description: describe(a),
+			Validators:  []validator.List{listvalidator.UniqueValues(), listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...))},
+		}}
+	}
+	if a.WriteOnly {
+		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{
+			ElementType: types.StringType, Optional: true, WriteOnly: true,
+			Description: describe(a) + " Write-only: never stored in state or plan.",
+			Validators:  []validator.List{listvalidator.UniqueValues(), listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...))},
+		}}
 	}
 	required := a.Required && !a.Computed
 	optional := !required && !a.Computed
@@ -383,7 +417,7 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 	body := map[string]any{}
 	var secrets []string
 	for _, a := range r.spec.Attrs {
-		if a.Computed || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
+		if a.Computed || a.WriteOnly || a.Local || a.Kept || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
 			continue
 		}
 		if a.Secret {
@@ -441,7 +475,17 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 		if o == opUpdate && a.MergedObject {
 			j = clearRemovedKeys(j, prior)
 		}
+		if list, ok := j.([]string); ok && len(a.IgnoredValues) > 0 {
+			j = slices.DeleteFunc(slices.Clone(list), func(e string) bool { return slices.Contains(a.IgnoredValues, e) })
+		}
 		body[a.Name] = j
+	}
+	if o == opUpdate && r.spec.FollowsDefault != "" {
+		names, d := r.resets(ctx, config, state)
+		diags.Append(d...)
+		if len(names) > 0 {
+			body[r.spec.FollowsDefault] = names
+		}
 	}
 	return body, secrets, diags
 }
@@ -548,9 +592,20 @@ func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) 
 // the one drift a secret shows, since its value is never answered, and it
 // plans a re-send at the same version. A cleared secret plans _set false.
 func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+	if req.Plan.Raw.IsNull() {
+		if r.spec.Previewed && r.spec.Shape == Singleton {
+			r.planDestroy(ctx, req, resp)
+		}
 		return
 	}
+	if r.spec.Previewed {
+		r.planPreview(ctx, req, resp)
+	}
+	r.planRepositoryWide(ctx, req, resp)
+	if req.State.Raw.IsNull() {
+		return
+	}
+	r.planResets(ctx, req, resp)
 	for _, a := range r.spec.Attrs {
 		if !a.Secret {
 			continue
@@ -657,14 +712,51 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			}
 			continue
 		}
+		if a.WriteOnly {
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), types.ListNull(types.StringType))...)
+			continue
+		}
+		if a.Kept {
+			held := attr.Value(types.ListNull(types.StringType))
+			if prior != nil {
+				v, d := getValue(ctx, prior, a)
+				diags.Append(d...)
+				if v != nil && !v.IsUnknown() {
+					held = v
+				}
+			}
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+			continue
+		}
+		if a.Local {
+			held := types.StringNull()
+			if prior != nil {
+				diags.Append(prior.GetAttribute(ctx, path.Root(a.Attribute()), &held)...)
+			}
+			if held.IsUnknown() {
+				held = types.StringNull()
+			}
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+			continue
+		}
+		if len(a.Complement) > 0 {
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), complement(a, row[a.Name]))...)
+			continue
+		}
 		remote, err := fromJSON(a.Kind, row[a.Name])
 		if err != nil {
 			diags.AddAttributeError(path.Root(a.Attribute()), "Unexpected API answer", err.Error())
 			continue
 		}
+		if len(a.IgnoredValues) > 0 {
+			remote = withoutValues(remote, a.IgnoredValues)
+		}
 		if prior != nil && !a.Computed {
 			before, d := getValue(ctx, prior, a)
 			diags.Append(d...)
+			if a.NullUnlessIn != "" && before != nil && before.IsNull() && !before.IsUnknown() && follows(row[a.NullUnlessIn], a.Name) {
+				remote = nullOf(a.Kind)
+			}
 			if keep(a, before, remote) {
 				remote = before
 			}
@@ -710,7 +802,7 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		return false, diags
 	}
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.Secret || a.NotRead {
+		if a.Computed || a.Secret || a.NotRead || a.WriteOnly || a.Local || a.Kept {
 			continue
 		}
 		held, d := getValue(ctx, state, a)
@@ -775,6 +867,10 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	if r.spec.Previewed {
+		r.createPreviewed(ctx, req, resp, body)
+		return
+	}
 	var out *client.Response
 	var err error
 	if r.spec.Shape == Singleton {
@@ -801,7 +897,7 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	followed, err := r.followUp(ctx, req.Plan, out)
+	followed, err := r.followUp(ctx, req.Plan, req.Config, out)
 	if err != nil {
 		resp.Diagnostics.AddError(r.title("create"), "The row was created, but setting the fields its create does not take failed; it is marked tainted and the next apply replaces it. "+err.Error())
 		return
@@ -809,10 +905,13 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	if followed != out {
 		resp.Diagnostics.Append(r.writeState(ctx, followed, req.Plan, &resp.State, resp.Private, resp.Identity)...)
 	}
+	if row, err := decodeRow(followed.Data); err == nil && r.followsIgnored(ctx, req.Config, answered{row: row}) {
+		resp.Diagnostics.AddAttributeWarning(path.Root(r.spec.FollowsDefault), "follows_default is ignored", r.followsIgnoredWarning())
+	}
 }
 
-// followUp sends UpdateOnly fields whose planned value differs from the created row.
-func (r *facadeResource) followUp(ctx context.Context, plan valueSource, created *client.Response) (*client.Response, error) {
+// followUp sends UpdateOnly fields whose planned value differs from the created row, and the resets a create cannot carry.
+func (r *facadeResource) followUp(ctx context.Context, plan, config valueSource, created *client.Response) (*client.Response, error) {
 	row, err := decodeRow(created.Data)
 	if err != nil {
 		return nil, err
@@ -835,6 +934,13 @@ func (r *facadeResource) followUp(ctx context.Context, plan valueSource, created
 			return nil, err
 		}
 		body[a.Name] = j
+	}
+	// A create leaves every setting it is not given following already; one the
+	// answer lists as held (a branch row copies its repository's runner) and the
+	// configuration puts back on the default is reset by this second write, so a
+	// platform that does not know the argument is never sent it.
+	if names, d := r.resets(ctx, config, answered{row: row}); !d.HasError() && len(names) > 0 {
+		body[r.spec.FollowsDefault] = names
 	}
 	if len(body) == 0 {
 		return created, nil
@@ -881,6 +987,9 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 	p, q := r.rowPath(id.ValueString())
 	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
 	if client.IsNotFound(err) {
+		if r.spec.Previewed && followsParent(err) {
+			resp.Diagnostics.AddWarning("Following the parent again", fmt.Sprintf("This organization now follows its parent's %s, so sreagent_%s no longer manages anything here. The next plan proposes to create it again, which gives the organization its own and says what moves.", r.spec.Key, r.spec.TypeName))
+		}
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -915,7 +1024,26 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
-	out, err := r.client.Do(ctx, request)
+	var out *client.Response
+	var err error
+	used := ""
+	var planned types.String
+	if r.spec.Previewed {
+		resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root(fingerprintAttr), &planned)...)
+	}
+	if r.spec.Previewed && len(body) > 0 {
+		confirm, _, d := r.configuredConfirm(ctx, req.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		out, used, err = r.previewedWrite(ctx, &resp.Diagnostics, "update", body, etag, confirm, planned.ValueString())
+		if errors.Is(err, errReported) {
+			return
+		}
+	} else {
+		out, err = r.client.Do(ctx, request)
+	}
 	switch {
 	case client.IsReadOnlyKey(err):
 		summary, detail := r.readOnly("update")
@@ -933,9 +1061,16 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	resp.Diagnostics.Append(r.writeState(ctx, out, req.Plan, &resp.State, resp.Private, resp.Identity)...)
+	if r.spec.Previewed {
+		r.recordFingerprint(ctx, &resp.State, &resp.Diagnostics, planned, used)
+	}
 }
 
 func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	if r.spec.Shape == Singleton && r.destroyFollows(ctx, req.State) {
+		r.destroyPreviewed(ctx, req, resp)
+		return
+	}
 	if r.spec.Shape == Singleton {
 		resp.Diagnostics.AddWarning("Settings left in place", fmt.Sprintf("sreagent_%s is one row per organization and cannot be deleted; Terraform stopped managing it and the platform keeps its current values.", r.spec.TypeName))
 		return
@@ -1025,6 +1160,12 @@ func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportSta
 	if r.spec.Shape == Singleton && id != r.spec.Key {
 		resp.Diagnostics.AddError("Import a singleton by its name", fmt.Sprintf("Import sreagent_%s with the ID %q.", r.spec.TypeName, r.spec.Key))
 		return
+	}
+	if r.spec.Previewed {
+		r.importCheck(ctx, resp)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 }

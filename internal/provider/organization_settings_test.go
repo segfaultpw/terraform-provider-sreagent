@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/fakefacade"
@@ -144,6 +146,148 @@ func TestOrganizationSettingsReadsAnOlderPlatformWithoutTheFields(t *testing.T) 
 				resource.TestCheckResourceAttr(orgSettings, "alert_storm_threshold", "7"),
 				resource.TestCheckNoResourceAttr(orgSettings, "fix_request_floor"),
 				resource.TestCheckNoResourceAttr(orgSettings, "inheritance_stopped.#"),
+			),
+		}},
+	})
+}
+
+// The sign-in and key limits are decided by an org admin in the app: the
+// provider reads them (and the effective values the platform derives) into
+// state and never sends them.
+func TestTheMFAAndSessionLimitsAreReadAndNeverWritten(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {
+					f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+						r["mfa_required"] = true
+						r["mfa_grace_days"] = 7
+						r["session_idle_minutes"] = 60
+						r["api_key_max_days"] = 90
+						r["mfa_effective"] = map[string]any{"required": true, "source": "own"}
+						r["session_idle_effective"] = 60
+					})
+				},
+				Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "mfa_required", "true"),
+					resource.TestCheckResourceAttr(orgSettings, "mfa_grace_days", "7"),
+					resource.TestCheckResourceAttr(orgSettings, "session_idle_minutes", "60"),
+					resource.TestCheckResourceAttr(orgSettings, "api_key_max_days", "90"),
+					resource.TestCheckResourceAttr(orgSettings, "session_idle_effective", "60"),
+					resource.TestCheckResourceAttrSet(orgSettings, "mfa_effective"),
+					func(*terraform.State) error {
+						body := f.LastBody("PUT", "organization_settings")
+						for _, k := range []string{"mfa_required", "mfa_grace_days", "session_idle_minutes", "api_key_max_days", "mfa_effective", "session_idle_effective"} {
+							if _, sent := body[k]; sent {
+								return fmt.Errorf("%s was written: %v", k, body)
+							}
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestTheMFAAndSessionLimitsCannotBeConfigured(t *testing.T) {
+	for _, name := range []string{"mfa_required = true", "mfa_grace_days = 3", "session_idle_minutes = 30", "api_key_max_days = 30"} {
+		t.Run(name, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config:      orgSettingsConfig(f.URL, "  "+name),
+					ExpectError: regexp.MustCompile(`(?s)Read-Only Attribute`),
+				}},
+			})
+			if n := f.Calls("PUT", "organization_settings"); n != 0 {
+				t.Fatalf("a refused configuration still sent %d PUTs", n)
+			}
+		})
+	}
+}
+
+// A child that stopped following its parent's repository defaults has
+// repository_defaults in the stored list, and the platform keeps it through
+// every write of the list. The provider reads the list without it, never sends
+// it, and so plans nothing for a configuration that states the other kinds.
+func TestInheritanceStoppedNeverReadsOrSendsRepositoryDefaults(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+		r["inheritance_stopped"] = []any{"slack", "repository_defaults"}
+	})
+	neverSent := func(*terraform.State) error {
+		for _, method := range []string{"PUT", "POST"} {
+			if body := f.LastBody(method, "organization_settings"); fmt.Sprint(body["inheritance_stopped"]) != "<nil>" && strings.Contains(fmt.Sprint(body["inheritance_stopped"]), "repository_defaults") {
+				return fmt.Errorf("repository_defaults was sent: %v", body)
+			}
+		}
+		return nil
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				Config: orgSettingsConfig(f.URL, "  inheritance_stopped = [\"slack\"]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "inheritance_stopped.#", "1"),
+					resource.TestCheckResourceAttr(orgSettings, "inheritance_stopped.0", "slack"),
+					neverSent,
+				),
+			},
+			{Config: orgSettingsConfig(f.URL, "  inheritance_stopped = [\"slack\"]"), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}},
+			{
+				Config: orgSettingsConfig(f.URL, "  inheritance_stopped = [\"slack\", \"ai_providers\"]"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "inheritance_stopped.#", "2"),
+					neverSent,
+					func(*terraform.State) error {
+						if got := f.Row("organization_settings", "organization_settings")["inheritance_stopped"]; !reflect.DeepEqual(got, []any{"slack", "ai_providers", "repository_defaults"}) {
+							return fmt.Errorf("the platform holds %v", got)
+						}
+						return nil
+					},
+				),
+			},
+			{Config: orgSettingsConfig(f.URL, "  inheritance_stopped = []"), Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(orgSettings, "inheritance_stopped.#", "0"),
+				neverSent,
+			)},
+			{ResourceName: orgSettings, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: orgSettingsConfig(f.URL, "  inheritance_stopped = []")},
+		},
+	})
+}
+
+func TestInheritanceStoppedNamingRepositoryDefaultsIsRefused(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config:      orgSettingsConfig(f.URL, "  inheritance_stopped = [\"slack\", \"repository_defaults\"]"),
+			ExpectError: regexp.MustCompile(`(?s)"repository_defaults" is not managed by this list.*sreagent_repository_defaults`),
+		}},
+	})
+	if n := f.Calls("PUT", "organization_settings"); n != 0 {
+		t.Fatalf("a refused configuration still sent %d PUTs", n)
+	}
+}
+
+func TestInheritanceStoppedDataSourceReadsWithoutRepositoryDefaults(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+		r["inheritance_stopped"] = []any{"slack", "repository_defaults"}
+	})
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config: providerBlock(f.URL) + "data \"sreagent_organization_settings\" \"o\" {}\n",
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr("data.sreagent_organization_settings.o", "inheritance_stopped.#", "1"),
+				resource.TestCheckResourceAttr("data.sreagent_organization_settings.o", "inheritance_stopped.0", "slack"),
 			),
 		}},
 	})

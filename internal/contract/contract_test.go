@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"slices"
 	"testing"
@@ -95,6 +96,9 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	enums := post
 	if s.Shape == engine.Singleton {
 		enums = d.Paths["/"+s.Key]["put"].RequestBody.Content["application/json"].Schema
+		// A singleton has no POST and no /{id}: its create and its update are
+		// the one PUT.
+		post, put = enums, enums
 	}
 	byName := map[string]engine.Attr{}
 	for _, a := range s.Attrs {
@@ -172,9 +176,21 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	}
 	for _, a := range s.Attrs {
 		switch {
+		case a.Local, a.Kept:
+		case a.WriteOnly:
+			checkWriteOnly(a, res, post.Properties, put.Properties, add)
 		case a.NotRead:
 			if !slices.Contains(res.ActionArgs, a.Name) {
 				add("NotRead %s is not an action argument", a.Name)
+			}
+		case len(a.Complement) > 0:
+			if _, ok := res.ComputedFields[a.Name]; !ok {
+				add("complement %s is derived from %s, which the API does not publish as a computed field", a.Attribute(), a.Name)
+			}
+			for _, name := range a.Complement {
+				if !slices.Contains(res.Fields, name) {
+					add("complement %s names %s, which is not a field of %s", a.Attribute(), name, s.Key)
+				}
 			}
 		case a.Computed:
 			if _, ok := res.ComputedFields[a.Name]; !ok && !slices.Contains(res.Fields, a.Name) {
@@ -187,11 +203,237 @@ func specProblems(d *Doc, s engine.Spec) []string {
 			}
 		}
 	}
+	checkFollows(s, res, add)
+	checkPaged(d, s, res, add)
+	checkPreviewed(d, s, res, add)
+	checkIgnored(s, enums.Properties, add)
 	checkSecrets(d, s, res, add)
 	checkAddressing(s, res, add)
 	checkListBounds(s, put.Properties, add)
 	checkReadOnlySingleton(s, res, add)
 	return p
+}
+
+// checkWriteOnly holds a write-only list to the API: an action argument whose
+// create and update bodies declare an array of the attribute's OneOf values.
+func checkWriteOnly(a engine.Attr, res Resource, post, put map[string]map[string]any, add func(string, ...any)) {
+	if !slices.Contains(res.ActionArgs, a.Name) {
+		add("write-only %s is not an action argument", a.Name)
+	}
+	for method, props := range map[string]map[string]map[string]any{"POST": {a.Name: post[a.Name]}, "PUT": {a.Name: put[a.Name]}} {
+		body := props[a.Name]
+		if t, _ := typeOf(body); t != "array" {
+			add("write-only %s is not an array in the %s body", a.Name, method)
+			continue
+		}
+		items, _ := body["items"].(map[string]any)
+		enum, _ := items["enum"].([]any)
+		want := make([]string, 0, len(enum))
+		for _, e := range enum {
+			want = append(want, fmt.Sprint(e))
+		}
+		if !slices.Equal(a.OneOf, want) {
+			add("write-only %s OneOf %v, %s body enum %v", a.Name, a.OneOf, method, want)
+		}
+	}
+}
+
+// checkPaged holds a paged list data source to the API: the page size is the
+// list's cap, every query argument is a parameter of the GET, the cursor and the
+// extras are keys of its 200 answer, and every computed field is read.
+func checkPaged(d *Doc, s engine.Spec, res Resource, add func(string, ...any)) {
+	if s.Cursor == "" {
+		return
+	}
+	get := d.Paths["/"+s.Key]["get"]
+	if res.ListMax == nil || *res.ListMax != s.PageSize {
+		add("PageSize %d, contract list_max %v", s.PageSize, res.ListMax)
+	}
+	have := map[string]bool{}
+	for _, p := range get.Parameters {
+		have[p.Name] = true
+	}
+	for _, q := range s.QueryAttrs {
+		if !have[q.Name] {
+			add("query argument %s is not a parameter of GET /%s", q.Name, s.Key)
+		}
+	}
+	if !have["cursor"] || !have["limit"] {
+		add("GET /%s no longer takes cursor and limit", s.Key)
+	}
+	answer := get.Responses["200"].Content["application/json"].Schema.Properties
+	if _, ok := answer[s.Cursor]; !ok {
+		add("the 200 answer of GET /%s has no %s", s.Key, s.Cursor)
+	}
+	for _, x := range s.ExtraAttrs {
+		if _, ok := answer[x.Name]; !ok {
+			add("extra %s is not a key of the 200 answer of GET /%s", x.Name, s.Key)
+		}
+	}
+	read := map[string]bool{}
+	for _, a := range s.Attrs {
+		read[a.Name] = true
+	}
+	for name := range res.ComputedFields {
+		if !read[name] {
+			add("computed field %s is published by the contract but has no attribute", name)
+		}
+	}
+}
+
+// checkPreviewed holds a spec whose writes the API applies only against a
+// preview to what the contract publishes: the fingerprint argument, the 428 and
+// the 409 of the singleton's PUT, the arguments a destroy sends, and the
+// confirmations the spec asks the configuration for.
+func checkPreviewed(d *Doc, s engine.Spec, res Resource, add func(string, ...any)) {
+	if !s.Previewed {
+		return
+	}
+	if s.Shape != engine.Singleton {
+		add("a previewed spec must be a singleton")
+		return
+	}
+	if !slices.Contains(res.ActionArgs, "expected_fingerprint") {
+		add("previewed %s does not publish the expected_fingerprint argument", s.Key)
+	}
+	put := d.Paths["/"+s.Key]["put"]
+	for _, status := range []string{"428", "409"} {
+		if _, ok := put.Responses[status]; !ok {
+			add("the PUT of %s no longer documents a %s", s.Key, status)
+		}
+	}
+	for arg := range s.DestroyBody {
+		if !slices.Contains(res.ActionArgs, arg) {
+			add("the destroy body sends %s, which is not an action argument", arg)
+		}
+	}
+	if s.DestroyBody != nil {
+		if _, ok := res.ComputedFields[s.DestroyWhen]; !ok {
+			add("the destroy follows %s, which the API does not publish as a computed field", s.DestroyWhen)
+		}
+	}
+	checkPreviewShape(put.Responses, add)
+	body := put.RequestBody.Content["application/json"].Schema.Properties
+	for name, c := range s.Confirmations {
+		items, _ := body["confirm"]["items"].(map[string]any)
+		if enum, _ := items["enum"].([]any); !slices.Contains(enum, any(name)) {
+			add("confirmation %s is not in the PUT body's confirm enum", name)
+		}
+		if !slices.Contains(res.Fields, c.Attr) {
+			add("confirmation %s names %s, which is not a field of %s", name, c.Attr, s.Key)
+		}
+	}
+}
+
+// previewFixture is the preview the platform emits, copied from its code: the
+// keys the provider reads must all be there (the contract itself publishes
+// preview as a bare object).
+func previewFixture() (map[string]any, error) {
+	raw, err := os.ReadFile("testdata/repository_defaults_preview.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Preview map[string]any `json:"preview"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	return doc.Preview, nil
+}
+
+// checkPreviewShape holds the keys of preview.data the provider reads to what
+// the platform publishes: the fixture of its answer, and the 428 and 409
+// schemas once they list the preview's properties. A rename of one of those
+// keys would otherwise read as a preview that moves nothing.
+func checkPreviewShape(responses map[string]struct {
+	Content map[string]struct {
+		Schema struct {
+			Properties map[string]map[string]any `json:"properties"`
+		} `json:"schema"`
+	} `json:"content"`
+}, add func(string, ...any)) {
+	fixture, err := previewFixture()
+	switch {
+	case err != nil:
+		add("the preview fixture cannot be read: %v", err)
+	case engine.CheckPreview(fixture) != nil:
+		add("the preview fixture is not a preview the provider can read: %v", engine.CheckPreview(fixture))
+	default:
+		if kids, _ := fixture["children"].([]any); len(kids) == 0 {
+			add("the preview fixture has no following child, so the child keys are not pinned")
+		}
+		if changes, _ := fixture["changes"].(map[string]any); len(changes) == 0 {
+			add("the preview fixture has no change, so the change keys are not pinned")
+		}
+	}
+	for _, status := range []string{"428", "409"} {
+		preview := responses[status].Content["application/json"].Schema.Properties["preview"]
+		for _, problem := range previewSchemaProblems(preview) {
+			add("the %s answer %s", status, problem)
+		}
+	}
+}
+
+// previewSchemaProblems holds a published preview schema to the wire shape: the
+// keys the provider reads are under preview.data (the body is {"preview":
+// {"data": {...}}}), not directly under preview. A schema that publishes no
+// properties (today's bare object, or a bare data object) is accepted; one that
+// publishes them must publish them at that path and list every key.
+func previewSchemaProblems(preview map[string]any) []string {
+	props, published := preview["properties"].(map[string]any)
+	if !published {
+		return nil
+	}
+	data, ok := props["data"].(map[string]any)
+	if !ok {
+		return []string{"publishes preview properties without data, but the provider reads the preview under preview.data"}
+	}
+	dataProps, published := data["properties"].(map[string]any)
+	if !published {
+		return nil
+	}
+	var out []string
+	for _, key := range engine.PreviewKeys() {
+		if _, ok := dataProps[key]; !ok {
+			out = append(out, fmt.Sprintf("publishes preview.data without %s, which the provider reads", key))
+		}
+	}
+	return out
+}
+
+// checkIgnored holds each list entry the provider ignores to the items the
+// write body publishes: an entry the platform stopped listing would be a dead
+// rule, and one it never listed a typo.
+func checkIgnored(s engine.Spec, body map[string]map[string]any, add func(string, ...any)) {
+	for _, a := range s.Attrs {
+		for _, v := range a.IgnoredValues {
+			items, _ := body[a.Name]["items"].(map[string]any)
+			if enum, _ := items["enum"].([]any); !slices.Contains(enum, any(v)) {
+				add("%s ignores %q, which the update body does not publish", a.Name, v)
+			}
+		}
+	}
+}
+
+// checkFollows holds the reset machinery to the API: the named write-only list
+// exists, and the list of held settings is a published computed field.
+func checkFollows(s engine.Spec, res Resource, add func(string, ...any)) {
+	if s.FollowsDefault == "" && s.SetHere == "" {
+		return
+	}
+	var writeOnly bool
+	for _, a := range s.Attrs {
+		if a.Name == s.FollowsDefault && a.WriteOnly {
+			writeOnly = true
+		}
+	}
+	if !writeOnly {
+		add("FollowsDefault %q is not a write-only attribute", s.FollowsDefault)
+	}
+	if _, ok := res.ComputedFields[s.SetHere]; !ok {
+		add("SetHere %q is not a computed field the API publishes", s.SetHere)
+	}
 }
 
 // checkListBounds holds each list's MaxItems to the maxItems the update body
@@ -309,6 +551,10 @@ func checkAddressing(s engine.Spec, res Resource, add func(string, ...any)) {
 		want = []string{}
 	case engine.Generated:
 		want = []string{"id"}
+		// A paged view is not stored configuration: it has no row to address.
+		if s.Cursor != "" {
+			want = []string{}
+		}
 	case engine.NaturalKey:
 		want = []string{s.IDAttr}
 		if !slices.Equal(res.NaturalKey, want) {
@@ -378,6 +624,16 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "social_joins_enabled" })
 			d.Resources["organization_settings"] = r
 		}},
+		{"mfa_required leaves terraform_read_only", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "mfa_required" })
+			d.Resources["organization_settings"] = r
+		}},
+		{"a read-only collection gains a field", "secret_allow_rules", func(d *Doc) {
+			r := d.Resources["secret_allow_rules"]
+			r.Fields = append(slices.Clone(r.Fields), "severity")
+			d.Resources["secret_allow_rules"] = r
+		}},
 		{"fix_request_floor leaves terraform_read_only", "organization_settings", func(d *Doc) {
 			r := d.Resources["organization_settings"]
 			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "fix_request_floor" })
@@ -415,10 +671,49 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op.RequestBody.Content["application/json"].Schema.Properties["path_prefixes"]["maxItems"] = float64(50)
 			d.Paths["/repo_settings/{id}"]["put"] = op
 		}},
+		{"follows_default leaves action_args", "repo_settings", func(d *Doc) {
+			r := d.Resources["repo_settings"]
+			r.ActionArgs = slices.DeleteFunc(slices.Clone(r.ActionArgs), func(f string) bool { return f == "follows_default" })
+			d.Resources["repo_settings"] = r
+		}},
+		{"follows_default gains a setting", "repo_settings", func(d *Doc) {
+			op := d.Paths["/repo_settings/{id}"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["follows_default"]["items"].(map[string]any)
+			items["enum"] = append(slices.Clone(items["enum"].([]any)), "service")
+			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"set_here leaves the computed fields", "repo_settings", func(d *Doc) {
+			r := d.Resources["repo_settings"]
+			r.ComputedFields = maps.Clone(r.ComputedFields)
+			delete(r.ComputedFields, "set_here")
+			d.Resources["repo_settings"] = r
+		}},
+		{"inheritance_stopped stops listing repository_defaults", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["inheritance_stopped"]["items"].(map[string]any)
+			items["enum"] = []any{"slack", "github_installation", "ai_providers", "outbound_targets", "ticket_integrations"}
+			d.Paths["/organization_settings"]["put"] = op
+		}},
 		{"draft_prs stops being nullable", "repo_settings", func(d *Doc) {
 			op := d.Paths["/repo_settings/{id}"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["draft_prs"]["type"] = "boolean"
 			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"the 428 publishes a preview without a key the provider reads", "repository_defaults", func(d *Doc) {
+			op := d.Paths["/repository_defaults"]["put"]
+			schema := op.Responses["428"].Content["application/json"].Schema
+			schema.Properties["preview"] = map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": map[string]any{"fingerprint": map[string]any{"type": "string"}}}}}
+			d.Paths["/repository_defaults"]["put"] = op
+		}},
+		{"the 428 publishes the preview's keys one level too high", "repository_defaults", func(d *Doc) {
+			op := d.Paths["/repository_defaults"]["put"]
+			schema := op.Responses["428"].Content["application/json"].Schema
+			flat := map[string]any{}
+			for _, k := range engine.PreviewKeys() {
+				flat[k] = map[string]any{}
+			}
+			schema.Properties["preview"] = map[string]any{"type": "object", "properties": flat}
+			d.Paths["/repository_defaults"]["put"] = op
 		}},
 		{"a list's maxItems changes", "service_bindings", func(d *Doc) {
 			op := d.Paths["/service_bindings/{id}"]["put"]
@@ -440,6 +735,34 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			c.mutate(d)
 			if len(specProblems(d, spec)) == 0 {
 				t.Fatal("the contract test missed this drift")
+			}
+		})
+	}
+}
+
+func TestPreviewSchemaIsHeldToTheWireShape(t *testing.T) {
+	full := map[string]any{}
+	for _, k := range engine.PreviewKeys() {
+		full[k] = map[string]any{}
+	}
+	partial := map[string]any{"fingerprint": map[string]any{}}
+	nested := func(keys map[string]any) map[string]any {
+		return map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": keys}}}
+	}
+	for _, c := range []struct {
+		name    string
+		preview map[string]any
+		bad     bool
+	}{
+		{"a bare object is accepted until the platform publishes the shape", map[string]any{"type": "object"}, false},
+		{"a bare data object is accepted", map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object"}}}, false},
+		{"the full nested set passes", nested(full), false},
+		{"a nested set missing a key fails", nested(partial), true},
+		{"the keys one level too high fail", map[string]any{"type": "object", "properties": full}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := previewSchemaProblems(c.preview); (len(got) > 0) != c.bad {
+				t.Fatalf("problems = %v, want bad = %v", got, c.bad)
 			}
 		})
 	}

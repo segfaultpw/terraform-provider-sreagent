@@ -134,6 +134,12 @@ func TestExportAdoptsCleanly(t *testing.T) {
 		"match_labels": map[string]any{},
 	})
 
+	// A repository that holds only its runner and follows the organization default
+	// for the rest, and the organization's own defaults.
+	f.SetDefaults(map[string]any{"fix_runner": "platform", "platform_fallback": true, "auto_dispatch": false, "draft_prs": true, "check_network": false, "allow_ci_config": false})
+	f.DefaultsSource("own", "", nil)
+	repo := seedOne(t, f.URL, "repo_settings", map[string]any{"repo": "acme/web", "fix_runner": "self_hosted"})
+
 	// Written the way the export writes it: the AI provider's default
 	// max_tokens, temperature and timeout_ms left out (the provider reads
 	// an answer equal to one back as null), the rule's default cooldown,
@@ -183,7 +189,22 @@ resource "sreagent_outbound_rule" "critical" {
   outbound_config_id = %q
   enabled            = true
 }
-`, config)
+`, config) + `
+resource "sreagent_repo_setting" "acme_web" {
+  repo            = "acme/web"
+  fix_runner      = "self_hosted"
+  follows_default = ["platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"]
+}
+
+resource "sreagent_repository_defaults" "repository_defaults" {
+  fix_runner        = "platform"
+  platform_fallback = true
+  auto_dispatch     = false
+  draft_prs         = true
+  check_network     = false
+  allow_ci_config   = false
+}
+`
 
 	imports := fmt.Sprintf(`
 import {
@@ -205,7 +226,17 @@ import {
   to = sreagent_outbound_rule.critical
   id = %q
 }
-`, provider, config, rule)
+`, provider, config, rule) + fmt.Sprintf(`
+import {
+  to = sreagent_repo_setting.acme_web
+  id = %q
+}
+
+import {
+  to = sreagent_repository_defaults.repository_defaults
+  id = "repository_defaults"
+}
+`, repo)
 
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
@@ -221,6 +252,9 @@ import {
 			},
 		},
 	})
+	if puts := len(f.PutBodies("repository_defaults")) + len(f.PutBodies("repo_settings")); puts != 0 {
+		t.Fatalf("adopting the export wrote %d times: it must import and change nothing", puts)
+	}
 }
 
 // TestExportLiteralAtANullMeaningNeverAdopts pins the trap the round trip

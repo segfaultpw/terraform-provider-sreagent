@@ -31,6 +31,7 @@ output "fix_request_floor" {
 - `alert_refire_cooldown_minutes` (Number) 0 to 1440.
 - `alert_storm_threshold` (Number) Alerts within the window that make a storm.
 - `alert_storm_window_seconds` (Number) The storm window.
+- `api_key_max_days` (Number) The longest life, in days, a new API key or personal token may be given, or null for no limit. Changed by an org admin in the app.
 - `auto_close_incidents` (Boolean) Close incidents automatically.
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
@@ -38,10 +39,15 @@ output "fix_request_floor" {
 - `fix_request_floor` (String) Who may ask SRE Agent for a fix pull request, or to change one it opened: org_admin for org admins only, member for members too. Changed by an org admin in the app.
 - `id` (String) The row's identifier on the platform.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
-- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app.
+- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.
 - `investigation_paused` (Boolean) Pause automatic investigations.
+- `mfa_effective` (String) The two-step rule that applies to this organization, counting the strictest of its own and its parent's settings.
+- `mfa_grace_days` (Number) Days a person has to enrol a second step once it is required, 0 to 30. Changed by an org admin in the app.
+- `mfa_required` (Boolean) Whether the organization requires two-step sign-in. Changed by an org admin in the app.
 - `monthly_ai_budget_usd` (Number) The monthly AI budget.
 - `restrict_domain_signups` (Boolean) Only allow sign-ups from the organization's domains. Changed by an admin in the app.
+- `session_idle_effective` (Number) The idle sign-out limit that applies to this organization, in minutes, counting its parent's, or null for none.
+- `session_idle_minutes` (Number) Minutes of inactivity after which a browser session is signed out, 5 to 43200, or null for no limit. Changed by an org admin in the app.
 - `social_joins_enabled` (Boolean) Allow joining through social sign-in. Changed by an admin in the app.
 - `timezone` (String) An IANA time zone.

@@ -27,6 +27,7 @@ data "sreagent_slack" "this" {}
 - `default_channel_info` (String) Where info alerts post when no route names a channel.
 - `default_channel_remediation` (String) Where remediation updates post.
 - `default_channel_warning` (String) Where warning alerts post when no route names a channel.
+- `delivery_problems` (String) The channels Slack refused this workspace's posts to, and a workspace-wide refusal, as the Settings page lists them.
 - `enabled` (Boolean) Whether the workspace is used.
 - `id` (String) The row's identifier on the platform.
 - `name` (String) A label for the workspace; required on first configuration.

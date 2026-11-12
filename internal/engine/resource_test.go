@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -225,5 +226,114 @@ func TestOnlyAClearableSecretCanClear(t *testing.T) {
 	singleton := &facadeResource{spec: Spec{Key: "k", TypeName: "k", Shape: Singleton, Attrs: clearSpec.Attrs}}
 	if got, _ := singleton.clearing(ctx, clearSpec.Attrs[1], config, plan, *state); got {
 		t.Error("a singleton has no null to send, so it never clears")
+	}
+}
+
+type listSource map[string]types.List
+
+func (s listSource) GetAttribute(_ context.Context, p path.Path, target any) diag.Diagnostics {
+	var diags diag.Diagnostics
+	dst, ok := target.(*types.List)
+	if !ok {
+		diags.AddError("test bug", "lists only")
+		return diags
+	}
+	v, found := s[p.String()]
+	if !found {
+		v = types.ListNull(types.StringType)
+	}
+	*dst = v
+	return diags
+}
+
+func listOf(names ...string) types.List {
+	elems := make([]attr.Value, 0, len(names))
+	for _, n := range names {
+		elems = append(elems, types.StringValue(n))
+	}
+	return types.ListValueMust(types.StringType, elems)
+}
+
+var followsSpec = Spec{
+	Key: "rows", TypeName: "row", Shape: Generated, Lifecycle: true,
+	FollowsDefault: "follows_default", SetHere: "set_here",
+	Attrs: []Attr{
+		{Name: "a", Kind: Bool},
+		{Name: "b", Kind: Bool},
+		{Name: "c", Kind: Bool, Clearable: true},
+		{Name: "follows_default", Kind: StringList, WriteOnly: true, OneOf: []string{"a", "b", "c"}},
+		{Name: "set_here", Kind: StringList, Computed: true},
+		{Name: "set_here", TFName: "following", Kind: StringList, Computed: true, Complement: []string{"a", "b", "c"}},
+	},
+}
+
+// A reset names only a setting the configuration puts back on the default and
+// the row holds, in the API's order. A Clearable setting is cleared by leaving
+// it out, so it is never named; a setting the row already follows is no change;
+// and an answer with no held list names nothing.
+func TestResetsNameOnlyWhatTheRowHolds(t *testing.T) {
+	r := &facadeResource{spec: followsSpec}
+	cases := []struct {
+		name          string
+		config, state listSource
+		want          []string
+	}{
+		{"a held setting", listSource{"follows_default": listOf("a")}, listSource{"set_here": listOf("a", "b")}, []string{"a"}},
+		{"in the API's order, not the configuration's", listSource{"follows_default": listOf("b", "a")}, listSource{"set_here": listOf("a", "b")}, []string{"a", "b"}},
+		{"a setting the row follows", listSource{"follows_default": listOf("a", "b")}, listSource{"set_here": listOf("b")}, []string{"b"}},
+		{"nothing held", listSource{"follows_default": listOf("a")}, listSource{"set_here": listOf()}, nil},
+		{"a clearable setting is cleared by omission", listSource{"follows_default": listOf("c")}, listSource{"set_here": listOf("c")}, nil},
+		{"no held list", listSource{"follows_default": listOf("a")}, listSource{}, nil},
+		{"no follows_default", listSource{}, listSource{"set_here": listOf("a")}, nil},
+		{"an unknown held list", listSource{"follows_default": listOf("a")}, listSource{"set_here": types.ListUnknown(types.StringType)}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, diags := r.resets(context.Background(), c.config, c.state)
+			if diags.HasError() {
+				t.Fatal(diags)
+			}
+			if !slices.Equal(got, c.want) {
+				t.Fatalf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+	// After a create the held list is the answered row's.
+	got, _ := r.resets(context.Background(), listSource{"follows_default": listOf("a", "b")}, answered{row: map[string]any{"set_here": []any{"b"}}})
+	if !slices.Equal(got, []string{"b"}) {
+		t.Fatalf("after a create: got %v", got)
+	}
+}
+
+func TestComplementIsWhatTheAnsweredListDoesNotHold(t *testing.T) {
+	a := Attr{Complement: []string{"a", "b", "c"}}
+	if got := complement(a, []any{"b"}); !got.Equal(listOf("a", "c")) {
+		t.Fatalf("got %v", got)
+	}
+	if got := complement(a, nil); !got.IsNull() {
+		t.Fatalf("an answer with no list must read null, got %v", got)
+	}
+}
+
+// A create is told its follows_default is ignored when the answer carries no
+// held list (a platform before the release that reports one); an answer that
+// does carry one is not.
+func TestFollowsIgnoredReadsTheAnsweredRow(t *testing.T) {
+	spec := followsSpec
+	spec.FollowsMinPlatform = "v9.9.9"
+	r := &facadeResource{spec: spec}
+	config := listSource{"follows_default": listOf("a")}
+	ctx := context.Background()
+	if !r.followsIgnored(ctx, config, answered{row: map[string]any{"a": true}}) {
+		t.Error("an answer with no held list must read as ignored")
+	}
+	if r.followsIgnored(ctx, config, answered{row: map[string]any{"set_here": []any{}}}) {
+		t.Error("an answer with a held list, even an empty one, is not ignored")
+	}
+	if r.followsIgnored(ctx, listSource{}, answered{row: map[string]any{}}) {
+		t.Error("a configuration that names nothing has nothing ignored")
+	}
+	if !strings.Contains(r.followsIgnoredWarning(), "v9.9.9") {
+		t.Errorf("%s", r.followsIgnoredWarning())
 	}
 }

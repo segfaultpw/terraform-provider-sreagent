@@ -227,3 +227,54 @@ func TestNewNamesTheEnvironmentVariableWhenTheKeyIsUnset(t *testing.T) {
 		t.Fatalf("an unset key must say so and name SREAGENT_API_KEY, got %v", err)
 	}
 }
+
+func TestA428CarriesThePreview(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 428, map[string]any{"error": "precondition_required", "message": "review it", "preview": map[string]any{"data": map[string]any{"fingerprint": "abc", "moved": []any{"acme/web"}}}}, nil)
+	}, "")
+	_, err := c.Do(context.Background(), Request{Method: http.MethodPut, Path: "repository_defaults", Body: map[string]any{"auto_dispatch": false}})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || !IsPreconditionRequired(err) {
+		t.Fatalf("want a 428, got %v", err)
+	}
+	if apiErr.Preview["fingerprint"] != "abc" {
+		t.Fatalf("the preview was not decoded: %v", apiErr.Preview)
+	}
+}
+
+func TestA409CarriesTheFreshPreview(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 409, map[string]any{"error": "conflict", "message": "moved", "preview": map[string]any{"data": map[string]any{"fingerprint": "fresh"}}}, nil)
+	}, "")
+	_, err := c.Do(context.Background(), Request{Method: http.MethodPut, Path: "repository_defaults", Body: map[string]any{"expected_fingerprint": "old"}})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || !IsConflict(err) || apiErr.Preview["fingerprint"] != "fresh" {
+		t.Fatalf("want a 409 with the fresh preview, got %v (%v)", err, apiErr)
+	}
+}
+
+func TestAPreviewThatIsNotAnObjectNeverBreaksAnotherAnswer(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 409, map[string]any{"error": "conflict", "message": "has already been taken", "preview": "text", "existing": map[string]any{"id": "x"}}, nil)
+	}, "")
+	_, err := c.Do(context.Background(), Request{Method: http.MethodPost, Path: "teams", Body: map[string]any{"name": "x"}})
+	if !IsConflict(err) {
+		t.Fatalf("want the 409, got %v", err)
+	}
+}
+
+func TestAListAnswerKeepsWhatIsBesideData(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 200, map[string]any{"organization": org, "data": []any{}, "truncated": false, "next_cursor": "c2", "counts": map[string]any{"total": 7}}, nil)
+	}, "")
+	out, err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "effective_repo_settings"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out.Extras["next_cursor"]) != `"c2"` || !strings.Contains(string(out.Extras["counts"]), `"total":7`) {
+		t.Fatalf("extras %v", out.Extras)
+	}
+	if _, kept := out.Extras["data"]; kept {
+		t.Fatalf("the rows are not an extra: %v", out.Extras)
+	}
+}
