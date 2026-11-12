@@ -546,3 +546,48 @@ func TestAPlanWithAReadOnlyKeyStillRefusesATurnedOnSettingWithoutItsConfirmation
 		t.Fatalf("want the confirmation refused at plan, got %v", d)
 	}
 }
+
+// A platform that renamed a key of its preview must not read as "nothing
+// moves": the plan fails and says the preview cannot be read.
+func TestAPreviewTheProviderCannotReadFailsThePlan(t *testing.T) {
+	for _, key := range []string{"fingerprint", "changes", "moved", "needs_confirm"} {
+		t.Run(key, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			seedRepo(t, f, "acme/web")
+			f.DropPreviewKey(key)
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []tfresource.TestStep{{
+					Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+					ExpectError: regexp.MustCompile(`(?s)preview\s+this\s+provider\s+version\s+cannot\s+read.*` + key + `\s+is\s+missing`),
+				}},
+			})
+			if got := f.Defaults()["auto_dispatch"]; got != true {
+				t.Fatalf("the defaults were written: auto_dispatch = %v", got)
+			}
+			for _, p := range defaultsPuts(f) {
+				if fingerprintOf(p) != "" {
+					t.Fatalf("a write was sent: %v", p)
+				}
+			}
+		})
+	}
+}
+
+// The apply that previews for itself (the plan key could not) takes the same
+// stand: it never falls back to applying what it could not read.
+func TestAnApplyThatCannotReadItsOwnPreviewWritesNothing(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.RefusePreviews(2)
+	f.DropPreviewKey("fingerprint")
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []tfresource.TestStep{{
+			Config:      defaultsConfig(f.URL, "  auto_dispatch = false"),
+			ExpectError: regexp.MustCompile(`(?s)cannot\s+read.*fingerprint\s+is\s+missing`),
+		}},
+	})
+	if got := f.Defaults()["auto_dispatch"]; got != true {
+		t.Fatalf("the defaults were written: auto_dispatch = %v", got)
+	}
+}

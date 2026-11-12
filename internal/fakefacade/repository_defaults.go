@@ -28,6 +28,7 @@ type defaultsModel struct {
 	previews     int
 	fingerprint  string
 	ifMatches    []string
+	dropKeys     []string
 }
 
 var (
@@ -103,6 +104,24 @@ func (f *Fake) RepositoryAppearsOnNextFingerprintedPut(repo string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.dm.appearOnPut = append(f.dm.appearOnPut, repo)
+}
+
+// DropPreviewKey leaves a key out of every preview the defaults answer, as a
+// platform that renamed it would.
+func (f *Fake) DropPreviewKey(key string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dm.dropKeys = append(f.dm.dropKeys, key)
+}
+
+func (f *Fake) answeredPreview(preview map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range preview {
+		if !slices.Contains(f.dm.dropKeys, k) {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // Previews counts the 428s the defaults answered.
@@ -337,12 +356,12 @@ func (f *Fake) putDefaults(w http.ResponseWriter, r *http.Request, body map[stri
 	if !fingerprinted {
 		f.dm.previews++
 		f.dm.fingerprint = analysis.fingerprint
-		reply(w, 428, map[string]any{"error": "precondition_required", "message": "This change is applied against a preview you have read, and nothing was written.", "preview": map[string]any{"data": analysis.preview}}, "")
+		reply(w, 428, map[string]any{"error": "precondition_required", "message": "This change is applied against a preview you have read, and nothing was written.", "preview": map[string]any{"data": f.answeredPreview(analysis.preview)}}, "")
 		return
 	}
 	if want, _ := body["expected_fingerprint"].(string); want != analysis.fingerprint {
 		f.dm.fingerprint = analysis.fingerprint
-		reply(w, 409, map[string]any{"error": "conflict", "message": "What would move changed since that preview, so nothing was written.", "preview": map[string]any{"data": analysis.preview}}, "")
+		reply(w, 409, map[string]any{"error": "conflict", "message": "What would move changed since that preview, so nothing was written.", "preview": map[string]any{"data": f.answeredPreview(analysis.preview)}}, "")
 		return
 	}
 	if len(analysis.refusals) > 0 {

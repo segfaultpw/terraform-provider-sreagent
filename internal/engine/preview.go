@@ -50,43 +50,137 @@ type preview struct {
 	LeavesParent bool
 }
 
-func parsePreview(m map[string]any) preview {
+// previewKeys are the keys of preview.data the provider reads, with the JSON
+// type each must have. The platform emits every one of them in every preview,
+// so an answer without one is not a preview this provider version understands:
+// reading it as "nothing moves" would plan a warning that is false.
+var previewKeys = map[string]string{
+	"fingerprint":       "string",
+	"changes":           "object",
+	"moved":             "array",
+	"kept":              "number",
+	"differs_by_branch": "array",
+	"children":          "array",
+	"needs_confirm":     "array",
+	"refusals":          "array",
+	"leaves_parent":     "boolean",
+}
+
+// previewChildKeys are the keys of each entry of preview.data.children.
+var previewChildKeys = map[string]string{
+	"organization_name": "string",
+	"moved":             "number",
+	"ci_pinned":         "number",
+	"no_runner":         "boolean",
+}
+
+// PreviewKeys are the keys of preview.data the provider reads, for the contract
+// test that holds them to the platform's published shape.
+func PreviewKeys() []string { return slices.Sorted(maps.Keys(previewKeys)) }
+
+// PreviewChildKeys are the keys of each following child in preview.data.children.
+func PreviewChildKeys() []string { return slices.Sorted(maps.Keys(previewChildKeys)) }
+
+func jsonKind(v any) string {
+	switch v.(type) {
+	case string:
+		return "string"
+	case map[string]any:
+		return "object"
+	case []any:
+		return "array"
+	case float64:
+		return "number"
+	case bool:
+		return "boolean"
+	}
+	return "null"
+}
+
+// unreadablePreview is the error for an answer that does not carry the keys the
+// provider reads.
+type unreadablePreview struct{ problems []string }
+
+func (e *unreadablePreview) Error() string {
+	return "the platform answered a preview this provider version cannot read (" + strings.Join(e.problems, "; ") +
+		"), so nothing was written. Upgrade the provider, or report this if it is already the latest."
+}
+
+func keyProblems(m map[string]any, keys map[string]string, where string) []string {
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(keys)) {
+		v, ok := m[name]
+		switch {
+		case !ok:
+			out = append(out, where+name+" is missing")
+		case jsonKind(v) != keys[name]:
+			out = append(out, fmt.Sprintf("%s%s is %s, not %s", where, name, jsonKind(v), keys[name]))
+		}
+	}
+	return out
+}
+
+// parsePreview reads a preview.data. It fails, naming the keys, when one the
+// provider reads is absent or of another type, and when the fingerprint that
+// applies the preview is empty.
+func parsePreview(m map[string]any) (preview, error) {
+	if len(m) == 0 {
+		return preview{}, &unreadablePreview{problems: []string{"the answer carries no preview"}}
+	}
+	problems := keyProblems(m, previewKeys, "")
+	if fp, ok := m["fingerprint"].(string); ok && fp == "" {
+		problems = append(problems, "fingerprint is empty")
+	}
+	kids, _ := m["children"].([]any)
+	for i, raw := range kids {
+		c, ok := raw.(map[string]any)
+		if !ok {
+			problems = append(problems, fmt.Sprintf("children[%d] is %s, not object", i, jsonKind(raw)))
+			continue
+		}
+		problems = append(problems, keyProblems(c, previewChildKeys, fmt.Sprintf("children[%d].", i))...)
+	}
+	changes, _ := m["changes"].(map[string]any)
+	for _, name := range slices.Sorted(maps.Keys(changes)) {
+		c, ok := changes[name].(map[string]any)
+		if !ok {
+			problems = append(problems, fmt.Sprintf("changes.%s is %s, not object", name, jsonKind(changes[name])))
+			continue
+		}
+		for _, end := range []string{"from", "to"} {
+			if _, has := c[end]; !has {
+				problems = append(problems, fmt.Sprintf("changes.%s.%s is missing", name, end))
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return preview{}, &unreadablePreview{problems: problems}
+	}
 	p := preview{Changes: map[string]previewChange{}}
 	p.Fingerprint, _ = m["fingerprint"].(string)
-	if changes, ok := m["changes"].(map[string]any); ok {
-		for name, raw := range changes {
-			if c, ok := raw.(map[string]any); ok {
-				p.Changes[name] = previewChange{From: c["from"], To: c["to"]}
-			}
-		}
+	for name, raw := range changes {
+		c := raw.(map[string]any)
+		p.Changes[name] = previewChange{From: c["from"], To: c["to"]}
 	}
 	p.Moved = stringList(m["moved"])
-	if n, ok := m["kept"].(float64); ok {
-		p.Kept = int(n)
-	}
+	n, _ := m["kept"].(float64)
+	p.Kept = int(n)
 	p.Differs = stringList(m["differs_by_branch"])
-	if kids, ok := m["children"].([]any); ok {
-		for _, raw := range kids {
-			c, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			child := previewChild{}
-			child.Name, _ = c["organization_name"].(string)
-			if n, ok := c["moved"].(float64); ok {
-				child.Moved = int(n)
-			}
-			if n, ok := c["ci_pinned"].(float64); ok {
-				child.CIPinned = int(n)
-			}
-			child.NoRunner, _ = c["no_runner"].(bool)
-			p.Children = append(p.Children, child)
-		}
+	for _, raw := range kids {
+		c := raw.(map[string]any)
+		child := previewChild{}
+		child.Name, _ = c["organization_name"].(string)
+		moved, _ := c["moved"].(float64)
+		child.Moved = int(moved)
+		pinned, _ := c["ci_pinned"].(float64)
+		child.CIPinned = int(pinned)
+		child.NoRunner, _ = c["no_runner"].(bool)
+		p.Children = append(p.Children, child)
 	}
 	p.NeedsConfirm = stringList(m["needs_confirm"])
 	p.Refusals = stringList(m["refusals"])
 	p.LeavesParent, _ = m["leaves_parent"].(bool)
-	return p
+	return p, nil
 }
 
 func stringList(v any) []string {
@@ -274,16 +368,28 @@ func (r *facadeResource) previewCall(ctx context.Context, body map[string]any, i
 	case err == nil:
 		return preview{}, fmt.Errorf("the platform wrote sreagent_%s instead of previewing it, so no fingerprint could be taken", r.spec.TypeName)
 	case errors.As(err, &apiErr) && apiErr.Status == http.StatusPreconditionRequired:
-		return parsePreview(apiErr.Preview), nil
+		return parsePreview(apiErr.Preview)
 	}
 	return preview{}, err
 }
 
 func (r *facadeResource) staleError(diags *diag.Diagnostics, verb string, err error) {
-	detail := "What would move changed since the plan (the platform answered 409), so nothing was written. Run terraform plan again to review the fresh preview."
+	rerun := "terraform plan"
+	if verb == "delete" {
+		rerun = "terraform plan -destroy"
+	}
+	if client.IsRetried(err) {
+		diags.AddError(r.title(verb), fmt.Sprintf("The platform answered 409 to a retried request after a gateway error, so the first attempt may have been applied. Run %s to see the defaults as they are now.", rerun))
+		return
+	}
+	detail := fmt.Sprintf("What would move changed since the plan (the platform answered 409), so nothing was written. Run %s again to review the fresh preview.", rerun)
 	var apiErr *client.APIError
 	if errors.As(err, &apiErr) && len(apiErr.Preview) > 0 {
-		detail += "\n\nThe fresh preview: " + parsePreview(apiErr.Preview).warning()
+		if fresh, perr := parsePreview(apiErr.Preview); perr != nil {
+			detail += "\n\nThe fresh preview could not be read: " + perr.Error()
+		} else {
+			detail += "\n\nThe fresh preview: " + fresh.warning()
+		}
 	}
 	diags.AddError(r.title(verb), detail)
 }
@@ -547,4 +653,11 @@ func (r *facadeResource) importCheck(ctx context.Context, resp *resource.ImportS
 	case client.IsNotFound(err):
 		resp.Diagnostics.AddError(r.title("import"), r.platformTooOld(err))
 	}
+}
+
+// CheckPreview reports why a preview.data is not one this provider version can
+// read, for the contract test that holds the platform's fixture to it.
+func CheckPreview(m map[string]any) error {
+	_, err := parsePreview(m)
+	return err
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
 	"reflect"
 	"slices"
 	"testing"
@@ -311,6 +312,7 @@ func checkPreviewed(d *Doc, s engine.Spec, res Resource, add func(string, ...any
 			add("the destroy follows %s, which the API does not publish as a computed field", s.DestroyWhen)
 		}
 	}
+	checkPreviewShape(put.Responses, add)
 	body := put.RequestBody.Content["application/json"].Schema.Properties
 	for name, c := range s.Confirmations {
 		items, _ := body["confirm"]["items"].(map[string]any)
@@ -319,6 +321,62 @@ func checkPreviewed(d *Doc, s engine.Spec, res Resource, add func(string, ...any
 		}
 		if !slices.Contains(res.Fields, c.Attr) {
 			add("confirmation %s names %s, which is not a field of %s", name, c.Attr, s.Key)
+		}
+	}
+}
+
+// previewFixture is the preview the platform emits, copied from its code: the
+// keys the provider reads must all be there (the contract itself publishes
+// preview as a bare object).
+func previewFixture() (map[string]any, error) {
+	raw, err := os.ReadFile("testdata/repository_defaults_preview.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Preview map[string]any `json:"preview"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	return doc.Preview, nil
+}
+
+// checkPreviewShape holds the keys of preview.data the provider reads to what
+// the platform publishes: the fixture of its answer, and the 428 and 409
+// schemas once they list the preview's properties. A rename of one of those
+// keys would otherwise read as a preview that moves nothing.
+func checkPreviewShape(responses map[string]struct {
+	Content map[string]struct {
+		Schema struct {
+			Properties map[string]map[string]any `json:"properties"`
+		} `json:"schema"`
+	} `json:"content"`
+}, add func(string, ...any)) {
+	fixture, err := previewFixture()
+	switch {
+	case err != nil:
+		add("the preview fixture cannot be read: %v", err)
+	case engine.CheckPreview(fixture) != nil:
+		add("the preview fixture is not a preview the provider can read: %v", engine.CheckPreview(fixture))
+	default:
+		if kids, _ := fixture["children"].([]any); len(kids) == 0 {
+			add("the preview fixture has no following child, so the child keys are not pinned")
+		}
+		if changes, _ := fixture["changes"].(map[string]any); len(changes) == 0 {
+			add("the preview fixture has no change, so the change keys are not pinned")
+		}
+	}
+	for _, status := range []string{"428", "409"} {
+		preview := responses[status].Content["application/json"].Schema.Properties["preview"]
+		props, published := preview["properties"].(map[string]any)
+		if !published {
+			continue
+		}
+		for _, key := range engine.PreviewKeys() {
+			if _, ok := props[key]; !ok {
+				add("the %s answer publishes a preview without %s, which the provider reads", status, key)
+			}
 		}
 	}
 }
@@ -619,6 +677,12 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op := d.Paths["/repo_settings/{id}"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["draft_prs"]["type"] = "boolean"
 			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"the 428 publishes a preview without a key the provider reads", "repository_defaults", func(d *Doc) {
+			op := d.Paths["/repository_defaults"]["put"]
+			schema := op.Responses["428"].Content["application/json"].Schema
+			schema.Properties["preview"] = map[string]any{"type": "object", "properties": map[string]any{"fingerprint": map[string]any{"type": "string"}}}
+			d.Paths["/repository_defaults"]["put"] = op
 		}},
 		{"a list's maxItems changes", "service_bindings", func(d *Doc) {
 			op := d.Paths["/service_bindings/{id}"]["put"]
