@@ -58,6 +58,7 @@ resource "sreagent_slack" "this" {
 
 - `app_token_set` (Boolean) Whether a Socket Mode app token is stored.
 - `bot_token_set` (Boolean) Whether the platform holds a value for bot_token.
+- `delivery_problems` (String) The channels Slack refused this workspace's posts to, and a workspace-wide refusal, as the Settings page lists them.
 - `id` (String) The row's identifier on the platform.
 - `priority` (Number) Order among workspaces.
 - `signing_secret_set` (Boolean) Whether the platform holds a value for signing_secret.

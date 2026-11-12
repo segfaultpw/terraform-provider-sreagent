@@ -44,6 +44,14 @@ var OrganizationSettings = singleton("organization_settings", "The organization'
 	// The platform lists fix_request_floor as terraform_read_only: only an
 	// org admin's own session changes it, so it is read here, never written.
 	computed(engine.Attr{Name: "fix_request_floor", Kind: engine.String, OneOf: []string{"org_admin", "member"}, Description: "Who may ask SRE Agent for a fix pull request, or to change one it opened: org_admin for org admins only, member for members too. Changed by an org admin in the app."}),
+	// The sign-in and key limits are decided by an org admin in the app (or by
+	// the person it names), so the provider reads them and never writes them.
+	computed(b("mfa_required", "Whether the organization requires two-step sign-in. Changed by an org admin in the app.")),
+	computed(i("mfa_grace_days", "Days a person has to enrol a second step once it is required, 0 to 30. Changed by an org admin in the app.")),
+	computed(i("session_idle_minutes", "Minutes of inactivity after which a browser session is signed out, 5 to 43200, or null for no limit. Changed by an org admin in the app.")),
+	computed(i("api_key_max_days", "The longest life, in days, a new API key or personal token may be given, or null for no limit. Changed by an org admin in the app.")),
+	computed(engine.Attr{Name: "mfa_effective", Kind: engine.JSON, Description: "The two-step rule that applies to this organization, counting the strictest of its own and its parent's settings."}),
+	computed(i("session_idle_effective", "The idle sign-out limit that applies to this organization, in minutes, counting its parent's, or null for none.")),
 	l("inheritance_stopped", "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app."),
 )
 
@@ -55,7 +63,7 @@ var NotificationSettings = singleton("notification_settings", "Email notificatio
 	b("notify_slo", "Email on SLO events."),
 	b("notify_automation", "Email on automation events."),
 	b("notify_security", "Email on security events."),
-	l("muted_events", "Event types never emailed."),
+	l("muted_events", "Event types never emailed (for example security_digest, the weekly or daily security digest)."),
 )
 
 // ChangeNotifications mirrors x-sreagent-resources.change_notifications. A
@@ -85,6 +93,7 @@ var Slack = func() engine.Spec {
 		s("default_channel_remediation", "Where remediation updates post."),
 		engine.Attr{Name: "bot_token", Kind: engine.String, Secret: true, Description: "The bot token."},
 		engine.Attr{Name: "signing_secret", Kind: engine.String, Secret: true, Description: "The signing secret."},
+		computed(engine.Attr{Name: "delivery_problems", Kind: engine.JSON, Description: "The channels Slack refused this workspace's posts to, and a workspace-wide refusal, as the Settings page lists them."}),
 		computed(i("priority", "Order among workspaces.")),
 		computed(b("app_token_set", "Whether a Socket Mode app token is stored.")),
 	)

@@ -33,10 +33,15 @@ output "compliance_periods_count" {
 
 Read-Only:
 
+- `catalogue_version` (String) The control catalogue the frozen results were judged against.
 - `ends_on` (String) Last day.
 - `export_top_hash` (String) The exported bundle's manifest hash.
+- `fill_present_with_current` (Boolean) Whether an administrator chose to fill controls with no record at the end of the window with today's answer.
 - `framework` (String) The framework.
+- `freeze_kind` (String) How it was frozen: on time, late, or by an administrator.
+- `frozen_at` (String) When the window's evidence was frozen, or null while it is open.
 - `id` (String) The row's identifier on the platform.
 - `name` (String) The window's name.
 - `starts_on` (String) First day.
+- `state` (String) Where the window is in its life: open, frozen after it ended, or exported.
 - `status` (String) open or exported.

@@ -148,3 +148,63 @@ func TestOrganizationSettingsReadsAnOlderPlatformWithoutTheFields(t *testing.T) 
 		}},
 	})
 }
+
+// The sign-in and key limits are decided by an org admin in the app: the
+// provider reads them (and the effective values the platform derives) into
+// state and never sends them.
+func TestTheMFAAndSessionLimitsAreReadAndNeverWritten(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {
+					f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+						r["mfa_required"] = true
+						r["mfa_grace_days"] = 7
+						r["session_idle_minutes"] = 60
+						r["api_key_max_days"] = 90
+						r["mfa_effective"] = map[string]any{"required": true, "source": "own"}
+						r["session_idle_effective"] = 60
+					})
+				},
+				Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "mfa_required", "true"),
+					resource.TestCheckResourceAttr(orgSettings, "mfa_grace_days", "7"),
+					resource.TestCheckResourceAttr(orgSettings, "session_idle_minutes", "60"),
+					resource.TestCheckResourceAttr(orgSettings, "api_key_max_days", "90"),
+					resource.TestCheckResourceAttr(orgSettings, "session_idle_effective", "60"),
+					resource.TestCheckResourceAttrSet(orgSettings, "mfa_effective"),
+					func(*terraform.State) error {
+						body := f.LastBody("PUT", "organization_settings")
+						for _, k := range []string{"mfa_required", "mfa_grace_days", "session_idle_minutes", "api_key_max_days", "mfa_effective", "session_idle_effective"} {
+							if _, sent := body[k]; sent {
+								return fmt.Errorf("%s was written: %v", k, body)
+							}
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestTheMFAAndSessionLimitsCannotBeConfigured(t *testing.T) {
+	for _, name := range []string{"mfa_required = true", "mfa_grace_days = 3", "session_idle_minutes = 30", "api_key_max_days = 30"} {
+		t.Run(name, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config:      orgSettingsConfig(f.URL, "  "+name),
+					ExpectError: regexp.MustCompile(`(?s)Read-Only Attribute`),
+				}},
+			})
+			if n := f.Calls("PUT", "organization_settings"); n != 0 {
+				t.Fatalf("a refused configuration still sent %d PUTs", n)
+			}
+		})
+	}
+}

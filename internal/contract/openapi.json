@@ -410,8 +410,85 @@
         ],
         "type": "object"
       },
+      "code_detection_settings_row": {
+        "properties": {
+          "available_classes": {
+            "type": "array"
+          },
+          "default_classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "jitter_minutes": {
+            "type": "integer"
+          },
+          "manual_runs_today": {
+            "type": "integer"
+          },
+          "open_ended_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "run_day": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "run_hour": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scan_all": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weekly_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "weekly_enabled",
+          "scan_all",
+          "run_day",
+          "run_hour",
+          "default_classes",
+          "open_ended_enabled",
+          "available_classes",
+          "jitter_minutes",
+          "manual_runs_today",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "compliance_periods_row": {
         "properties": {
+          "catalogue_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "ends_on": {
             "type": "string"
           },
@@ -421,6 +498,9 @@
               "null"
             ]
           },
+          "fill_present_with_current": {
+            "type": "boolean"
+          },
           "framework": {
             "enum": [
               "iso27001_2022",
@@ -429,6 +509,18 @@
               "nist_csf_2"
             ],
             "type": "string"
+          },
+          "freeze_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frozen_at": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
@@ -442,6 +534,9 @@
           "starts_on": {
             "type": "string"
           },
+          "state": {
+            "type": "string"
+          },
           "status": {
             "type": "string"
           }
@@ -451,9 +546,14 @@
           "framework",
           "starts_on",
           "ends_on",
+          "catalogue_version",
           "export_top_hash",
+          "fill_present_with_current",
+          "freeze_kind",
+          "frozen_at",
           "id",
           "inserted_at",
+          "state",
           "status"
         ],
         "type": "object"
@@ -676,6 +776,41 @@
           "override_by",
           "override_until",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "effective_repo_settings_row": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "differs_by_branch": {
+            "type": "array"
+          },
+          "fence": {
+            "type": "string"
+          },
+          "has_row": {
+            "type": "boolean"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "settings": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "archived",
+          "differs_by_branch",
+          "fence",
+          "has_row",
+          "reachable",
+          "repo",
+          "settings"
         ],
         "type": "object"
       },
@@ -905,6 +1040,7 @@
                 "investigation_completed",
                 "investigation_failed",
                 "quota_warning",
+                "security_digest",
                 "security_finding",
                 "slo_breach",
                 "slo_budget",
@@ -1000,6 +1136,12 @@
               "null"
             ]
           },
+          "api_key_max_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "auto_close_incidents": {
             "type": [
               "boolean",
@@ -1041,7 +1183,8 @@
                 "github_installation",
                 "ai_providers",
                 "outbound_targets",
-                "ticket_integrations"
+                "ticket_integrations",
+                "repository_defaults"
               ],
               "type": "string"
             },
@@ -1062,6 +1205,21 @@
               "null"
             ]
           },
+          "mfa_effective": {
+            "type": "object"
+          },
+          "mfa_grace_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mfa_required": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "monthly_ai_budget_usd": {
             "type": [
               "integer",
@@ -1071,6 +1229,18 @@
           "restrict_domain_signups": {
             "type": [
               "boolean",
+              "null"
+            ]
+          },
+          "session_idle_effective": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "session_idle_minutes": {
+            "type": [
+              "integer",
               "null"
             ]
           },
@@ -1108,6 +1278,12 @@
           "timezone",
           "inheritance_stopped",
           "fix_request_floor",
+          "mfa_required",
+          "mfa_grace_days",
+          "session_idle_minutes",
+          "api_key_max_days",
+          "mfa_effective",
+          "session_idle_effective",
           "updated_at"
         ],
         "type": "object"
@@ -1125,6 +1301,12 @@
           },
           "base_url_set": {
             "type": "boolean"
+          },
+          "card_events": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "default_severity_mapping": {
             "type": [
@@ -1186,12 +1368,6 @@
           },
           "updated_at": {
             "type": "string"
-          },
-          "card_events": {
-            "type": [
-              "boolean",
-              "null"
-            ]
           }
         },
         "required": [
@@ -1503,6 +1679,9 @@
               "null"
             ]
           },
+          "following": {
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -1536,6 +1715,9 @@
               "null"
             ]
           },
+          "set_here": {
+            "type": "array"
+          },
           "writable_extensions": {
             "items": {
               "type": "string"
@@ -1563,7 +1745,87 @@
           "draft_prs",
           "check_network",
           "branches",
-          "id"
+          "following",
+          "id",
+          "set_here"
+        ],
+        "type": "object"
+      },
+      "repository_defaults_row": {
+        "properties": {
+          "allow_ci_config": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_dispatch": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "check_network": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "draft_prs": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fix_runner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inherited_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platform_fallback": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "stopped": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "fix_runner",
+          "platform_fallback",
+          "auto_dispatch",
+          "draft_prs",
+          "check_network",
+          "allow_ci_config",
+          "inherited_from",
+          "parent_name",
+          "source",
+          "stopped",
+          "updated_at"
         ],
         "type": "object"
       },
@@ -1591,6 +1853,286 @@
           "header",
           "keys",
           "remote_locations_pending"
+        ],
+        "type": "object"
+      },
+      "secret_allow_rules_row": {
+        "properties": {
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detector_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "path_glob": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path_glob",
+          "reason",
+          "repository",
+          "detector_type",
+          "expires_at",
+          "created_at",
+          "id"
+        ],
+        "type": "object"
+      },
+      "security_code_classes_row": {
+        "properties": {
+          "available_classes": {
+            "type": "array"
+          },
+          "built_in_classes": {
+            "type": "array"
+          },
+          "classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classes",
+          "available_classes",
+          "built_in_classes",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "security_digest_settings_row": {
+        "properties": {
+          "cadence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hour": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_sent_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_sent_period": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slack_channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "weekday": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "cadence",
+          "weekday",
+          "hour",
+          "slack_channel",
+          "email",
+          "last_sent_at",
+          "last_sent_period",
+          "timezone"
+        ],
+        "type": "object"
+      },
+      "security_notification_rules_row": {
+        "properties": {
+          "areas": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "min_severity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "slack": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "slack_channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "areas",
+          "min_severity",
+          "events",
+          "slack",
+          "slack_channel",
+          "email",
+          "page",
+          "id",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "security_sla_policy_row": {
+        "properties": {
+          "critical_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "defaults": {
+            "type": "boolean"
+          },
+          "high_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "info_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "low_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "medium_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "critical_days",
+          "high_days",
+          "medium_days",
+          "low_days",
+          "info_days",
+          "defaults",
+          "updated_at"
         ],
         "type": "object"
       },
@@ -1735,6 +2277,9 @@
               "null"
             ]
           },
+          "delivery_problems": {
+            "type": "array"
+          },
           "enabled": {
             "type": [
               "boolean",
@@ -1743,6 +2288,12 @@
           },
           "id": {
             "type": "string"
+          },
+          "inherited_from": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": [
@@ -1784,7 +2335,9 @@
           "bot_token_set",
           "signing_secret_set",
           "app_token_set",
+          "delivery_problems",
           "id",
+          "inherited_from",
           "priority",
           "updated_at"
         ],
@@ -2534,7 +3087,7 @@
         "summary": "List ai_providers"
       },
       "post": {
-        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review. Needs the plan's bring-your-own-provider feature.",
+        "description": "Add an AI provider this organization's own key pays for. provider is one of anthropic, openai, openrouter, ollama, bedrock, gemini, portkey, langchain. model_overrides pins a model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review, code_analysis. Needs the plan's bring-your-own-provider feature.",
         "operationId": "create_ai_provider",
         "parameters": [],
         "requestBody": {
@@ -2578,7 +3131,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose, except remediation_review (a fix's review of its own diff), which follows the remediation pin when empty and does not take \"auto\".",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review, code_analysis. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose, except remediation_review (a fix's review of its own diff) and code_analysis (the open-ended pass over source files), which follow the remediation pin when empty and do not take \"auto\".",
                     "type": "object"
                   },
                   "name": {
@@ -2785,7 +3338,7 @@
                     ]
                   },
                   "model_overrides": {
-                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose, except remediation_review (a fix's review of its own diff), which follows the remediation pin when empty and does not take \"auto\".",
+                    "description": "A model per purpose, keyed by purpose: investigation, suggestion, report_generation, alert_grouping, context_compaction, pr_review, remediation, oversight, config_watch, finops, slack_assistant, board_assistant, runbook_suggestion, sli_suggestion, capacity_planning, status_page_draft, ticket_synthesis, security_triage, self_healing, knowledge_drafting, remediation_review, code_analysis. Merged into what is stored, so a map naming one purpose leaves the rest alone; an empty string under a purpose clears that pin. The value \"auto\" hands the choice to the platform's own model selection for that purpose, except remediation_review (a fix's review of its own diff) and code_analysis (the open-ended pass over source files), which follow the remediation pin when empty and do not take \"auto\".",
                     "type": "object"
                   },
                   "name": {
@@ -3597,9 +4150,103 @@
         "summary": "Update the change_notifications"
       }
     },
+    "/code_detection_settings": {
+      "get": {
+        "description": "The weekly code detection settings: weekly_enabled (off until an admin switches it on), scan_all (whether a repository with no override is in scope), run_day (0 Sunday to 6 Saturday, UTC), run_hour (0 to 23, UTC), jitter_minutes (this organization's spread after the slot, set by the platform), default_classes (the static kinds the weekly detection looks for; an empty list means every kind), available_classes (the kinds default_classes may name), open_ended_enabled (the AI pass, off until an admin switches it on) and today's manual run count. Needs the code improvement feature and a verifier.",
+        "operationId": "get_code_detection_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/code_detection_settings_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the code_detection_settings"
+      },
+      "put": {
+        "description": "Change the weekly code detection settings; only the arguments named change. weekly_enabled switches the weekly run on or off (switching it on starts a first run at once that only lists the repositories and reads their CI configuration: nothing is scanned until the next scheduled run or run_code_detection), scan_all decides whether a repository with no override is in scope, run_day is 0 (Sunday) to 6 (Saturday) and run_hour 0 to 23, both UTC, default_classes names the static kinds that apply (from available_classes; an empty list, or all of them, means every kind, including kinds added later; a name that is not one is refused), open_ended_enabled switches the AI pass on (off by default: it sends source to the organization's AI provider and costs one scan per repository plus tokens). Organization admin floor. Needs the code improvement feature and a verifier.",
+        "operationId": "update_code_detection_settings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "default_classes": {
+                    "description": "Static kind names from available_classes (at most 40); [] or all of them means every kind.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "open_ended_enabled": {
+                    "description": "The open-ended AI pass on (off by default).",
+                    "type": "boolean"
+                  },
+                  "run_day": {
+                    "description": "0 Sunday to 6 Saturday, UTC.",
+                    "type": "integer"
+                  },
+                  "run_hour": {
+                    "description": "0 to 23, UTC.",
+                    "type": "integer"
+                  },
+                  "scan_all": {
+                    "description": "Repositories with no override are in scope.",
+                    "type": "boolean"
+                  },
+                  "weekly_enabled": {
+                    "description": "Weekly detection on.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Update the code_detection_settings"
+      }
+    },
     "/compliance_periods": {
       "get": {
-        "description": "The audit windows this organization has opened, latest window first: the name, the framework, the range an export speaks for, whether the bundle has been exported and the hash it was stamped with. The evidence itself is not here; it stays in the source tables until an export freezes it. Needs the compliance feature.",
+        "description": "The audit windows this organization has opened, latest window first: the name, the framework, the range an export speaks for, where the window stands (state: open, waiting_to_freeze, frozen or frozen_late, with frozen_at, freeze_kind and the catalogue_version it was frozen under), whether a bundle has been exported and the hash it was stamped with. The evidence itself is not here: list_compliance_controls with period_id reads a frozen window's results, and list_compliance_exports its bundles. Needs the compliance feature.",
         "operationId": "list_compliance_periods",
         "parameters": [],
         "responses": {
@@ -3631,7 +4278,7 @@
         "summary": "List compliance_periods"
       },
       "post": {
-        "description": "Open an audit window, which is the Compliance page's Create period: the range of time one evidence export speaks for. Creating it writes no evidence and freezes nothing; the bundle is exported from the Compliance page once the window has passed, and the export stamps the period with its manifest's hash so a bundle presented later can be matched to the window it claims to cover. Needs the compliance feature.",
+        "description": "Open an audit window, which is the Compliance page's Create period: the range of time one evidence export speaks for. Creating it writes no evidence; the window freezes by itself the first morning after it ends, and bundles are prepared in the background from the Compliance page or with create_compliance_export, each stamped with its manifest's hash so a bundle presented later can be matched to the window it claims to cover. Needs the compliance feature.",
         "operationId": "create_compliance_period",
         "parameters": [],
         "requestBody": {
@@ -4408,6 +5055,148 @@
         "summary": "Update a deploy_policy"
       }
     },
+    "/effective_repo_settings": {
+      "get": {
+        "description": "What every repository of this organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the six settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config) as value plus `following` (true when the value is the organization default, false when the repository's own settings set it), the write fence kind (none, detected, person), whether it has settings saved, whether the App still reaches it, and the settings where a branch differs. Archived repositories are left out unless include_archived is true. Paged: send next_cursor back as cursor; limit defaults to 100, at most 500. `defaults` is the organization's defaults and where they come from, `runner_registered` says whether this organization has a fix runner registered, and `counts` totals the whole filtered list. Differs from list_repo_settings, which lists saved rows with their ids to edit.",
+        "operationId": "list_effective_repo_settings",
+        "parameters": [
+          {
+            "description": "A prefix of owner/name or of the repository name, or a pattern with * (infra-* matches acme/infra-a and not acme/my-infra). Not case sensitive.",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only repositories whose effective fix_runner is this.",
+            "in": "query",
+            "name": "runner",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Per setting, true for repositories whose value is the organization default and false for those whose own settings set it.",
+            "explode": true,
+            "in": "query",
+            "name": "following",
+            "required": false,
+            "schema": {
+              "additionalProperties": false,
+              "properties": {
+                "allow_ci_config": {
+                  "type": "boolean"
+                },
+                "auto_dispatch": {
+                  "type": "boolean"
+                },
+                "check_network": {
+                  "type": "boolean"
+                },
+                "draft_prs": {
+                  "type": "boolean"
+                },
+                "fix_runner": {
+                  "type": "boolean"
+                },
+                "platform_fallback": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "style": "deepObject"
+          },
+          {
+            "description": "true for repositories with a write fence, false for those with none.",
+            "in": "query",
+            "name": "has_fence",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "true also lists archived repositories. Default false.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "The next_cursor of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Repositories per page, default 100, at most 500.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "archived_known": {
+                      "type": "boolean"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/effective_repo_settings_row"
+                      },
+                      "type": "array"
+                    },
+                    "defaults": {
+                      "type": "object"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "organization": {
+                      "type": "object"
+                    },
+                    "runner_registered": {
+                      "type": "boolean"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The organization's rows."
+          }
+        },
+        "summary": "List effective_repo_settings"
+      }
+    },
     "/export": {
       "get": {
         "description": "One Terraform file: a resource block and an import block per row this organization manages here, configuration fields only. A stored secret appears only as a commented pointer to the write-only argument that would manage it. Archived, inherited and discovered rows are counted in comments, and a resource the plan does not include is a comment carrying the refusal. The first plan of the file should import every row and change nothing.",
@@ -4714,7 +5503,7 @@
         "summary": "Read the notification_settings"
       },
       "put": {
-        "description": "Change one or more email notification settings; omitted ones keep their value. recipients and muted_events each REPLACE the stored list, so send the whole list you want (and [] to empty it). A category toggle switched off silences its events whatever the mute list says. The events that can be muted are: alert_created, automation_approval, automation_completed, automation_failed, integration_failing, investigation_completed, investigation_failed, quota_warning, security_finding, slo_breach, slo_budget, slo_burn_rate, slo_tracking_failure, status_incident. This write is last-writer-wins: the Settings page carries a stamp that refuses a save made against values another admin has since changed, and this tool has none, so read the settings again if you are acting on something you were told a while ago.",
+        "description": "Change one or more email notification settings; omitted ones keep their value. recipients and muted_events each REPLACE the stored list, so send the whole list you want (and [] to empty it). A category toggle switched off silences its events whatever the mute list says. The events that can be muted are: alert_created, automation_approval, automation_completed, automation_failed, integration_failing, investigation_completed, investigation_failed, quota_warning, security_digest, security_finding, slo_breach, slo_budget, slo_burn_rate, slo_tracking_failure, status_incident. This write is last-writer-wins: the Settings page carries a stamp that refuses a save made against values another admin has since changed, and this tool has none, so read the settings again if you are acting on something you were told a while ago.",
         "operationId": "update_notification_settings",
         "parameters": [],
         "requestBody": {
@@ -4738,6 +5527,7 @@
                         "investigation_completed",
                         "investigation_failed",
                         "quota_warning",
+                        "security_digest",
                         "security_finding",
                         "slo_breach",
                         "slo_budget",
@@ -4802,7 +5592,7 @@
     },
     "/organization_settings": {
       "get": {
-        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), and the connections of its parent organization it does not use (inheritance_stopped).",
+        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), and the connections of its parent organization it does not use (inheritance_stopped).",
         "operationId": "get_organization_settings",
         "parameters": [],
         "responses": {
@@ -4831,7 +5621,7 @@
         "summary": "Read the organization_settings"
       },
       "put": {
-        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too.",
+        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too.",
         "operationId": "update_organization_settings",
         "parameters": [],
         "requestBody": {
@@ -4857,6 +5647,15 @@
                   "alert_storm_window_seconds": {
                     "type": "integer"
                   },
+                  "api_key_max_days": {
+                    "description": "The longest life, in days, an API key created or rotated in this organization may have. A key made with no expiry gets this one; a later expiry is refused. Keys that already exist are not changed. null removes the limit. Changing it needs a user token of an org admin of this organization.",
+                    "maximum": 730,
+                    "minimum": 1,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "auto_close_incidents": {
                     "type": "boolean"
                   },
@@ -4879,14 +5678,15 @@
                     "type": "string"
                   },
                   "inheritance_stopped": {
-                    "description": "The connections of the parent organization this organization does not use, as the whole set: a kind left out is used again, and [] uses them all. slack is the parent's Slack workspace, github_installation its GitHub App, ai_providers its AI providers, outbound_targets its paging targets, ticket_integrations its ticket integration. Only a child organization can stop using a parent's. The organization's own connection of a kind is used whether or not the kind is listed, and the parent is never changed.",
+                    "description": "The connections of the parent organization this organization does not use, as the whole set: a kind left out is used again, and [] uses them all. slack is the parent's Slack workspace, github_installation its GitHub App, ai_providers its AI providers, outbound_targets its paging targets, ticket_integrations its ticket integration. Only a child organization can stop using a parent's. The organization's own connection of a kind is used whether or not the kind is listed, and the parent is never changed. repository_defaults is changed only with update_repository_defaults: it is answered here and kept as it is, so a list that leaves it out does not resume it, and a list that adds it is refused.",
                     "items": {
                       "enum": [
                         "slack",
                         "github_installation",
                         "ai_providers",
                         "outbound_targets",
-                        "ticket_integrations"
+                        "ticket_integrations",
+                        "repository_defaults"
                       ],
                       "type": "string"
                     },
@@ -4902,6 +5702,16 @@
                   "investigation_paused": {
                     "type": "boolean"
                   },
+                  "mfa_grace_days": {
+                    "description": "Days from switching the requirement on that a member without a factor can still enter the organization (0 holds them at once, default 7). Changing it needs a user token of an org admin of this organization.",
+                    "maximum": 30,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "mfa_required": {
+                    "description": "Whether this organization's members must use a second sign-in factor (an authenticator app, a passkey or security key, or a recovery code, or an identity provider that asserts one). true starts the grace period; false switches the requirement off for this organization, though a parent organization's requirement still covers it. API keys and tokens are not challenged. Changing it needs a user token of an org admin of this organization.",
+                    "type": "boolean"
+                  },
                   "monthly_ai_budget_usd": {
                     "description": "null removes the ceiling.",
                     "type": [
@@ -4911,6 +5721,15 @@
                   },
                   "restrict_domain_signups": {
                     "type": "boolean"
+                  },
+                  "session_idle_minutes": {
+                    "description": "Minutes a member's browser session may sit unused before the next request signs it out (5 to 43200). null removes the limit for this organization, though a parent organization's limit still covers it. API keys and tokens are not sessions and are not affected. Changing it needs a user token of an org admin of this organization.",
+                    "maximum": 43200,
+                    "minimum": 5,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
                   },
                   "social_joins_enabled": {
                     "type": "boolean"
@@ -5004,6 +5823,10 @@
                     ],
                     "writeOnly": true
                   },
+                  "card_events": {
+                    "description": "Webhook targets only: also POST the organization's card approval events (card.approval_requested, card.approval_decided) here, signed and retried. Refused for any other provider.",
+                    "type": "boolean"
+                  },
                   "default_severity_mapping": {
                     "description": "What each of this platform's severities is called at the provider, for PagerDuty. A severity this does not name uses the built-in mapping, and null means every one of them does.",
                     "type": [
@@ -5053,10 +5876,6 @@
                       "string",
                       "null"
                     ]
-                  },
-                  "card_events": {
-                    "description": "Webhook targets only: also POST the organization's card approval events (card.approval_requested, card.approval_decided) here, signed and retried. Refused for any other provider.",
-                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -5184,6 +6003,10 @@
                     ],
                     "writeOnly": true
                   },
+                  "card_events": {
+                    "description": "Webhook targets only: also POST the organization's card approval events (card.approval_requested, card.approval_decided) here, signed and retried. Refused for any other provider.",
+                    "type": "boolean"
+                  },
                   "default_severity_mapping": {
                     "description": "What each of this platform's severities is called at the provider, for PagerDuty. A severity this does not name uses the built-in mapping, and null means every one of them does.",
                     "type": [
@@ -5233,10 +6056,6 @@
                       "string",
                       "null"
                     ]
-                  },
-                  "card_events": {
-                    "description": "Webhook targets only: also POST the organization's card approval events (card.approval_requested, card.approval_decided) here, signed and retried. Refused for any other provider.",
-                    "type": "boolean"
                   }
                 },
                 "required": [],
@@ -5885,7 +6704,7 @@
     },
     "/repo_settings": {
       "get": {
-        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (directories and writable extensions, and allow_ci_config, which says whether fixes may change CI configuration inside those directories). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, or \"self_hosted\", your own machine. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that a runner is registered for your organization before saving \"self_hosted\". A repository with no settings is not listed: it is still targetable by a fix request, with an auto-detected fence and the platform runner. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; platform_fallback true (the default) means a request the repository's own runner could not finish may run on SRE Agent's own runner; false keeps the code on your machines and the request fails instead. Each branch row also reports check_network, whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified; off unless an admin turned it on. It also reports draft_prs, whether a fix pull request for that row opens as a draft (true), ready for review (false), or by the installation's setting (null, the default). ci_fallback_to_platform is stored and has no effect today: nothing reads it.",
+        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (directories and writable extensions, and allow_ci_config, which says whether fixes may change CI configuration inside those directories). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, or \"self_hosted\", your own machine. Each repository also reports `following`, per setting true when the value is the organization default (get_repository_defaults) and false when the repository's own settings set it. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that a runner is registered for your organization before saving \"self_hosted\". A repository with no settings is not listed (list_effective_repo_settings lists every repository): it is still targetable by a fix request, with an auto-detected fence and the organization default runner, built-in platform when none is set. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; platform_fallback true (the organization default, built-in true) means a request the repository's own runner could not finish may run on SRE Agent's own runner; false keeps the code on your machines and the request fails instead. Each branch row also reports check_network, whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified; off unless an admin turned it on (for the repository or as the organization default). It also reports draft_prs, the value in force for that row: whether a fix pull request opens as a draft (true), ready for review (false), or by the installation's setting (null), taken from the row's own choice, else the organization default. `following` says whether the row's own settings set it, so an update that sends the value back makes it the row's own. Each branch row also reports `set_here`, the settings that row holds a value for (the rest follow the default), and update_repo_settings with follows_default puts a setting back on it. ci_fallback_to_platform is stored and has no effect today: nothing reads it.",
         "operationId": "list_repo_settings",
         "parameters": [],
         "responses": {
@@ -5917,7 +6736,7 @@
         "summary": "List repo_settings"
       },
       "post": {
-        "description": "Create the settings for one repository the GitHub App can reach: the write fence remediation obeys, an optional service alias, and which runner executes the repository's fix requests. A repository the App does not reach is refused rather than saved, because the fix pipeline would never read the row. Settings are optional: a repository with no row is still targetable, with its fence detected on first use. Answers the repository in the shape list_repo_settings answers.",
+        "description": "Create the settings for one repository the GitHub App can reach: the write fence remediation obeys, an optional service alias, and which runner executes the repository's fix requests. A repository the App does not reach is refused rather than saved, because the fix pipeline would never read the row. Settings are optional: a repository with no row is still targetable, with its fence detected on first use. A setting you do not give is not stored: the row follows the organization default for it (follows_default is accepted as in update_repo_settings: the new row follows anyway, and fix_runner, platform_fallback or auto_dispatch named there are also cleared on the repository's other rows). A branch row takes the runner, the runner fallback and how requests are sent from the repository's other rows. Creating the all-branches row (no branch) of a repository that has branch rows moves none of them: each keeps what it was reading, the value is written onto it, and the answer carries pinned_branches (how many, only when above zero). Answers the repository in the shape list_repo_settings answers.",
         "operationId": "create_repo_settings",
         "parameters": [],
         "requestBody": {
@@ -5930,11 +6749,11 @@
                     "type": "string"
                   },
                   "allow_ci_config": {
-                    "description": "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside path_prefixes. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent, and CI files are never pushed onto a pull request whose auto-merge is on. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
+                    "description": "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside path_prefixes. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent, and CI files are never pushed onto a pull request whose auto-merge is on. Name it in follows_default to put this row back on the default. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
                     "type": "boolean"
                   },
                   "auto_dispatch": {
-                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository.",
+                    "description": "true (the organization default, built-in true) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository; name it in follows_default to put the whole repository back on the organization default.",
                     "type": "boolean"
                   },
                   "branch": {
@@ -5942,7 +6761,7 @@
                     "type": "string"
                   },
                   "check_network": {
-                    "description": "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default: setup commands always reach those hosts to install dependencies, and every command after setup reaches no network. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Applies to the row it is sent for. Turning it on is accepted only where the Integrations page offers it (code improvement on your plan and check sessions running on the platform); turning it off always is.",
+                    "description": "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default: setup commands always reach those hosts to install dependencies, and every command after setup reaches no network. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Applies to the row it is sent for. Turning it on is accepted only where the Integrations page offers it (code improvement on your plan and check sessions running on the platform); turning it off always is. Name it in follows_default to put this row back on the default.",
                     "type": "boolean"
                   },
                   "ci_fallback_to_platform": {
@@ -5950,7 +6769,7 @@
                     "type": "boolean"
                   },
                   "draft_prs": {
-                    "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the default) as the installation's draft_prs setting says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for.",
+                    "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the organization default, else the installation's draft_prs setting) as it says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. Answers report the value in force (the row's own choice, else the organization default); `following` says whether the row sets it, and sending a value makes it the row's own. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for. Name it in follows_default (or send null) to put the entry back on the default.",
                     "type": [
                       "boolean",
                       "null"
@@ -5961,8 +6780,24 @@
                     "type": "string"
                   },
                   "fix_runner": {
-                    "description": "Who executes this repository's fix requests: platform, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
+                    "description": "Who executes this repository's fix requests: platform, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has. Name it in follows_default to put the whole repository back on the organization default.",
                     "type": "string"
+                  },
+                  "follows_default": {
+                    "description": "Settings that follow the organization default (get_repository_defaults) from this write on. allow_ci_config, check_network and draft_prs are cleared on this row; fix_runner, platform_fallback and auto_dispatch belong to the whole repository and are cleared on every row of it. A setting named here is not also sent with a value. A setting in neither is left as it is, and a create leaves every setting it is not given following already. A reset is refused where setting the value it would follow is: your own runner with none registered, network where it is not offered, and CI configuration off while the directories list a CI path.",
+                    "items": {
+                      "enum": [
+                        "fix_runner",
+                        "platform_fallback",
+                        "auto_dispatch",
+                        "draft_prs",
+                        "check_network",
+                        "allow_ci_config"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
                   },
                   "path_prefix": {
                     "description": "One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; read path_prefixes for the full list.",
@@ -5977,7 +6812,7 @@
                     "type": "array"
                   },
                   "platform_fallback": {
-                    "description": "true (the default) lets a request that this repository's own runner could not finish run on SRE Agent's own runner, so the request still gets an answer. false means the repository's code never runs on SRE Agent's own runner: the request waits for your runner and fails with a plain sentence when that runner is not registered, is switched off, or could not finish it. Applies to the whole repository.",
+                    "description": "true (the organization default, built-in true) lets a request that this repository's own runner could not finish run on SRE Agent's own runner, so the request still gets an answer. false means the repository's code never runs on SRE Agent's own runner: the request waits for your runner and fails with a plain sentence when that runner is not registered, is switched off, or could not finish it. Applies to the whole repository; name it in follows_default to put the whole repository back on the organization default.",
                     "type": "boolean"
                   },
                   "repo": {
@@ -6021,7 +6856,7 @@
     },
     "/repo_settings/{id}": {
       "delete": {
-        "description": "Remove one repository's settings, named by the id list_repo_settings reports. The repository stays targetable by a fix request: it simply returns to a detected write fence and the platform runner. Answers the repository's remaining rows in the shape list_repo_settings answers, with an empty `branches` when the last one is gone. Needs confirm: true.",
+        "description": "Remove one repository's settings, named by the id list_repo_settings reports. The repository stays targetable by a fix request: it simply returns to a detected write fence and the organization defaults (get_repository_defaults). Removing the all-branches row leaves each branch row reading what it read: the value is written onto it, and the answer carries pinned_branches (how many, only when above zero); the branches no row names read the organization defaults. Answers the repository's remaining rows in the shape list_repo_settings answers, with an empty `branches` when the last one is gone. Needs confirm: true.",
         "operationId": "delete_repo_settings",
         "parameters": [
           {
@@ -6048,7 +6883,7 @@
         "summary": "Delete a repo_setting"
       },
       "get": {
-        "description": "One repository's fix settings by the row id list_repo_settings or create_repo_settings answered, as the whole repository's view: every branch row and the fix_runner, the same shape list_repo_settings answers per repository.",
+        "description": "One repository's fix settings by the row id list_repo_settings or create_repo_settings answered, as the whole repository's view: every branch row and the fix_runner, the same shape list_repo_settings answers per repository. The addressed row's own fields, set_here (the settings it holds a value for) included, sit beside the repository's `following`.",
         "operationId": "get_repo_settings",
         "parameters": [
           {
@@ -6087,7 +6922,7 @@
         "summary": "Read one repo_setting"
       },
       "put": {
-        "description": "Change one repository's settings, named by the id list_repo_settings reports. Only the fields you send change, so sending fix_runner on its own is legal; a field sent as null is cleared (a null branch makes the row the all-branches row, a null service removes the alias). The repository itself cannot be changed here: a row for another repository is a create. Answers the repository in the shape list_repo_settings answers.",
+        "description": "Change one repository's settings, named by the id list_repo_settings reports. Only the fields you send change, so sending fix_runner on its own is legal; a field sent as null is cleared (a null branch makes the row the all-branches row, a null service removes the alias). To put a setting back on the organization default (get_repository_defaults) name it in follows_default: allow_ci_config, check_network and draft_prs are cleared on this row, fix_runner, platform_fallback and auto_dispatch on every row of the repository, and a reset is refused where setting the value it would follow is. A null fix_runner, platform_fallback or auto_dispatch alone is ignored. The repository itself cannot be changed here: a row for another repository is a create. A write that makes a row the all-branches row (a null branch, or a rename into a repository) or takes it out of that position (a branch, or another repository) moves no branch row: each keeps what it was reading, and the answer carries pinned_branches (how many, only when above zero). Answers the repository in the shape list_repo_settings answers.",
         "operationId": "update_repo_settings",
         "parameters": [
           {
@@ -6110,11 +6945,11 @@
                     "type": "string"
                   },
                   "allow_ci_config": {
-                    "description": "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside path_prefixes. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent, and CI files are never pushed onto a pull request whose auto-merge is on. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
+                    "description": "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside path_prefixes. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent, and CI files are never pushed onto a pull request whose auto-merge is on. Name it in follows_default to put this row back on the default. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
                     "type": "boolean"
                   },
                   "auto_dispatch": {
-                    "description": "true (the default) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository.",
+                    "description": "true (the organization default, built-in true) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository; name it in follows_default to put the whole repository back on the organization default.",
                     "type": "boolean"
                   },
                   "branch": {
@@ -6122,7 +6957,7 @@
                     "type": "string"
                   },
                   "check_network": {
-                    "description": "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default: setup commands always reach those hosts to install dependencies, and every command after setup reaches no network. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Applies to the row it is sent for. Turning it on is accepted only where the Integrations page offers it (code improvement on your plan and check sessions running on the platform); turning it off always is.",
+                    "description": "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default: setup commands always reach those hosts to install dependencies, and every command after setup reaches no network. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Applies to the row it is sent for. Turning it on is accepted only where the Integrations page offers it (code improvement on your plan and check sessions running on the platform); turning it off always is. Name it in follows_default to put this row back on the default.",
                     "type": "boolean"
                   },
                   "ci_fallback_to_platform": {
@@ -6130,7 +6965,7 @@
                     "type": "boolean"
                   },
                   "draft_prs": {
-                    "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the default) as the installation's draft_prs setting says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for.",
+                    "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the organization default, else the installation's draft_prs setting) as it says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. Answers report the value in force (the row's own choice, else the organization default); `following` says whether the row sets it, and sending a value makes it the row's own. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for. Name it in follows_default (or send null) to put the entry back on the default.",
                     "type": [
                       "boolean",
                       "null"
@@ -6141,8 +6976,24 @@
                     "type": "string"
                   },
                   "fix_runner": {
-                    "description": "Who executes this repository's fix requests: platform, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has.",
+                    "description": "Who executes this repository's fix requests: platform, self_hosted. \"platform\" is SRE Agent's own agent and needs nothing installed. \"self_hosted\" runs on your own machine. Included in the Business and Enterprise plans. It needs a runner registered for this organization. The value applies to the whole repository, so it moves every row the repository has. Name it in follows_default to put the whole repository back on the organization default.",
                     "type": "string"
+                  },
+                  "follows_default": {
+                    "description": "Settings that follow the organization default (get_repository_defaults) from this write on. allow_ci_config, check_network and draft_prs are cleared on this row; fix_runner, platform_fallback and auto_dispatch belong to the whole repository and are cleared on every row of it. A setting named here is not also sent with a value. A setting in neither is left as it is, and a create leaves every setting it is not given following already. A reset is refused where setting the value it would follow is: your own runner with none registered, network where it is not offered, and CI configuration off while the directories list a CI path.",
+                    "items": {
+                      "enum": [
+                        "fix_runner",
+                        "platform_fallback",
+                        "auto_dispatch",
+                        "draft_prs",
+                        "check_network",
+                        "allow_ci_config"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
                   },
                   "path_prefix": {
                     "description": "One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; read path_prefixes for the full list.",
@@ -6157,7 +7008,7 @@
                     "type": "array"
                   },
                   "platform_fallback": {
-                    "description": "true (the default) lets a request that this repository's own runner could not finish run on SRE Agent's own runner, so the request still gets an answer. false means the repository's code never runs on SRE Agent's own runner: the request waits for your runner and fails with a plain sentence when that runner is not registered, is switched off, or could not finish it. Applies to the whole repository.",
+                    "description": "true (the organization default, built-in true) lets a request that this repository's own runner could not finish run on SRE Agent's own runner, so the request still gets an answer. false means the repository's code never runs on SRE Agent's own runner: the request waits for your runner and fails with a plain sentence when that runner is not registered, is switched off, or could not finish it. Applies to the whole repository; name it in follows_default to put the whole repository back on the organization default.",
                     "type": "boolean"
                   },
                   "service": {
@@ -6199,6 +7050,165 @@
         "summary": "Update a repo_setting"
       }
     },
+    "/repository_defaults": {
+      "get": {
+        "description": "The organization's repository defaults: the six settings every repository without its own value follows (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config), as one flat object. `source` says where they come from: \"own\" (this organization set them), \"parent\" (a child organization follows its parent's), or \"built_in\" (none set: platform runner, fallback on, automatic dispatch, no network for checks, no CI configuration changes, pull requests by the installation's setting). `inherited_from` is the parent organization's id when the values are the parent's, `parent_name` the parent's name when there is one, and `stopped` is true when a child chose to stop following its parent. Change them with update_repository_defaults; list_effective_repo_settings shows what each repository ends up with.",
+        "operationId": "get_repository_defaults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/repository_defaults_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the repository_defaults"
+      },
+      "put": {
+        "description": "Change the organization's repository defaults: the settings a repository follows until it has its own value. An organization admin's tool, the same as the Organization defaults for repositories panel under Integrations. Send the settings to change, or follow_parent true (a child organization goes back to its parent's defaults and drops its own), or stop_following true (a child stops following its parent and uses the built-in values); send only one of those three kinds. The preview lists the change, the repositories that would move, how many keep a value of their own, a count per following child organization, the confirmations needed (needs_confirm) and anything that refuses it, with a fingerprint. Over this API a write takes two requests. Send the change: the answer is 428 with the preview in preview and its fingerprint at preview.data.fingerprint, and nothing is written. Send the same body with expected_fingerprint set to that fingerprint to apply it (200). If what would move changed since the preview, nothing is written and the answer is 409 with a fresh preview. Turning allow_ci_config or check_network on needs confirm [\"ci_config\"] or [\"check_network\"] when applying. A child organization that follows its parent and sends only some of the six settings starts its own defaults from the parent's current values for the rest and stops following the parent for all six; the preview says so with leaves_parent true, and follow_parent undoes it. An API key with mcp:admin (api:admin on the configuration API) may use every part of it, follow_parent and stop_following included. An applied change leaves one repository_defaults.changed audit entry. This changes what repositories follow; update_repo_settings writes a repository's own value (or puts it back on the default with follows_default), and set_platform_fallback_for_all sets the runner fallback default and makes every repository follow it.",
+        "operationId": "update_repository_defaults",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "allow_ci_config": {
+                    "description": "Whether fixes may change CI configuration inside the write fence of following repositories. Turning it on needs confirm ci_config. With this on, a fix may change CI configuration, and the repository's CI runs that change as soon as the branch is pushed, with the repository's secrets, before anyone reviews the pull request. Every way a fix starts can make such a change: fix requests, @sre-agent change, automatic investigation and self-healing pull requests, and revise-on-review.",
+                    "type": "boolean"
+                  },
+                  "auto_dispatch": {
+                    "description": "true sends a following repository's fix requests as soon as they are made. false holds each until a person presses Send.",
+                    "type": "boolean"
+                  },
+                  "check_network": {
+                    "description": "Whether the commands after setup (checks, tests, analysis) of following repositories may reach GitHub and the package registries while a fix is checked. Turning it on needs confirm check_network and is accepted only where the Integrations page offers it.",
+                    "type": "boolean"
+                  },
+                  "confirm": {
+                    "description": "The confirmations the change needs, from needs_confirm in the preview: ci_config for allow_ci_config true, check_network for check_network true.",
+                    "items": {
+                      "enum": [
+                        "ci_config",
+                        "check_network"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "draft_prs": {
+                    "description": "Whether a following repository's fix pull request opens as a draft (true), ready for review (false), or by the installation's setting (null).",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "expected_fingerprint": {
+                    "description": "The fingerprint of the preview you reviewed; required to write. With apply, a fingerprint that no longer matches writes nothing and answers the fresh preview. A blank or non-string value is refused.",
+                    "type": "string"
+                  },
+                  "fix_runner": {
+                    "description": "Who executes the fix requests of repositories that follow: platform, self_hosted. \"self_hosted\" needs a runner registered for this organization. Included in the Business and Enterprise plans.",
+                    "type": "string"
+                  },
+                  "follow_parent": {
+                    "description": "true: a child organization drops its own defaults and follows its parent's again. Not combined with settings or stop_following.",
+                    "type": "boolean"
+                  },
+                  "platform_fallback": {
+                    "description": "true lets a request a following repository's own runner could not finish run on SRE Agent's own runner. false keeps the code on your machines: the request fails with a plain sentence instead.",
+                    "type": "boolean"
+                  },
+                  "stop_following": {
+                    "description": "true: a child organization stops following its parent and uses the built-in values. Not combined with settings or follow_parent.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "preview": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The fingerprint no longer describes what would move; nothing was written. The body carries the fresh preview."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "preview": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "No expected_fingerprint was sent; nothing was written. The body carries the preview to review and its fingerprint."
+          }
+        },
+        "summary": "Update the repository_defaults"
+      }
+    },
     "/request_signing": {
       "get": {
         "description": "The organization's request signing: its key ids with their state (signing, pending, verify_only, retired, revoked) and times, the hosts its configuration sends requests to with whether each is signed, remote_locations_pending (true while a check that runs from a remote location has not yet had its signature confirmed, so a signed host may still be reached unsigned from there), the SRE-Agent-Signature header format and the address of the verification guide. Never a key: the key is revealed on Settings, Request signing, by an organization admin. Admin floor, like the page. Every plan.",
@@ -6228,6 +7238,712 @@
           }
         },
         "summary": "Read the request_signing"
+      }
+    },
+    "/secret_allow_rules": {
+      "get": {
+        "description": "The allow rules for credentials found in repositories, oldest first, at most 100: id, repository (null for every repository), path_glob, detector_type (null for every kind), reason, expires_at (null for never) and created_at. The weekly scan files nothing for a match a rule covers; a rule closes nothing already filed. Included in the Business and Enterprise plans.",
+        "operationId": "list_secret_allow_rules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/secret_allow_rules_row"
+                      },
+                      "type": "array"
+                    },
+                    "organization": {
+                      "type": "object"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The organization's rows."
+          }
+        },
+        "summary": "List secret_allow_rules"
+      },
+      "post": {
+        "description": "Add an allow rule: the weekly scan of repositories files nothing for a credential match whose path matches path_glob (** matches any run of characters including /, * any run without /, ? one character, everything else literal), in repository (owner/name, optional, default every repository), of detector_type (optional, one of authorization, aws_access_key, aws_secret_key, credential_url, generic_api_key, github_token, gitlab_token, jwt, private_key, signed_url, slack_token). reason is 10 to 500 characters and must not hold a credential. expires_at is optional (ISO 8601). At most 100 rules. A rule closes nothing already filed. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "create_secret_allow_rule",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "detector_type": {
+                    "description": "A detector type, or null for every kind.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expires_at": {
+                    "description": "When the rule ends, ISO 8601 and in the future, or null for never.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "path_glob": {
+                    "description": "At most 200 characters, for example vendor/** or **/fixtures/*.pem.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "10 to 500 characters.",
+                    "type": "string"
+                  },
+                  "repository": {
+                    "description": "owner/name, or null for every repository.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "path_glob",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created."
+          },
+          "409": {
+            "description": "A row already matches this resource's natural key."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Create a secret_allow_rule"
+      }
+    },
+    "/secret_allow_rules/{id}": {
+      "delete": {
+        "description": "Delete an allow rule by id (from list_secret_allow_rules). Matches it covered are filed again at the next weekly scan. Needs confirm: true. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "delete_secret_allow_rule",
+        "parameters": [
+          {
+            "description": "The resource's id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          }
+        },
+        "summary": "Delete a secret_allow_rule"
+      },
+      "get": {
+        "description": "One allow rule for credentials found in repositories, by id from list_secret_allow_rules: repository, path_glob, detector_type, reason, expires_at and created_at. Included in the Business and Enterprise plans.",
+        "operationId": "get_secret_allow_rule",
+        "parameters": [
+          {
+            "description": "The resource's id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/secret_allow_rules_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read one secret_allow_rule"
+      }
+    },
+    "/security_code_classes": {
+      "get": {
+        "description": "The code finding classes counted as security findings: built_in_classes (always counted: hardcoded_secret, unsafe_deserialization, ci_unpinned_action, ci_plain_secret), classes (the accepted other:<kind> aliases this organization marked as security), available_classes (accepted aliases not yet marked) and limit. Included in the Business and Enterprise plans.",
+        "operationId": "get_security_code_classes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/security_code_classes_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the security_code_classes"
+      },
+      "put": {
+        "description": "Set which accepted other:<kind> code aliases are counted as security findings. classes is the complete list to mark (the built-in classes always count and are not listed); a class left out is unmarked and its security findings close as source_removed, and a class added is queued for the security queue. Only classes from get_security_code_classes' available_classes can be added, at most 50. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "update_security_code_classes",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "classes": {
+                    "description": "The classes to mark, for example [\"other:ssrf\"]; [] unmarks them all.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "classes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Update the security_code_classes"
+      }
+    },
+    "/security_digest_settings": {
+      "get": {
+        "description": "The security digest: whether it is on (off by default), daily or weekly, the weekday (1 Monday to 7 Sunday, weekly only) and hour in the organization's time zone, the Slack channel and whether it is emailed, the last period sent and the time zone in use. An organization that never saved any answers the defaults. Included in the Business and Enterprise plans.",
+        "operationId": "get_security_digest_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/security_digest_settings_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the security_digest_settings"
+      },
+      "put": {
+        "description": "Change the security digest; only the fields named change. enabled, cadence (daily, weekly), weekday 1 to 7, hour 0 to 23 in the organization's time zone, slack_channel (null for none) and email. Turning it on needs a Slack channel or email. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "update_security_digest_settings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "cadence": {
+                    "description": "One of daily, weekly.",
+                    "type": "string"
+                  },
+                  "email": {
+                    "description": "Email the digest.",
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "description": "Send the digest.",
+                    "type": "boolean"
+                  },
+                  "hour": {
+                    "description": "0 to 23.",
+                    "type": "integer"
+                  },
+                  "slack_channel": {
+                    "description": "A Slack channel such as #security, or null for none.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "weekday": {
+                    "description": "1 (Monday) to 7 (Sunday).",
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Update the security_digest_settings"
+      }
+    },
+    "/security_notification_rules": {
+      "get": {
+        "description": "The organization's security notification rules, by name: each rule's areas (empty means all), minimum severity, events (new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified), whether it sends to Slack (a channel, or the organization's default channels when none is named), to email and to the on-call page, and when it last changed. At most 20 rules. Included in the Business and Enterprise plans.",
+        "operationId": "list_security_notification_rules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/security_notification_rules_row"
+                      },
+                      "type": "array"
+                    },
+                    "organization": {
+                      "type": "object"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The organization's rows."
+          }
+        },
+        "summary": "List security_notification_rules"
+      },
+      "post": {
+        "description": "Create a security notification rule. name is 1 to 80 characters and unique. areas (secrets, iam, kubernetes, images, dependencies, anomalies, drift, code, certificates) left empty means every area. min_severity (info, low, medium, high, critical, default high). events (new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified, default new_finding). slack, email and page choose where it goes (slack and email default to true); slack_channel names a Slack channel, and left out the organization's default channels are used. page is allowed only when min_severity is critical. At least one of slack, email and page must be on. At most 20 rules. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "create_security_notification_rule",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "areas": {
+                    "description": "Any of secrets, iam, kubernetes, images, dependencies, anomalies, drift, code, certificates. Empty means every area.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "email": {
+                    "description": "Send by email. Default true.",
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "description": "Default true.",
+                    "type": "boolean"
+                  },
+                  "events": {
+                    "description": "Any of new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified. Default new_finding.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "min_severity": {
+                    "description": "One of info, low, medium, high, critical. Default high.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "1 to 80 characters, unique.",
+                    "type": "string"
+                  },
+                  "page": {
+                    "description": "Page on call. Only when min_severity is critical. Default false.",
+                    "type": "boolean"
+                  },
+                  "slack": {
+                    "description": "Send to Slack. Default true.",
+                    "type": "boolean"
+                  },
+                  "slack_channel": {
+                    "description": "A Slack channel such as #alerts-critical, or null for the default channels.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created."
+          },
+          "409": {
+            "description": "A row already matches this resource's natural key."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Create a security_notification_rule"
+      }
+    },
+    "/security_notification_rules/{id}": {
+      "delete": {
+        "description": "Delete a security notification rule; the notices it would have sent stop. The first call answers what would go, and the call with confirm true removes it. Needs confirm: true. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "delete_security_notification_rule",
+        "parameters": [
+          {
+            "description": "The resource's id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          }
+        },
+        "summary": "Delete a security_notification_rule"
+      },
+      "get": {
+        "description": "One security notification rule by id, with the fields the list answers. Included in the Business and Enterprise plans.",
+        "operationId": "get_security_notification_rule",
+        "parameters": [
+          {
+            "description": "The resource's id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/security_notification_rules_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read one security_notification_rule"
+      },
+      "put": {
+        "description": "Change a security notification rule; a field left out keeps its value, and slack_channel null goes back to the organization's default channels. The same limits as create. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "update_security_notification_rule",
+        "parameters": [
+          {
+            "description": "The resource's id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "areas": {
+                    "description": "Any of secrets, iam, kubernetes, images, dependencies, anomalies, drift, code, certificates. Empty means every area.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "email": {
+                    "description": "Send by email. Default true.",
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "description": "Default true.",
+                    "type": "boolean"
+                  },
+                  "events": {
+                    "description": "Any of new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified. Default new_finding.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "min_severity": {
+                    "description": "One of info, low, medium, high, critical. Default high.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "1 to 80 characters, unique.",
+                    "type": "string"
+                  },
+                  "page": {
+                    "description": "Page on call. Only when min_severity is critical. Default false.",
+                    "type": "boolean"
+                  },
+                  "slack": {
+                    "description": "Send to Slack. Default true.",
+                    "type": "boolean"
+                  },
+                  "slack_channel": {
+                    "description": "A Slack channel such as #alerts-critical, or null for the default channels.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Update a security_notification_rule"
+      }
+    },
+    "/security_sla_policy": {
+      "get": {
+        "description": "The security SLA policy: the days a finding of each severity has to be resolved (critical_days, high_days, medium_days, low_days, info_days; null is no SLA), whether these are the defaults (7, 30, 90, 180 and none) and when an organization admin last changed them. Included in the Business and Enterprise plans.",
+        "operationId": "get_security_sla_policy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/security_sla_policy_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the security_sla_policy"
+      },
+      "put": {
+        "description": "Change the security SLA policy; only the fields named change, each 1 to 365 days or null for no SLA. The due dates of active findings are recomputed (a date a person moved is kept); the answer is the policy now in force and how many due dates changed. Organization admin floor. Included in the Business and Enterprise plans.",
+        "operationId": "update_security_sla_policy",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "critical_days": {
+                    "description": "1 to 365 days, or null for no SLA.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "high_days": {
+                    "description": "1 to 365 days, or null for no SLA.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "info_days": {
+                    "description": "1 to 365 days, or null for no SLA.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "low_days": {
+                    "description": "1 to 365 days, or null for no SLA.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "medium_days": {
+                    "description": "1 to 365 days, or null for no SLA.",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Update the security_sla_policy"
       }
     },
     "/service_bindings": {
@@ -6564,7 +8280,7 @@
     },
     "/slack": {
       "get": {
-        "description": "This organization's Slack integration: the enabled workspace, or the first configured one, the same row configure_slack edits. name, workspace_name, team_id, enabled, priority and the four default channels; bot_token_set, signing_secret_set and app_token_set say only whether a credential is stored. Refused when no workspace is configured yet.",
+        "description": "This organization's Slack integration: the enabled workspace, or the first configured one, the same row configure_slack edits. name, workspace_name, team_id, enabled, priority and the four default channels; bot_token_set, signing_secret_set and app_token_set say only whether a credential is stored. delivery_problems lists the channels Slack refused (or the workspace token, as channel *) with kind, reason, first and last refusal times, refused_count, rerouted_count and dismissed_at (when an admin dismissed the entry, else null), and is empty when there are none. An organization with no workspace of its own that uses its parent's gets a read-only view instead: inherited_from (the parent's name), workspace_name, enabled, the four default channels and its own delivery_problems, with nothing that identifies the parent's row, and configure_slack does not edit that workspace. The configuration API answers 404 for that view. Refused when no workspace is configured or inherited.",
         "operationId": "get_slack_config",
         "parameters": [],
         "responses": {
@@ -9112,15 +10828,70 @@
       ],
       "upsert": false
     },
+    "code_detection_settings": {
+      "action_args": [],
+      "computed_fields": {
+        "available_classes": "array",
+        "jitter_minutes": "integer",
+        "manual_runs_today": "integer",
+        "updated_at": [
+          "string",
+          "null"
+        ]
+      },
+      "create_fields": [],
+      "fields": [
+        "weekly_enabled",
+        "scan_all",
+        "run_day",
+        "run_hour",
+        "default_classes",
+        "open_ended_enabled"
+      ],
+      "id_args": [],
+      "import_key": "code_detection_settings",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [
+        "default_classes",
+        "open_ended_enabled",
+        "run_day",
+        "run_hour",
+        "scan_all",
+        "weekly_enabled"
+      ],
+      "upsert": false
+    },
     "compliance_periods": {
       "action_args": [],
       "computed_fields": {
+        "catalogue_version": [
+          "string",
+          "null"
+        ],
         "export_top_hash": [
+          "string",
+          "null"
+        ],
+        "fill_present_with_current": "boolean",
+        "freeze_kind": [
+          "string",
+          "null"
+        ],
+        "frozen_at": [
           "string",
           "null"
         ],
         "id": "string",
         "inserted_at": "string",
+        "state": "string",
         "status": "string"
       },
       "create_fields": [
@@ -9314,6 +11085,33 @@
       ],
       "upsert": false
     },
+    "effective_repo_settings": {
+      "action_args": [],
+      "computed_fields": {
+        "archived": "boolean",
+        "differs_by_branch": "array",
+        "fence": "string",
+        "has_row": "boolean",
+        "reachable": "boolean",
+        "repo": "string",
+        "settings": "object"
+      },
+      "create_fields": [],
+      "fields": [],
+      "id_args": [],
+      "import_key": "repo",
+      "lifecycle": false,
+      "list_max": 500,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": false,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [],
+      "upsert": false
+    },
     "github_settings": {
       "action_args": [],
       "computed_fields": {
@@ -9481,6 +11279,11 @@
     "organization_settings": {
       "action_args": [],
       "computed_fields": {
+        "mfa_effective": "object",
+        "session_idle_effective": [
+          "integer",
+          "null"
+        ],
         "updated_at": "string"
       },
       "create_fields": [],
@@ -9501,7 +11304,11 @@
         "restrict_domain_signups",
         "timezone",
         "inheritance_stopped",
-        "fix_request_floor"
+        "fix_request_floor",
+        "mfa_required",
+        "mfa_grace_days",
+        "session_idle_minutes",
+        "api_key_max_days"
       ],
       "id_args": [],
       "import_key": "organization_settings",
@@ -9515,7 +11322,11 @@
       "terraform_read_only": [
         "social_joins_enabled",
         "restrict_domain_signups",
-        "fix_request_floor"
+        "fix_request_floor",
+        "mfa_required",
+        "mfa_grace_days",
+        "session_idle_minutes",
+        "api_key_max_days"
       ],
       "terraform_type": "organization_settings",
       "update_fields": [
@@ -9524,6 +11335,7 @@
         "alert_refire_cooldown_minutes",
         "alert_storm_threshold",
         "alert_storm_window_seconds",
+        "api_key_max_days",
         "auto_close_incidents",
         "auto_open_incidents",
         "automation_approval_ttl_minutes",
@@ -9532,8 +11344,11 @@
         "inheritance_stopped",
         "investigation_cooldown_minutes",
         "investigation_paused",
+        "mfa_grace_days",
+        "mfa_required",
         "monthly_ai_budget_usd",
         "restrict_domain_signups",
+        "session_idle_minutes",
         "social_joins_enabled",
         "timezone"
       ],
@@ -9773,10 +11588,14 @@
       "upsert": false
     },
     "repo_settings": {
-      "action_args": [],
+      "action_args": [
+        "follows_default"
+      ],
       "computed_fields": {
         "branches": "array",
-        "id": "string"
+        "following": "object",
+        "id": "string",
+        "set_here": "array"
       },
       "create_fields": [
         "alerting_sns_topic_arn",
@@ -9788,6 +11607,7 @@
         "draft_prs",
         "environment",
         "fix_runner",
+        "follows_default",
         "path_prefix",
         "path_prefixes",
         "platform_fallback",
@@ -9835,11 +11655,70 @@
         "draft_prs",
         "environment",
         "fix_runner",
+        "follows_default",
         "path_prefix",
         "path_prefixes",
         "platform_fallback",
         "service",
         "writable_extensions"
+      ],
+      "upsert": false
+    },
+    "repository_defaults": {
+      "action_args": [
+        "confirm",
+        "follow_parent",
+        "stop_following",
+        "expected_fingerprint",
+        "apply"
+      ],
+      "computed_fields": {
+        "inherited_from": [
+          "string",
+          "null"
+        ],
+        "parent_name": [
+          "string",
+          "null"
+        ],
+        "source": "string",
+        "stopped": "boolean",
+        "updated_at": [
+          "string",
+          "null"
+        ]
+      },
+      "create_fields": [],
+      "fields": [
+        "fix_runner",
+        "platform_fallback",
+        "auto_dispatch",
+        "draft_prs",
+        "check_network",
+        "allow_ci_config"
+      ],
+      "id_args": [],
+      "import_key": "repository_defaults",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": "repository_defaults",
+      "update_fields": [
+        "allow_ci_config",
+        "auto_dispatch",
+        "check_network",
+        "confirm",
+        "draft_prs",
+        "expected_fingerprint",
+        "fix_runner",
+        "follow_parent",
+        "platform_fallback",
+        "stop_following"
       ],
       "upsert": false
     },
@@ -9866,6 +11745,209 @@
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
+      "upsert": false
+    },
+    "secret_allow_rules": {
+      "action_args": [],
+      "computed_fields": {
+        "created_at": [
+          "string",
+          "null"
+        ],
+        "id": "string"
+      },
+      "create_fields": [
+        "detector_type",
+        "expires_at",
+        "path_glob",
+        "reason",
+        "repository"
+      ],
+      "fields": [
+        "path_glob",
+        "reason",
+        "repository",
+        "detector_type",
+        "expires_at"
+      ],
+      "id_args": [
+        "id"
+      ],
+      "import_key": "id",
+      "lifecycle": true,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": false,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [],
+      "upsert": false
+    },
+    "security_code_classes": {
+      "action_args": [],
+      "computed_fields": {
+        "available_classes": "array",
+        "built_in_classes": "array",
+        "limit": "integer"
+      },
+      "create_fields": [],
+      "fields": [
+        "classes"
+      ],
+      "id_args": [],
+      "import_key": "security_code_classes",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [
+        "classes"
+      ],
+      "upsert": false
+    },
+    "security_digest_settings": {
+      "action_args": [],
+      "computed_fields": {
+        "last_sent_at": [
+          "string",
+          "null"
+        ],
+        "last_sent_period": [
+          "string",
+          "null"
+        ],
+        "timezone": "string"
+      },
+      "create_fields": [],
+      "fields": [
+        "enabled",
+        "cadence",
+        "weekday",
+        "hour",
+        "slack_channel",
+        "email"
+      ],
+      "id_args": [],
+      "import_key": "security_digest_settings",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [
+        "cadence",
+        "email",
+        "enabled",
+        "hour",
+        "slack_channel",
+        "weekday"
+      ],
+      "upsert": false
+    },
+    "security_notification_rules": {
+      "action_args": [],
+      "computed_fields": {
+        "id": "string",
+        "updated_at": [
+          "string",
+          "null"
+        ]
+      },
+      "create_fields": [
+        "areas",
+        "email",
+        "enabled",
+        "events",
+        "min_severity",
+        "name",
+        "page",
+        "slack",
+        "slack_channel"
+      ],
+      "fields": [
+        "name",
+        "enabled",
+        "areas",
+        "min_severity",
+        "events",
+        "slack",
+        "slack_channel",
+        "email",
+        "page"
+      ],
+      "id_args": [
+        "id"
+      ],
+      "import_key": "id",
+      "lifecycle": true,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": false,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [
+        "areas",
+        "email",
+        "enabled",
+        "events",
+        "min_severity",
+        "name",
+        "page",
+        "slack",
+        "slack_channel"
+      ],
+      "upsert": false
+    },
+    "security_sla_policy": {
+      "action_args": [],
+      "computed_fields": {
+        "defaults": "boolean",
+        "updated_at": [
+          "string",
+          "null"
+        ]
+      },
+      "create_fields": [],
+      "fields": [
+        "critical_days",
+        "high_days",
+        "medium_days",
+        "low_days",
+        "info_days"
+      ],
+      "id_args": [],
+      "import_key": "security_sla_policy",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [
+        "critical_days",
+        "high_days",
+        "info_days",
+        "low_days",
+        "medium_days"
+      ],
       "upsert": false
     },
     "service_bindings": {
@@ -9928,7 +12010,12 @@
       "action_args": [],
       "computed_fields": {
         "app_token_set": "boolean",
+        "delivery_problems": "array",
         "id": "string",
+        "inherited_from": [
+          "string",
+          "null"
+        ],
         "priority": "integer",
         "updated_at": "string"
       },

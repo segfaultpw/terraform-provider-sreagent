@@ -23,7 +23,7 @@ data "sreagent_notification_settings" "this" {}
 - `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `enabled` (Boolean) Send notification emails.
 - `id` (String) The row's identifier on the platform.
-- `muted_events` (List of String) Event types never emailed.
+- `muted_events` (List of String) Event types never emailed (for example security_digest, the weekly or daily security digest).
 - `notify_automation` (Boolean) Email on automation events.
 - `notify_incidents` (Boolean) Email on incidents.
 - `notify_security` (Boolean) Email on security events.

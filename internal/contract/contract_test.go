@@ -378,6 +378,16 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "social_joins_enabled" })
 			d.Resources["organization_settings"] = r
 		}},
+		{"mfa_required leaves terraform_read_only", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "mfa_required" })
+			d.Resources["organization_settings"] = r
+		}},
+		{"a read-only collection gains a field", "secret_allow_rules", func(d *Doc) {
+			r := d.Resources["secret_allow_rules"]
+			r.Fields = append(slices.Clone(r.Fields), "severity")
+			d.Resources["secret_allow_rules"] = r
+		}},
 		{"fix_request_floor leaves terraform_read_only", "organization_settings", func(d *Doc) {
 			r := d.Resources["organization_settings"]
 			r.TerraformReadOnly = slices.DeleteFunc(slices.Clone(r.TerraformReadOnly), func(f string) bool { return f == "fix_request_floor" })

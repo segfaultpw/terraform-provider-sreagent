@@ -67,6 +67,14 @@ func (f *Fake) Mutate(key, id string, fn func(map[string]any)) {
 	fn(f.rows[key][id])
 }
 
+// Seed stores a row for a read-only collection, which has no write door to
+// create one through. The row's id is its "id" field.
+func (f *Fake) Seed(key string, row map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rows[key][fmt.Sprint(row["id"])] = row
+}
+
 // Remove deletes a row out of band.
 func (f *Fake) Remove(key, id string) {
 	f.mu.Lock()
