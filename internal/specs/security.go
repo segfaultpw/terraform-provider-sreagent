@@ -7,16 +7,24 @@ import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 // sources only. Every attribute is Computed, so a spec with a writable field in
 // the contract still declares it as an answer.
 
-// readSingleton is a data source for one row per organization that every
-// organization has, so a platform that answers 404 predates the resource.
-func readSingleton(key, desc, minPlatform string, attrs ...engine.Attr) engine.Spec {
-	return engine.Spec{Key: key, TypeName: key, ListName: key, Description: desc, Shape: engine.Singleton, AlwaysPresent: true, MinPlatform: minPlatform, Attrs: attrs}
+// infrastructureRefusal is the plan gate of the security tools: the facade answers 403 with the
+// platform's sentence for an organization whose plan lacks the infrastructure suite.
+const infrastructureRefusal = "the organization's plan does not include the infrastructure suite (the platform answers 403)"
+
+// readSingleton is a data source for one row per organization that has the feature, so a
+// platform that answers 404 predates the resource. The security singletons are gated by the
+// infrastructure suite, which answers 403, never 404.
+func readSingleton(key, desc, minPlatform, refusedWhen string, attrs ...engine.Attr) engine.Spec {
+	return engine.Spec{Key: key, TypeName: key, ListName: key, Description: desc, Shape: engine.Singleton, AlwaysPresent: true, MinPlatform: minPlatform, RefusedWhen: refusedWhen, Attrs: attrs}
 }
 
-// CodeDetectionSettings is data.sreagent_code_detection_settings.
-var CodeDetectionSettings = readSingleton("code_detection_settings",
-	"The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app.",
-	"v0.475.0 or later",
+// CodeDetectionSettings is data.sreagent_code_detection_settings. Code improvement is not
+// every platform's or every organization's: the platform answers 404 when the feature is
+// not offered (no verifier configured, or the organization outside the rollout), and 404
+// again with its own sentence when the plan lacks code improvement or no verifier is set up.
+var CodeDetectionSettings = withAbsentWhen(readSingleton("code_detection_settings",
+	"The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app. Only organizations that are offered code improvement have these settings; the read is an error for the others.",
+	"v0.475.0 or later", "",
 	ro("weekly_enabled", engine.Bool, "Whether the weekly run is on."),
 	ro("scan_all", engine.Bool, "Whether a repository with no override is in scope."),
 	ro("run_day", engine.Int, "The day of the run, 0 (Sunday) to 6 (Saturday), UTC."),
@@ -27,12 +35,20 @@ var CodeDetectionSettings = readSingleton("code_detection_settings",
 	ro("jitter_minutes", engine.Int, "The organization's fixed offset from the run hour, in minutes."),
 	ro("manual_runs_today", engine.Int, "Runs a person started today."),
 	ro("updated_at", engine.String, "When the settings last changed."),
-)
+),
+	"the platform does not offer code improvement (no verifier is configured), the organization is outside its rollout, "+
+		"its plan does not include code improvement, or code improvement is not set up for it (the platform answers 404 for each)")
+
+// withAbsentWhen names the conditions under which the platform answers 404 beside being older.
+func withAbsentWhen(s engine.Spec, absentWhen string) engine.Spec {
+	s.AbsentWhen = absentWhen
+	return s
+}
 
 // SecuritySLAPolicy is data.sreagent_security_sla_policy.
 var SecuritySLAPolicy = readSingleton("security_sla_policy",
 	"The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA.",
-	"v0.476.3 or later",
+	"v0.476.3 or later", infrastructureRefusal,
 	ro("critical_days", engine.Int, "Days for a critical finding, 1 to 365, or null for no SLA."),
 	ro("high_days", engine.Int, "Days for a high finding, or null."),
 	ro("medium_days", engine.Int, "Days for a medium finding, or null."),
@@ -45,7 +61,7 @@ var SecuritySLAPolicy = readSingleton("security_sla_policy",
 // SecurityDigestSettings is data.sreagent_security_digest_settings.
 var SecurityDigestSettings = readSingleton("security_digest_settings",
 	"The security digest: how often it is sent and where.",
-	"v0.476.4 or later",
+	"v0.476.4 or later", infrastructureRefusal,
 	ro("enabled", engine.Bool, "Whether the digest is sent."),
 	ro("cadence", engine.String, "daily or weekly."),
 	ro("weekday", engine.Int, "For a weekly digest, 1 (Monday) to 7 (Sunday)."),
@@ -60,7 +76,7 @@ var SecurityDigestSettings = readSingleton("security_digest_settings",
 // SecurityCodeClasses is data.sreagent_security_code_classes.
 var SecurityCodeClasses = readSingleton("security_code_classes",
 	"The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes.",
-	"v0.476.6 or later",
+	"v0.476.6 or later", infrastructureRefusal,
 	ro("classes", engine.StringList, "The marked classes; the built-in classes always count and are not listed."),
 	ro("available_classes", engine.JSON, "The classes that can be marked."),
 	ro("built_in_classes", engine.JSON, "The classes that always count as security findings."),

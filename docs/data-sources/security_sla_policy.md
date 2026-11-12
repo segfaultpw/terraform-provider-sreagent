@@ -25,7 +25,7 @@ output "critical_sla_days" {
 
 ### Read-Only
 
-- `configured` (Boolean) Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead.
+- `configured` (Boolean) Always true when the read succeeds; the read never answers false with null attributes. It fails with an error instead when the platform predates the resource, and when the organization's plan does not include the infrastructure suite (the platform answers 403).
 - `critical_days` (Number) Days for a critical finding, 1 to 365, or null for no SLA.
 - `defaults` (Boolean) True while the organization has not saved a policy of its own and the platform's defaults apply.
 - `high_days` (Number) Days for a high finding, or null.

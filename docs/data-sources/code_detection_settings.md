@@ -2,12 +2,12 @@
 page_title: "sreagent_code_detection_settings Data Source - sreagent"
 subcategory: ""
 description: |-
-  The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app.
+  The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app. Only organizations that are offered code improvement have these settings; the read is an error for the others.
 ---
 
 # sreagent_code_detection_settings (Data Source)
 
-The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app.
+The weekly code detection schedule and scope. Read only: weekly runs spend GitHub requests, so they are switched on in the app. Only organizations that are offered code improvement have these settings; the read is an error for the others.
 
 ## Example Usage
 
@@ -26,7 +26,7 @@ output "weekly_code_detection" {
 ### Read-Only
 
 - `available_classes` (String) Every static kind that can be named in default_classes.
-- `configured` (Boolean) Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead.
+- `configured` (Boolean) Always true when the read succeeds; the read never answers false with null attributes. It fails with an error instead when the platform predates the resource, when the platform does not offer code improvement (no verifier is configured), the organization is outside its rollout, its plan does not include code improvement, or code improvement is not set up for it (the platform answers 404 for each).
 - `default_classes` (List of String) The static kinds the run looks for; empty means every kind.
 - `id` (String) The row's identifier on the platform.
 - `jitter_minutes` (Number) The organization's fixed offset from the run hour, in minutes.

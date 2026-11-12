@@ -353,6 +353,12 @@ func TestAccSingletons(t *testing.T) {
 // need a Slack workspace on the other end first, and read as not configured.
 var startsEmpty = map[string]bool{"slack": true, "change_notifications": true}
 
+// notEveryOrganizationHas are the data sources whose resource the platform holds only for
+// an organization that is offered the feature (code improvement needs a verifier on the
+// platform, a place in the rollout and the plan), so a read of one is an error on a platform
+// that does not offer it. TestAccCodeDetectionSettings reads it on its own.
+var notEveryOrganizationHas = map[string]bool{"code_detection_settings": true}
+
 // Every data source reads the seeded organization, with the api:admin key
 // and with the plan-only api:config_read key.
 func TestAccDataSources(t *testing.T) {
@@ -360,6 +366,9 @@ func TestAccDataSources(t *testing.T) {
 	var body strings.Builder
 	checks := []resource.TestCheckFunc{}
 	for _, s := range specs.All() {
+		if notEveryOrganizationHas[s.Key] {
+			continue
+		}
 		name := "sreagent_" + s.ListName
 		if s.Shape == engine.Singleton {
 			name = "sreagent_" + s.TypeName
@@ -378,6 +387,41 @@ func TestAccDataSources(t *testing.T) {
 				ProtoV6ProviderFactories: factories,
 				TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
 				Steps:                    []resource.TestStep{{Config: provider + body.String(), Check: resource.ComposeAggregateTestCheckFunc(checks...)}},
+			})
+		})
+	}
+}
+
+// The code detection settings exist only where the platform offers code improvement. The
+// test asks the platform which it is: a 404 must fail the read with the error that names
+// both causes and keeps the platform's own sentence, and a platform that does offer it
+// must read the settings as configured. Either way the same two keys are read.
+func TestAccCodeDetectionSettings(t *testing.T) {
+	accPreCheck(t)
+	_, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodGet, Path: "code_detection_settings"})
+	step := resource.TestStep{}
+	switch {
+	case client.IsNotFound(err):
+		step.ExpectError = regexp.MustCompile(`(?s)platform\s+does\s+not\s+serve\s+code_detection_settings.*` +
+			`predates\s+the\s+resource.*v0\.475\.0\s+or\s+later.*this\s+organization\s+is\s+not\s+offered\s+it.*` +
+			`Not\s+every\s+organization\s+has\s+code_detection_settings.*The\s+platform\s+said.*404`)
+	case err == nil:
+		step.Check = resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttrSet("data.sreagent_code_detection_settings.x", "id"),
+			resource.TestCheckResourceAttr("data.sreagent_code_detection_settings.x", "configured", "true"),
+			resource.TestCheckResourceAttrSet("data.sreagent_code_detection_settings.x", "weekly_enabled"),
+		)
+	default:
+		t.Fatalf("the platform answered code_detection_settings with neither a row nor 404: %v", err)
+	}
+	for _, key := range []string{"SREAGENT_API_KEY", "SREAGENT_READ_API_KEY"} {
+		t.Run(key, func(t *testing.T) {
+			provider := fmt.Sprintf("provider \"sreagent\" {\n  base_url = %q\n  organization = %q\n  api_key = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), os.Getenv("SREAGENT_ORGANIZATION"), os.Getenv(key))
+			step.Config = provider + "data \"sreagent_code_detection_settings\" \"x\" {}\n"
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+				Steps:                    []resource.TestStep{step},
 			})
 		})
 	}

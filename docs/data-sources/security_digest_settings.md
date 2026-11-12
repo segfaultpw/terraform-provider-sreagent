@@ -25,7 +25,7 @@ output "security_digest_goes_to" {
 ### Read-Only
 
 - `cadence` (String) daily or weekly.
-- `configured` (Boolean) Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead.
+- `configured` (Boolean) Always true when the read succeeds; the read never answers false with null attributes. It fails with an error instead when the platform predates the resource, and when the organization's plan does not include the infrastructure suite (the platform answers 403).
 - `email` (Boolean) Whether the digest is emailed.
 - `enabled` (Boolean) Whether the digest is sent.
 - `hour` (Number) The hour, 0 to 23, in the organization's time zone.

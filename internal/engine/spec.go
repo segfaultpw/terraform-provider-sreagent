@@ -189,6 +189,15 @@ type Spec struct {
 	// platform predates the resource. Its data source then fails naming the release needed
 	// instead of reading as configured = false with every attribute null.
 	AlwaysPresent bool
+	// AbsentWhen: the platform also answers 404 for an organization that is not
+	// offered the resource (a feature that is off on the platform, outside its
+	// rollout, or not in the plan), so the 404 error and the configured
+	// description name that cause beside an older platform. Set with AlwaysPresent.
+	AbsentWhen string
+	// RefusedWhen: the platform answers 403 with its own sentence, not 404, when
+	// the organization's plan lacks the feature. Only the configured description
+	// reads it; the refusal reaches the read as the platform wrote it.
+	RefusedWhen string
 	// MinPlatform names the platform release the resource first appeared in: a
 	// read of an AlwaysPresent singleton, and a Previewed one's 404, say so.
 	MinPlatform string

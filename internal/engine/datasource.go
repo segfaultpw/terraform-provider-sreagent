@@ -113,11 +113,7 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 	if !d.list {
 		if _, ok := fields["configured"]; !ok {
-			description := "False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null."
-			if d.spec.AlwaysPresent {
-				description = "Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead."
-			}
-			fields["configured"] = schema.BoolAttribute{Computed: true, Description: description}
+			fields["configured"] = schema.BoolAttribute{Computed: true, Description: ConfiguredDescription(d.spec)}
 		}
 		resp.Schema = schema.Schema{Description: d.spec.Description, Attributes: fields}
 		return
@@ -246,10 +242,7 @@ func (d *facadeDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	name := "sreagent_" + d.spec.TypeName
 	out, err := d.client.Do(ctx, client.Request{Method: http.MethodGet, Path: d.spec.Key})
 	if d.spec.AlwaysPresent && client.IsNotFound(err) {
-		resp.Diagnostics.AddError(
-			"The platform does not serve "+d.spec.Key,
-			"Every organization has "+d.spec.Key+", so the platform answered 404 because it predates the resource. "+
-				"Upgrade the platform to "+d.spec.MinPlatform+" before reading "+name+".\n\nThe platform said: "+err.Error())
+		resp.Diagnostics.AddError("The platform does not serve "+d.spec.Key, notServedDetail(d.spec, name, err))
 		return
 	}
 	if client.IsNotFound(err) {
@@ -325,4 +318,39 @@ func (d *facadeDataSource) readList(ctx context.Context, req datasource.ReadRequ
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(d.spec.Key))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("truncated"), types.BoolValue(truncated))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("items"), list)...)
+}
+
+// ConfiguredDescription is the configured attribute of a singleton the platform
+// holds for every organization it offers the resource to: true whenever the read
+// succeeds, an error otherwise, and the description says which errors.
+func ConfiguredDescription(spec Spec) string {
+	if !spec.AlwaysPresent {
+		return "False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null."
+	}
+	if spec.AbsentWhen == "" && spec.RefusedWhen == "" {
+		return "Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead."
+	}
+	d := "Always true when the read succeeds; the read never answers false with null attributes. It fails with an error instead when the platform predates the resource"
+	if spec.AbsentWhen != "" {
+		d += ", when " + spec.AbsentWhen
+	}
+	if spec.RefusedWhen != "" {
+		d += ", and when " + spec.RefusedWhen
+	}
+	return d + "."
+}
+
+// notServedDetail is the error of a 404 on an AlwaysPresent singleton. A resource every
+// organization has can only be missing because the platform is older; one the platform
+// offers conditionally names that condition too, because the platform's own sentence
+// for it ("Unknown tool") does not say which cause it is.
+func notServedDetail(spec Spec, name string, err error) string {
+	said := "\n\nThe platform said: " + err.Error()
+	if spec.AbsentWhen == "" {
+		return "Every organization has " + spec.Key + ", so the platform answered 404 because it predates the resource. " +
+			"Upgrade the platform to " + spec.MinPlatform + " before reading " + name + "." + said
+	}
+	return "The platform answered 404 for " + spec.Key + ". Either the platform predates the resource " +
+		"(upgrade it to " + spec.MinPlatform + " before reading " + name + "), or this organization is not offered it: " +
+		spec.AbsentWhen + ". Not every organization has " + spec.Key + "." + said
 }

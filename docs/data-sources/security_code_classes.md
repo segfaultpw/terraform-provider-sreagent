@@ -28,6 +28,6 @@ output "marked_code_classes" {
 - `available_classes` (String) The classes that can be marked.
 - `built_in_classes` (String) The classes that always count as security findings.
 - `classes` (List of String) The marked classes; the built-in classes always count and are not listed.
-- `configured` (Boolean) Always true: every organization has this resource. A platform that does not serve it fails the read with an error instead.
+- `configured` (Boolean) Always true when the read succeeds; the read never answers false with null attributes. It fails with an error instead when the platform predates the resource, and when the organization's plan does not include the infrastructure suite (the platform answers 403).
 - `id` (String) The row's identifier on the platform.
 - `limit` (Number) The most classes that can be marked.

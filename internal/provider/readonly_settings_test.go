@@ -1,11 +1,16 @@
 package provider
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/fakefacade"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/specs"
 )
@@ -198,4 +203,105 @@ func TestSlackAnswersItsDeliveryProblems(t *testing.T) {
 			Check:  resource.TestMatchResourceAttr("data.sreagent_slack.s", "delivery_problems", regexpMust(`is_archived`)),
 		}},
 	})
+}
+
+// refusing is a platform that answers every read with one status and the sentence the
+// platform itself writes for it.
+func refusing(t *testing.T, status int, code, message string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "message": message})
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// Not every organization has code detection settings: the platform answers 404 ("Unknown tool")
+// when code improvement is not offered to it, and 404 again with its own sentence when the plan
+// lacks the feature or no verifier is set up. The read fails and names both causes, the platform
+// older than the release and the organization not being offered it, and keeps the platform's
+// sentence. It never reads as configured = false with null attributes.
+func TestCodeDetectionSettingsNamesBothCausesOfA404(t *testing.T) {
+	said := map[string]string{
+		"not offered":     "Unknown tool: get_code_detection_settings",
+		"not in the plan": "Code improvement is not part of your plan.",
+		"not set up":      "Code improvement is not set up for this organization: no verifier is configured.",
+	}
+	for name, sentence := range said {
+		t.Run(name, func(t *testing.T) {
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config: providerBlock(refusing(t, http.StatusNotFound, "not_found", sentence)) + "data \"sreagent_code_detection_settings\" \"c\" {}\n",
+					ExpectError: regexp.MustCompile(`(?s)platform\s+does\s+not\s+serve\s+code_detection_settings.*` +
+						`predates\s+the\s+resource.*v0\.475\.0\s+or\s+later.*this\s+organization\s+is\s+not\s+offered\s+it.*` +
+						`no\s+verifier\s+is\s+configured.*rollout.*plan.*Not\s+every\s+organization\s+has\s+code_detection_settings.*` +
+						strings.ReplaceAll(regexp.QuoteMeta(sentence), ` `, `\s+`)),
+				}},
+			})
+		})
+	}
+}
+
+// A platform that predates the code detection settings answers its unknown-resource 404, and the
+// error offers the same two causes: the second is the one that applies to an organization on a
+// platform that has the resource.
+func TestCodeDetectionSettingsOnAnOlderPlatformStillNamesTheRelease(t *testing.T) {
+	var older []engine.Spec
+	for _, s := range specs.All() {
+		if s.Key != "code_detection_settings" {
+			older = append(older, s)
+		}
+	}
+	f := fakefacade.New(t, older)
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config:      providerBlock(f.URL) + "data \"sreagent_code_detection_settings\" \"c\" {}\n",
+			ExpectError: regexp.MustCompile(`(?s)v0\.475\.0\s+or\s+later.*No\s+such\s+configuration\s+resource:\s+code_detection_settings`),
+		}},
+	})
+}
+
+// The security settings are gated by the infrastructure suite, which the facade answers 403, not
+// 404: the read fails with the platform's own sentence, and the 404 error (the platform is older)
+// is not offered for a plan refusal.
+func TestASecuritySettingRefusedForThePlanKeepsThePlatformsSentence(t *testing.T) {
+	for _, name := range []string{"security_sla_policy", "security_digest_settings", "security_code_classes"} {
+		t.Run(name, func(t *testing.T) {
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config:      providerBlock(refusing(t, http.StatusForbidden, "forbidden", "The infrastructure suite is not included in your plan.")) + "data \"sreagent_" + name + "\" \"x\" {}\n",
+					ExpectError: regexp.MustCompile(`(?s)Could\s+not\s+read\s+sreagent_` + name + `.*infrastructure\s+suite\s+is\s+not\s+included\s+in\s+your\s+plan`),
+				}},
+			})
+		})
+	}
+}
+
+// What the schema says about configured is true of the platform: the four settings that can be
+// refused or absent for an organization say so, and request signing, which every organization has
+// whatever its plan, still says it has the resource.
+func TestConfiguredDescriptionsNameWhenTheReadFailsInsteadOfClaimingEveryOrganization(t *testing.T) {
+	for _, s := range []engine.Spec{specs.CodeDetectionSettings, specs.SecuritySLAPolicy, specs.SecurityDigestSettings, specs.SecurityCodeClasses} {
+		d := engine.ConfiguredDescription(s)
+		if regexp.MustCompile(`every organization has`).MatchString(d) {
+			t.Errorf("%s claims every organization has it: %s", s.Key, d)
+		}
+		if !regexp.MustCompile(`predates the resource`).MatchString(d) {
+			t.Errorf("%s does not say the read fails on a platform that predates it: %s", s.Key, d)
+		}
+	}
+	if d := engine.ConfiguredDescription(specs.SecuritySLAPolicy); !regexp.MustCompile(`403`).MatchString(d) || !regexp.MustCompile(`infrastructure suite`).MatchString(d) {
+		t.Errorf("the security settings must name the plan refusal: %s", d)
+	}
+	if d := engine.ConfiguredDescription(specs.CodeDetectionSettings); !regexp.MustCompile(`rollout`).MatchString(d) || !regexp.MustCompile(`404`).MatchString(d) {
+		t.Errorf("code detection must name the offer and rollout conditions: %s", d)
+	}
+	if d := engine.ConfiguredDescription(specs.RequestSigning); !regexp.MustCompile(`every organization has this resource`).MatchString(d) {
+		t.Errorf("request signing is held by every organization: %s", d)
+	}
 }
