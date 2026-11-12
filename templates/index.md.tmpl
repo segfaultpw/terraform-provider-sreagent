@@ -58,6 +58,18 @@ Run `terraform plan` again, review what changed, and apply the new plan. Backgro
 scheduler) never moves that version, so it never causes a 412.
 
 A row deleted in the app is recreated by the next plan. A singleton (`sreagent_organization_settings` and the
-other settings resources) cannot be deleted: destroying it only stops Terraform managing it.
+other settings resources) cannot be deleted: destroying it only stops Terraform managing it. The one exception is
+`sreagent_repository_defaults` in a child organization, which hands the child back to its parent's defaults.
+
+## Changes the platform previews
+
+A change to the organization's repository defaults (`sreagent_repository_defaults`) moves every repository that
+follows them, so the platform applies it only against a preview of what it would move. `terraform plan` asks for
+that preview and lists the settings that change, the repositories that read a different value and the child
+organizations that follow the defaults; the apply sends the fingerprint of that preview and fails, writing
+nothing, when what would move changed since. The preview needs an `api:admin` key. A plan made with an
+`api:config_read` key says so, and the apply then previews the change itself and applies what it finds. Terraform
+plans a change again when it applies a saved plan, so the preview is requested at both steps and the second one
+must agree with the first.
 
 {{ .SchemaMarkdown | trimspace }}

@@ -59,6 +59,37 @@ import {
 }
 ```
 
+## Repository settings that follow the organization default
+
+A `sreagent_repo_setting` holds only the settings it sets itself; the rest follow the organization's repository
+defaults. `set_here` lists the settings a row holds and `following` the ones it does not.
+
+- An imported row that follows a setting plans nothing for it: leave the setting out of the configuration, or
+  name it in `follows_default` (the exported file does). `follows_default` is never stored, so an import has
+  nothing to plan for it, and it changes something only for a setting the row holds.
+- A followed `draft_prs` reads null, so a configuration that leaves it out is already satisfied. Read
+  `data.sreagent_effective_repo_settings` for the value a repository actually runs with.
+- A setting the configuration states with the value the row already reads is not written, so restating what a
+  row follows does not pin it. To make a row hold a value, state a different one.
+- `fix_runner`, `platform_fallback` and `auto_dispatch` belong to the whole repository: a write or a reset of
+  one reaches every row of the repository. State them the same way on every block of a repository, or on the
+  all-branches block only.
+
+```terraform
+resource "sreagent_repo_setting" "web" {
+  repo            = "acme/web"
+  fix_runner      = "self_hosted"
+  follows_default = ["platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"]
+}
+```
+
+## The organization's repository defaults
+
+`sreagent_repository_defaults` imports with the ID `repository_defaults`. A child organization that follows its
+parent's defaults has no row of its own, so there is nothing to import: the import fails and says why. Declaring
+the resource instead gives the child its own defaults for all six settings and stops it following the parent (the
+plan says so and lists what moves), and destroying the resource follows the parent again.
+
 ## Arguments the platform never answers
 
 `sreagent_alert_mute`'s `duration_minutes` is sent when the mute is created and never read back (the platform

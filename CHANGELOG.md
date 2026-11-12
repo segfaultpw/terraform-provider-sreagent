@@ -1,3 +1,30 @@
+## [0.2.0]
+
+FEATURES:
+
+* `sreagent_repository_defaults` (and `data.sreagent_repository_defaults`) manages the organization's repository defaults: the six settings (`fix_runner`, `platform_fallback`, `auto_dispatch`, `draft_prs`, `check_network`, `allow_ci_config`) every repository follows until it holds a value of its own. The platform applies a change only against a preview of what it moves, so `terraform plan` asks for the preview and warns with the settings that change, the repositories that would read a different value and the child organizations that follow the defaults, and the apply sends the fingerprint of that preview and fails without writing when what would move changed since. Turning `allow_ci_config` or `check_network` on needs the matching entry in the write-only `confirm` list, and the plan fails without it. With an `api:config_read` plan key the plan says it cannot preview and the apply previews and applies what it finds. A child organization that follows its parent's defaults has no row of its own: creating the resource gives it its own for all six settings and stops it following the parent (the plan says so), importing it fails and says why, and destroying the resource follows the parent again; in an organization with no parent, destroying it leaves the defaults in place. Needs platform v0.477.0.
+* `sreagent_repo_setting` takes the write-only `follows_default` (put the named settings back on the organization's repository defaults) and answers `set_here` (the settings the row holds) and `following` (the ones it does not). A setting the configuration leaves out is left as it is, and one it states with the value the row already reads is not written, so a configuration written before the defaults existed does not pin what the rows follow. `fix_runner`, `platform_fallback` and `auto_dispatch` belong to the whole repository: a reset of one reaches every row of the repository. Needs platform v0.482.0; an older platform answers neither list and is never sent `follows_default`.
+* `data.sreagent_effective_repo_settings` reads what every repository runs with and where each value comes from, every page, with the filters `name`, `runner`, `has_fence` and `include_archived`, and the organization's `defaults`, the `counts` of the whole filtered list, `runner_registered` and `archived_known`.
+* Data sources for the platform's security and code detection settings: `sreagent_code_detection_settings`, `sreagent_security_sla_policy`, `sreagent_security_digest_settings`, `sreagent_security_code_classes`, `sreagent_security_notification_rules` and `sreagent_secret_allow_rules`. They are read only; managing them from Terraform is planned for a later release. An older platform fails the read and names the release it needs.
+* `sreagent_organization_settings` answers `mfa_required`, `mfa_grace_days`, `session_idle_minutes`, `api_key_max_days`, `mfa_effective` and `session_idle_effective` (all read only: an org admin decides them in the app), `sreagent_slack` answers `delivery_problems`, and `data.sreagent_compliance_periods` answers `state`, `frozen_at`, `freeze_kind`, `catalogue_version` and `fill_present_with_current`.
+* The vendored API document is re-vendored whole, which ends the daily contract drift failure that named the resources above as missing from the provider.
+
+BUG FIXES:
+
+* `sreagent_repo_setting` no longer plans a change on every run when the row follows an organization default that sets `draft_prs`: a following `draft_prs` reads null when the configuration does not state it.
+* `sreagent_organization_settings` plans clean in a child organization that stopped following its parent's repository defaults. The platform keeps `repository_defaults` in `inheritance_stopped` through every write of the list; the provider no longer reads it, sends it or accepts it there (a configuration that names it is refused at validate; the stop is changed with `sreagent_repository_defaults` or in the app), so a configuration that states the list no longer fails the apply as an inconsistent result.
+
+BREAKING CHANGES:
+
+* `sreagent_repo_setting.draft_prs` on a row that follows the organization default reads null when the configuration does not state it, where 0.1.3 read the value in force. A configuration that reads `sreagent_repo_setting.x.draft_prs` to learn the value a repository runs with should read `data.sreagent_effective_repo_settings` instead; one that states `draft_prs` is unchanged.
+
+UPGRADE NOTES:
+
+* Upgrading plans nothing for a configuration that states values equal to what its rows follow: a stated value the row already reads is not written. To make a row follow a default again, remove the setting from the configuration and name it in `follows_default`; the plan warns that the apply puts it back.
+* State a repository-wide setting (`fix_runner`, `platform_fallback`, `auto_dispatch`) the same way on every `sreagent_repo_setting` of a repository, or on the all-branches block only: a reset of one reaches every row of the repository, so a block that states a different value fights it.
+* Terraform plans a change again when it applies a saved plan, so a change to `sreagent_repository_defaults` asks the platform for its preview at the plan and again at the apply. If what would move changed in between, the apply stops with Terraform's "inconsistent final plan" error or the platform's 409; either way nothing was written. Run the plan again.
+* The new platform parts need the releases in the README: v0.477.0 for the repository defaults and the view of effective settings, v0.482.0 for `follows_default`, `set_here` and `following`.
+
 ## [0.1.3]
 
 FEATURES:
