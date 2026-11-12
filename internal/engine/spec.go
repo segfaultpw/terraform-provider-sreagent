@@ -198,6 +198,14 @@ type Spec struct {
 	// the second holds into a planned change, and Update sends exactly those.
 	FollowsDefault string
 	SetHere        string
+	// FollowsMinPlatform is the platform release that answers SetHere; an older
+	// platform ignores FollowsDefault, which the plan says.
+	FollowsMinPlatform string
+	// RepositoryWide names the settings the platform applies to every row of the
+	// repository the row belongs to (the String attribute RepositoryAttr names)
+	// whenever one row writes or resets them, so a plan that sends one warns.
+	RepositoryWide []string
+	RepositoryAttr string
 	// Previewed: the API applies a write only against a preview the caller has
 	// read. A PUT with no expected_fingerprint answers 428 and the preview, a stale
 	// fingerprint 409 and the fresh one, and a matching one writes. The plan takes

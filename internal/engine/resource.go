@@ -601,6 +601,7 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	if r.spec.Previewed {
 		r.planPreview(ctx, req, resp)
 	}
+	r.planRepositoryWide(ctx, req, resp)
 	if req.State.Raw.IsNull() {
 		return
 	}
@@ -903,6 +904,9 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 	if followed != out {
 		resp.Diagnostics.Append(r.writeState(ctx, followed, req.Plan, &resp.State, resp.Private, resp.Identity)...)
+	}
+	if row, err := decodeRow(followed.Data); err == nil && r.followsIgnored(ctx, req.Config, answered{row: row}) {
+		resp.Diagnostics.AddAttributeWarning(path.Root(r.spec.FollowsDefault), "follows_default is ignored", r.followsIgnoredWarning())
 	}
 }
 

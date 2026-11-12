@@ -314,3 +314,26 @@ func TestComplementIsWhatTheAnsweredListDoesNotHold(t *testing.T) {
 		t.Fatalf("an answer with no list must read null, got %v", got)
 	}
 }
+
+// A create is told its follows_default is ignored when the answer carries no
+// held list (a platform before the release that reports one); an answer that
+// does carry one is not.
+func TestFollowsIgnoredReadsTheAnsweredRow(t *testing.T) {
+	spec := followsSpec
+	spec.FollowsMinPlatform = "v9.9.9"
+	r := &facadeResource{spec: spec}
+	config := listSource{"follows_default": listOf("a")}
+	ctx := context.Background()
+	if !r.followsIgnored(ctx, config, answered{row: map[string]any{"a": true}}) {
+		t.Error("an answer with no held list must read as ignored")
+	}
+	if r.followsIgnored(ctx, config, answered{row: map[string]any{"set_here": []any{}}}) {
+		t.Error("an answer with a held list, even an empty one, is not ignored")
+	}
+	if r.followsIgnored(ctx, listSource{}, answered{row: map[string]any{}}) {
+		t.Error("a configuration that names nothing has nothing ignored")
+	}
+	if !strings.Contains(r.followsIgnoredWarning(), "v9.9.9") {
+		t.Errorf("%s", r.followsIgnoredWarning())
+	}
+}

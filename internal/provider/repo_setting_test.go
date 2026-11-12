@@ -533,3 +533,37 @@ func TestFollowsDefaultOnAPlatformWithoutSetHereSendsNothing(t *testing.T) {
 		},
 	})
 }
+
+// Two blocks of one repository that state a repository-wide setting move to a
+// new value together: the first write reaches every row, so the second block's
+// write meets a row that changed after its refresh and is refused (412). The
+// apply fails, and a second apply finds nothing left to do. Stating the setting
+// on the all-branches block only avoids it.
+func TestTwoBlocksChangingARepositoryWideSettingNeedASecondApply(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	both := func(value string) string {
+		return providerBlock(f.URL) + fmt.Sprintf(`
+resource "sreagent_repo_setting" "main" {
+  repo              = "acme/api"
+  platform_fallback = %[1]s
+}
+
+resource "sreagent_repo_setting" "staging" {
+  repo              = "acme/api"
+  branch            = "staging"
+  platform_fallback = %[1]s
+}
+`, value)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: both("true")},
+			{Config: both("false"), ExpectError: regexp.MustCompile(`(?s)changed\s+outside\s+Terraform.*412`)},
+			{Config: both("false"), ConfigPlanChecks: emptyPlan, Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr("sreagent_repo_setting.main", "platform_fallback", "false"),
+				resource.TestCheckResourceAttr("sreagent_repo_setting.staging", "platform_fallback", "false"),
+			)},
+		},
+	})
+}

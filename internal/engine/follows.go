@@ -110,22 +110,123 @@ func (r *facadeResource) resets(ctx context.Context, config, held valueSource) (
 	return out, diags
 }
 
+// namedResets are the settings the configuration names in the write-only list,
+// whatever the row holds.
+func (r *facadeResource) namedResets(ctx context.Context, config valueSource) []string {
+	if r.spec.FollowsDefault == "" {
+		return nil
+	}
+	fd, ok := r.attrNamed(r.spec.FollowsDefault)
+	if !ok {
+		return nil
+	}
+	var named types.List
+	if config.GetAttribute(ctx, path.Root(fd.Attribute()), &named).HasError() || named.IsNull() || named.IsUnknown() {
+		return nil
+	}
+	return stringsOf(named)
+}
+
+// holdsList is the answered list of the settings a row holds, or null when the
+// state or answer carries none.
+func (r *facadeResource) holdsList(ctx context.Context, held valueSource) types.List {
+	var holds types.List
+	setHere := r.spec.SetHere
+	if sh, ok := r.attrNamed(r.spec.SetHere); ok {
+		setHere = sh.Attribute()
+	}
+	if held == nil || held.GetAttribute(ctx, path.Root(setHere), &holds).HasError() {
+		return types.ListNull(types.StringType)
+	}
+	return holds
+}
+
+// followsIgnored reports a configuration that names settings in the write-only
+// list while the platform does not say which settings a row holds, so it ignores
+// the list.
+func (r *facadeResource) followsIgnored(ctx context.Context, config, held valueSource) bool {
+	return r.spec.FollowsMinPlatform != "" && held != nil && len(r.namedResets(ctx, config)) > 0 && r.holdsList(ctx, held).IsNull()
+}
+
+func (r *facadeResource) followsIgnoredWarning() string {
+	return fmt.Sprintf("The platform ignores follows_default: it is older than %s, the release that tells which settings a row holds, so nothing is sent for it. Update the platform, or put the settings back on the default in the app.", r.spec.FollowsMinPlatform)
+}
+
+func (r *facadeResource) repoWide(name string) bool {
+	return slices.Contains(r.spec.RepositoryWide, name)
+}
+
+// wholeRepository is "every row of acme/api", from the plan's repository.
+func (r *facadeResource) wholeRepository(ctx context.Context, plan valueSource) string {
+	var repo types.String
+	if r.spec.RepositoryAttr != "" && !plan.GetAttribute(ctx, path.Root(r.spec.RepositoryAttr), &repo).HasError() && !repo.IsNull() && !repo.IsUnknown() {
+		return "every row of " + repo.ValueString()
+	}
+	return "every row of the repository"
+}
+
+// planRepositoryWide warns, for each setting the platform applies to the whole
+// repository, that this write sends it: a write of one row's repository-wide
+// setting is written to every row, branch entries included, and a reset puts
+// it back on the default for all of them.
+func (r *facadeResource) planRepositoryWide(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if len(r.spec.RepositoryWide) == 0 {
+		return
+	}
+	creating := req.State.Raw.IsNull()
+	var prior valueSource
+	o := opCreate
+	if !creating {
+		prior, o = req.State, opUpdate
+	}
+	body, _, d := r.body(ctx, req.Plan, req.Config, prior, o)
+	if d.HasError() {
+		return
+	}
+	whole := r.wholeRepository(ctx, req.Plan)
+	for _, name := range r.spec.RepositoryWide {
+		if v, sent := body[name]; sent && v != nil {
+			a, _ := r.attrNamed(name)
+			resp.Diagnostics.AddAttributeWarning(path.Root(a.Attribute()), "Repository-wide setting",
+				fmt.Sprintf("%s belongs to the whole repository, not to this row: writing it applies it to %s, branch entries included.", a.Attribute(), whole))
+		}
+	}
+	if !creating {
+		return
+	}
+	for _, name := range r.namedResets(ctx, req.Config) {
+		if !r.repoWide(name) {
+			continue
+		}
+		a, _ := r.attrNamed(name)
+		resp.Diagnostics.AddAttributeWarning(path.Root(a.Attribute()), "Repository-wide setting put back on the default",
+			fmt.Sprintf("%s belongs to the whole repository. If the new row holds a value for it (a branch row copies its repository's), this apply puts it back on the organization default for %s, branch entries included.", a.Attribute(), whole))
+	}
+}
+
 // planResets plans the change a reset is: each setting the configuration puts
 // back on the default and the row holds becomes unknown until the answer, with
 // the lists that say which settings the row holds. Until then the plan equals
 // state, and a row that already follows plans nothing, so the write-only list
 // is never a diff by itself.
 func (r *facadeResource) planResets(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if r.followsIgnored(ctx, req.Config, req.State) {
+		resp.Diagnostics.AddAttributeWarning(path.Root(r.spec.FollowsDefault), "follows_default is ignored", r.followsIgnoredWarning())
+	}
 	names, d := r.resets(ctx, req.Config, req.State)
 	resp.Diagnostics.Append(d...)
 	if len(names) == 0 {
 		return
 	}
+	whole := r.wholeRepository(ctx, req.Plan)
 	for _, name := range names {
 		a, _ := r.attrNamed(name)
 		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(a.Attribute()), unknownOf(a))...)
-		resp.Diagnostics.AddAttributeWarning(path.Root(a.Attribute()), "Setting put back on the organization default",
-			fmt.Sprintf("%s is set on this row; this apply puts it back on the organization default.", a.Attribute()))
+		detail := fmt.Sprintf("%s is set on this row; this apply puts it back on the organization default.", a.Attribute())
+		if r.repoWide(name) {
+			detail = fmt.Sprintf("%s belongs to the whole repository and is set on this row; this apply puts it back on the organization default for %s, not only this one.", a.Attribute(), whole)
+		}
+		resp.Diagnostics.AddAttributeWarning(path.Root(a.Attribute()), "Setting put back on the organization default", detail)
 	}
 	for _, a := range r.spec.Attrs {
 		if a.Name == r.spec.SetHere {
