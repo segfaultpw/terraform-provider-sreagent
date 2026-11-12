@@ -36,12 +36,14 @@ type Fake struct {
 	etagMode    etagMode
 	defaults    map[string]any
 	legacy      map[string]bool
+	dm          defaultsModel
+	history     map[string][]map[string]any
 }
 
 // New starts a fake for specs; the server stops when the test ends.
 func New(t *testing.T, specs []engine.Spec) *Fake {
 	t.Helper()
-	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}}
+	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}, history: map[string][]map[string]any{}, dm: defaultsModel{source: "built_in", parentValues: builtInDefaults()}}
 	for _, s := range specs {
 		f.specs[s.Key] = s
 		f.rows[s.Key] = map[string]map[string]any{}
@@ -323,6 +325,13 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		d.UseNumber()
 		_ = d.Decode(&body)
 		f.bodies[r.Method+" "+spec.Key] = body
+		if r.Method == http.MethodPut {
+			f.history[spec.Key] = append(f.history[spec.Key], body)
+		}
+	}
+	if spec.Key == "repository_defaults" {
+		f.serveDefaults(w, r, body)
+		return
 	}
 
 	switch {

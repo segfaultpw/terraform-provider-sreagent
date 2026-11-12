@@ -79,6 +79,9 @@ type APIError struct {
 	Message  string
 	Existing map[string]any
 	Current  map[string]any
+	// Preview is the preview.data of a 428 or a 409: what a previewed write
+	// would change, with the fingerprint that applies it.
+	Preview map[string]any
 	// Retried: an earlier attempt of this call ended in a gateway or
 	// transport error, so it may have been applied before this answer.
 	Retried bool
@@ -98,6 +101,10 @@ func IsNotFound(err error) bool { return statusIs(err, http.StatusNotFound) }
 
 // IsConflict reports a 409.
 func IsConflict(err error) bool { return statusIs(err, http.StatusConflict) }
+
+// IsPreconditionRequired reports a 428, the answer of a previewed write that
+// carries no fingerprint.
+func IsPreconditionRequired(err error) bool { return statusIs(err, http.StatusPreconditionRequired) }
 
 // IsPreconditionFailed reports a 412.
 func IsPreconditionFailed(err error) bool { return statusIs(err, http.StatusPreconditionFailed) }
@@ -274,6 +281,7 @@ type envelope struct {
 	Error        string          `json:"error"`
 	Message      string          `json:"message"`
 	Existing     map[string]any  `json:"existing"`
+	Preview      json.RawMessage `json:"preview"`
 }
 
 func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []string) (*Response, error) {
@@ -302,6 +310,14 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 	apiErr := &APIError{Status: resp.StatusCode, Code: redact(env.Error, secrets), Message: redact(env.Message, secrets), Existing: env.Existing}
 	if apiErr.Message == "" {
 		apiErr.Message = http.StatusText(resp.StatusCode)
+	}
+	if resp.StatusCode == http.StatusPreconditionRequired || resp.StatusCode == http.StatusConflict {
+		var wrapped struct {
+			Data map[string]any `json:"data"`
+		}
+		if json.Unmarshal(env.Preview, &wrapped) == nil {
+			apiErr.Preview = wrapped.Data
+		}
 	}
 	if resp.StatusCode == http.StatusPreconditionFailed && len(env.Data) > 0 {
 		var current map[string]any

@@ -23,6 +23,7 @@ func All() []engine.Spec {
 		Team,
 		TeamMember,
 		RepoSetting,
+		RepositoryDefaults,
 		ServiceBinding,
 		StatusPageSettings,
 		StatusPageComponent,

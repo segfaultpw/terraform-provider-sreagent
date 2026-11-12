@@ -95,6 +95,9 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	enums := post
 	if s.Shape == engine.Singleton {
 		enums = d.Paths["/"+s.Key]["put"].RequestBody.Content["application/json"].Schema
+		// A singleton has no POST and no /{id}: its create and its update are
+		// the one PUT.
+		post, put = enums, enums
 	}
 	byName := map[string]engine.Attr{}
 	for _, a := range s.Attrs {
@@ -172,6 +175,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	}
 	for _, a := range s.Attrs {
 		switch {
+		case a.Local:
 		case a.WriteOnly:
 			checkWriteOnly(a, res, post.Properties, put.Properties, add)
 		case a.NotRead:
@@ -199,6 +203,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 		}
 	}
 	checkFollows(s, res, add)
+	checkPreviewed(d, s, res, add)
 	checkIgnored(s, enums.Properties, add)
 	checkSecrets(d, s, res, add)
 	checkAddressing(s, res, add)
@@ -227,6 +232,49 @@ func checkWriteOnly(a engine.Attr, res Resource, post, put map[string]map[string
 		}
 		if !slices.Equal(a.OneOf, want) {
 			add("write-only %s OneOf %v, %s body enum %v", a.Name, a.OneOf, method, want)
+		}
+	}
+}
+
+// checkPreviewed holds a spec whose writes the API applies only against a
+// preview to what the contract publishes: the fingerprint argument, the 428 and
+// the 409 of the singleton's PUT, the arguments a destroy sends, and the
+// confirmations the spec asks the configuration for.
+func checkPreviewed(d *Doc, s engine.Spec, res Resource, add func(string, ...any)) {
+	if !s.Previewed {
+		return
+	}
+	if s.Shape != engine.Singleton {
+		add("a previewed spec must be a singleton")
+		return
+	}
+	if !slices.Contains(res.ActionArgs, "expected_fingerprint") {
+		add("previewed %s does not publish the expected_fingerprint argument", s.Key)
+	}
+	put := d.Paths["/"+s.Key]["put"]
+	for _, status := range []string{"428", "409"} {
+		if _, ok := put.Responses[status]; !ok {
+			add("the PUT of %s no longer documents a %s", s.Key, status)
+		}
+	}
+	for arg := range s.DestroyBody {
+		if !slices.Contains(res.ActionArgs, arg) {
+			add("the destroy body sends %s, which is not an action argument", arg)
+		}
+	}
+	if s.DestroyBody != nil {
+		if _, ok := res.ComputedFields[s.DestroyWhen]; !ok {
+			add("the destroy follows %s, which the API does not publish as a computed field", s.DestroyWhen)
+		}
+	}
+	body := put.RequestBody.Content["application/json"].Schema.Properties
+	for name, c := range s.Confirmations {
+		items, _ := body["confirm"]["items"].(map[string]any)
+		if enum, _ := items["enum"].([]any); !slices.Contains(enum, any(name)) {
+			add("confirmation %s is not in the PUT body's confirm enum", name)
+		}
+		if !slices.Contains(res.Fields, c.Attr) {
+			add("confirmation %s names %s, which is not a field of %s", name, c.Attr, s.Key)
 		}
 	}
 }

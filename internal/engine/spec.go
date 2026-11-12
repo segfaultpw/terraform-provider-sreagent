@@ -104,6 +104,9 @@ type Attr struct {
 	// and a configuration that names one is refused at validate with IgnoredWhy.
 	IgnoredValues []string
 	IgnoredWhy    string
+	// Local: Computed and kept by the provider alone. It is never sent, never read
+	// from the API, and carried through a refresh from the prior state.
+	Local bool
 }
 
 // Attribute is the Terraform attribute name.
@@ -182,7 +185,8 @@ type Spec struct {
 	// platform predates the resource. Its data source then fails naming the release needed
 	// instead of reading as configured = false with every attribute null.
 	AlwaysPresent bool
-	// MinPlatform names the platform release a read of an AlwaysPresent singleton needs.
+	// MinPlatform names the platform release the resource first appeared in: a
+	// read of an AlwaysPresent singleton, and a Previewed one's 404, say so.
 	MinPlatform string
 	// FollowsDefault names the WriteOnly list attribute (an API name) that puts
 	// settings back on the organization default, and SetHere the answered list of
@@ -190,9 +194,33 @@ type Spec struct {
 	// the second holds into a planned change, and Update sends exactly those.
 	FollowsDefault string
 	SetHere        string
+	// Previewed: the API applies a write only against a preview the caller has
+	// read. A PUT with no expected_fingerprint answers 428 and the preview, a stale
+	// fingerprint 409 and the fresh one, and a matching one writes. The plan takes
+	// the preview (the Local attribute preview_fingerprint holds its fingerprint)
+	// and the apply sends that fingerprint. The WriteOnly attribute confirm names
+	// the confirmations the preview asks for.
+	Previewed bool
+	// Confirmations maps each confirm value to the setting whose turning on needs
+	// it and the platform's sentence for a configuration that lacks it.
+	Confirmations map[string]Confirmation
+	// DestroyBody and DestroyWhen: a destroy of a Previewed singleton sends this
+	// body, as a previewed write, when the attribute DestroyWhen (an API name) is
+	// not null in state; without it the row is left in place.
+	DestroyBody map[string]any
+	DestroyWhen string
+	// DestroyWarning is said when the destroy took effect.
+	DestroyWarning string
 	// DiscoveredAttr is the computed boolean that, true in state, makes a
 	// destroy warn that a discovery sweep files the row again.
 	DiscoveredAttr string
+}
+
+// Confirmation is what a Previewed write needs from the configuration before it
+// turns Attr on.
+type Confirmation struct {
+	Attr     string
+	Sentence string
 }
 
 // LowerTrim is the platform's normalization of service names.

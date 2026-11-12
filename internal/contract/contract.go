@@ -37,6 +37,8 @@ type Doc struct {
 		} `json:"schemas"`
 	} `json:"components"`
 	Paths map[string]map[string]struct {
+		// Responses names the statuses an operation can answer.
+		Responses   map[string]json.RawMessage `json:"responses"`
 		RequestBody struct {
 			Content map[string]struct {
 				Schema struct {

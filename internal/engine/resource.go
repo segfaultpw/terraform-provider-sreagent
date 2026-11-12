@@ -240,6 +240,9 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			n + "_set": schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a value for %s.", n), PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()}},
 		}
 	}
+	if a.Local {
+		return map[string]schema.Attribute{a.Attribute(): schema.StringAttribute{Computed: true, Description: a.Description}}
+	}
 	if a.WriteOnly {
 		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{
 			ElementType: types.StringType, Optional: true, WriteOnly: true,
@@ -407,7 +410,7 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 	body := map[string]any{}
 	var secrets []string
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.WriteOnly || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
+		if a.Computed || a.WriteOnly || a.Local || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
 			continue
 		}
 		if a.Secret {
@@ -582,7 +585,13 @@ func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) 
 // the one drift a secret shows, since its value is never answered, and it
 // plans a re-send at the same version. A cleared secret plans _set false.
 func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	if r.spec.Previewed {
+		r.planPreview(ctx, req, resp)
+	}
+	if req.State.Raw.IsNull() {
 		return
 	}
 	r.planResets(ctx, req, resp)
@@ -696,6 +705,17 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), types.ListNull(types.StringType))...)
 			continue
 		}
+		if a.Local {
+			held := types.StringNull()
+			if prior != nil {
+				diags.Append(prior.GetAttribute(ctx, path.Root(a.Attribute()), &held)...)
+			}
+			if held.IsUnknown() {
+				held = types.StringNull()
+			}
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+			continue
+		}
 		if len(a.Complement) > 0 {
 			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), complement(a, row[a.Name]))...)
 			continue
@@ -759,7 +779,7 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		return false, diags
 	}
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.Secret || a.NotRead || a.WriteOnly {
+		if a.Computed || a.Secret || a.NotRead || a.WriteOnly || a.Local {
 			continue
 		}
 		held, d := getValue(ctx, state, a)
@@ -822,6 +842,10 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	body, secrets, diags := r.body(ctx, req.Plan, req.Config, nil, opCreate)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if r.spec.Previewed {
+		r.createPreviewed(ctx, req, resp, body)
 		return
 	}
 	var out *client.Response
@@ -937,6 +961,9 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 	p, q := r.rowPath(id.ValueString())
 	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
 	if client.IsNotFound(err) {
+		if r.spec.Previewed && followsParent(err) {
+			resp.Diagnostics.AddWarning("Following the parent again", fmt.Sprintf("This organization now follows its parent's %s, so sreagent_%s no longer manages anything here. The next plan proposes to create it again, which gives the organization its own and says what moves.", r.spec.Key, r.spec.TypeName))
+		}
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -971,7 +998,26 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
-	out, err := r.client.Do(ctx, request)
+	var out *client.Response
+	var err error
+	used := ""
+	var planned types.String
+	if r.spec.Previewed {
+		resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root(fingerprintAttr), &planned)...)
+	}
+	if r.spec.Previewed && len(body) > 0 {
+		confirm, _, d := r.configuredConfirm(ctx, req.Config)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		out, used, err = r.previewedWrite(ctx, &resp.Diagnostics, "update", body, etag, confirm, planned.ValueString())
+		if errors.Is(err, errReported) {
+			return
+		}
+	} else {
+		out, err = r.client.Do(ctx, request)
+	}
 	switch {
 	case client.IsReadOnlyKey(err):
 		summary, detail := r.readOnly("update")
@@ -989,9 +1035,16 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	resp.Diagnostics.Append(r.writeState(ctx, out, req.Plan, &resp.State, resp.Private, resp.Identity)...)
+	if r.spec.Previewed {
+		r.recordFingerprint(ctx, &resp.State, &resp.Diagnostics, planned, used)
+	}
 }
 
 func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	if r.spec.Shape == Singleton && r.destroyFollows(ctx, req.State) {
+		r.destroyPreviewed(ctx, req, resp)
+		return
+	}
 	if r.spec.Shape == Singleton {
 		resp.Diagnostics.AddWarning("Settings left in place", fmt.Sprintf("sreagent_%s is one row per organization and cannot be deleted; Terraform stopped managing it and the platform keeps its current values.", r.spec.TypeName))
 		return
@@ -1081,6 +1134,12 @@ func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportSta
 	if r.spec.Shape == Singleton && id != r.spec.Key {
 		resp.Diagnostics.AddError("Import a singleton by its name", fmt.Sprintf("Import sreagent_%s with the ID %q.", r.spec.TypeName, r.spec.Key))
 		return
+	}
+	if r.spec.Previewed {
+		r.importCheck(ctx, resp)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 }

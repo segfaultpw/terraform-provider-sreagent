@@ -92,7 +92,7 @@ func readable(attrs []Attr) map[string]Attr {
 	out := map[string]Attr{}
 	for _, a := range attrs {
 		switch {
-		case a.NotRead, a.WriteOnly, len(a.Complement) > 0:
+		case a.NotRead, a.WriteOnly, a.Local, len(a.Complement) > 0:
 		case a.Secret:
 			out[a.Attribute()+"_set"] = Attr{Name: a.Name + "_set", Kind: Bool, Description: fmt.Sprintf("Whether the platform holds a value for %s.", a.Attribute())}
 		default:
