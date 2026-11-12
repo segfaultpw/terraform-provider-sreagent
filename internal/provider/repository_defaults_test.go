@@ -676,14 +676,72 @@ func TestADestroyThatMovesNothingIsSilent(t *testing.T) {
 	}
 }
 
-func TestADestroyWithoutAParentIsSilentAndAsksNothing(t *testing.T) {
+// A stop the organization made is ended by the destroy even when no value
+// moves, so later changes of the parent's defaults reach it: the plan says so.
+func TestADestroyThatMovesNothingButEndsAStopSaysSo(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "Acme Parent", nil)
+	seedRepo(t, f, "acme/web")
+	d := destroyDiagnostics(t, f, childState(map[string]tftypes.Value{"stopped": boolean(true)}))
+	if d.HasError() {
+		t.Fatalf("the destroy plan failed: %v", d)
+	}
+	text := warningText(d)
+	for _, want := range []string{"moves no value now", "stop this organization made is ended too", "later changes of the parent's defaults reach it again"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// With no parent a destroy asks the platform nothing, and the plan says the
+// defaults stay in force.
+func TestADestroyWithoutAParentAsksNothingAndSaysTheDefaultsStay(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	f.DefaultsSource("own", "", nil)
 	state := childState(nil)
 	delete(state, "parent_name")
 	d := destroyDiagnostics(t, f, state)
+	if d.HasError() || f.Previews() != 0 {
+		t.Fatalf("a destroy that leaves the defaults in place asked the platform (%d previews) or failed: %v", f.Previews(), d)
+	}
+	text := warningText(d)
+	for _, want := range []string{"stops Terraform managing the defaults", "platform keeps them", "every repository that follows them keeps reading them"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the warning lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// A destroy plan the platform answers with an error other than a refusal (a
+// state that still names a parent the organization no longer has) names the
+// exits too.
+func TestADestroyPlanThatFailsOtherwiseNamesTheExits(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.DefaultsSource("own", "", nil)
+	d := destroyDiagnostics(t, f, childState(nil))
+	if !d.HasError() {
+		t.Fatalf("a destroy the platform answered 422 planned: %v", d)
+	}
+	msg := fmt.Sprint(d.Errors())
+	for _, want := range []string{"only for an organization that has a parent", "removed {", "destroy = false", "terraform state rm"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the error lacks %q: %s", want, msg)
+		}
+	}
+}
+
+// Only a change that needs no unknown value can be held: a plan whose only
+// unknown is the confirmation changes nothing and plans nothing.
+func TestAPlanWhoseOnlyUnknownIsTheConfirmationPlansNoChange(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.SetDefaults(map[string]any{"auto_dispatch": true})
+	unknownList := tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, tftypes.UnknownValue)
+	state := map[string]tftypes.Value{"id": str("repository_defaults"), "auto_dispatch": boolean(true), "preview_fingerprint": str("held")}
+	d := modifyPlan(t, f, state, map[string]tftypes.Value{"auto_dispatch": boolean(true), "confirm": unknownList},
+		map[string]tftypes.Value{"auto_dispatch": boolean(true), "id": str("repository_defaults"), "preview_fingerprint": str("held")}, false)
 	if len(d) != 0 || f.Previews() != 0 {
-		t.Fatalf("a destroy that leaves the defaults in place asked the platform (%d previews) or said %v", f.Previews(), d)
+		t.Fatalf("an unknown confirmation with nothing to write said %v after %d previews", d, f.Previews())
 	}
 }
 
@@ -807,13 +865,19 @@ func TestADestroyThePlatformWouldRefuseFailsAtPlanAndNamesTheExits(t *testing.T)
 		t.Fatalf("a refused destroy planned: %v", d)
 	}
 	msg := fmt.Sprint(d.Errors())
-	for _, want := range []string{"registered fix runner", "removed { from = sreagent_repository_defaults.<name>", "destroy = false", "terraform state rm", "follow the parent in the app"} {
+	for _, want := range []string{"registered fix runner", "removed {", "from = sreagent_repository_defaults.<name>", "destroy = false", "terraform state rm"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the error lacks %q: %s", want, msg)
 		}
 	}
 	if strings.Contains(msg, "set confirm =") {
 		t.Errorf("the error tells a destroy to set confirm: %s", msg)
+	}
+	if strings.Contains(msg, "follow the parent in the app") {
+		t.Errorf("the error offers the app's follow, which meets the same refusal: %s", msg)
+	}
+	if strings.Contains(msg, "{ from") || strings.Contains(msg, ", lifecycle") {
+		t.Errorf("the removed block is not written as valid HCL: %s", msg)
 	}
 }
 

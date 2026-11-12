@@ -292,7 +292,7 @@ func (r *facadeResource) destroyProblems(p preview, confirm []string) []problem 
 	var out []problem
 	if len(p.Refusals) > 0 {
 		out = append(out, problem{summary: "The platform refuses to hand the defaults back to the parent", detail: strings.Join(p.Refusals, "\n") +
-			fmt.Sprintf("\n\nThis destroy would fail, so it is stopped before anything is written. To stop managing the defaults without changing them, remove the resource with a removed block (removed { from = sreagent_%s.<name>, lifecycle { destroy = false } }) or terraform state rm; or follow the parent in the app, or change what the platform refuses and destroy again.", r.spec.TypeName)})
+			"\n\nThis destroy would fail, so it is stopped before anything is written. Change what the platform refuses and destroy again." + r.destroyExits()})
 	}
 	for _, name := range p.NeedsConfirm {
 		if !slices.Contains(confirm, name) {
@@ -301,6 +301,12 @@ func (r *facadeResource) destroyProblems(p preview, confirm []string) []problem 
 		}
 	}
 	return out
+}
+
+// destroyExits names the ways to stop managing the defaults without changing
+// them, for a destroy plan that fails; neither calls the platform.
+func (r *facadeResource) destroyExits() string {
+	return fmt.Sprintf("\n\nTo stop managing the defaults without changing them, run terraform state rm sreagent_%[1]s.<name>, or replace the resource block with a removed block that keeps what the platform holds:\n\nremoved {\n  from = sreagent_%[1]s.<name>\n\n  lifecycle {\n    destroy = false\n  }\n}", r.spec.TypeName)
 }
 
 func (r *facadeResource) missingConfirm(name string) problem {
@@ -503,7 +509,16 @@ func (r *facadeResource) planPreview(ctx context.Context, req resource.ModifyPla
 	}
 	confirm, known, d := r.configuredConfirm(ctx, req.Config)
 	resp.Diagnostics.Append(d...)
-	if !known || !r.settingsKnown(ctx, req.Config) {
+	settings := r.settingsKnown(ctx, req.Config)
+	if settings && len(body) == 0 {
+		held := types.StringNull()
+		if !creating {
+			resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root(fingerprintAttr), &held)...)
+		}
+		setFingerprint(held)
+		return
+	}
+	if !known || !settings {
 		if r.client != nil {
 			resp.Diagnostics.AddWarning("This change is not previewed",
 				"A value in it is known only at apply, so the plan cannot ask the platform what it moves; the apply previews it and applies what it finds.")
@@ -512,14 +527,6 @@ func (r *facadeResource) planPreview(ctx context.Context, req resource.ModifyPla
 			}
 		}
 		setFingerprint(types.StringUnknown())
-		return
-	}
-	if len(body) == 0 {
-		held := types.StringNull()
-		if !creating {
-			resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root(fingerprintAttr), &held)...)
-		}
-		setFingerprint(held)
 		return
 	}
 	if r.client == nil {
@@ -675,7 +682,12 @@ func (r *facadeResource) kept(ctx context.Context, state valueSource, name strin
 // confirmation the state does not hold (confirm_on_destroy), warns with what
 // moves, and carries the fingerprint to the delete in private state.
 func (r *facadeResource) planDestroy(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	if r.client == nil || req.State.Raw.IsNull() || !r.destroyFollows(ctx, req.State) {
+	if r.client == nil || req.State.Raw.IsNull() || r.spec.DestroyBody == nil {
+		return
+	}
+	if !r.destroyFollows(ctx, req.State) {
+		resp.Diagnostics.AddWarning("What destroying this resource leaves",
+			"Destroying this resource stops Terraform managing the defaults. The platform keeps them, and every repository that follows them keeps reading them.")
 		return
 	}
 	ifMatch := ""
@@ -699,20 +711,29 @@ func (r *facadeResource) planDestroy(ctx context.Context, req resource.ModifyPla
 		resp.Diagnostics.AddError(summary, detail)
 		return
 	default:
-		resp.Diagnostics.AddError(r.title("plan"), err.Error())
+		resp.Diagnostics.AddError(r.title("plan"), err.Error()+r.destroyExits())
 		return
 	}
 	if probs := r.destroyProblems(p, confirm); len(probs) > 0 {
 		r.addProblems(&resp.Diagnostics, probs)
 		return
 	}
-	if len(p.Changes) > 0 || len(p.Moved) > 0 || len(p.Children) > 0 {
+	var stopped types.Bool
+	ends := false
+	if a, ok := r.attrNamed("stopped"); ok && !req.State.GetAttribute(ctx, path.Root(a.Attribute()), &stopped).HasError() {
+		ends = stopped.ValueBool()
+	}
+	moves := len(p.Changes) > 0 || len(p.Moved) > 0 || len(p.Children) > 0
+	switch {
+	case moves:
 		text := "Destroying this resource hands the organization back to its parent's repository defaults, and the values it holds of its own are dropped. " + p.warning()
-		var stopped types.Bool
-		if a, ok := r.attrNamed("stopped"); ok && !req.State.GetAttribute(ctx, path.Root(a.Attribute()), &stopped).HasError() && stopped.ValueBool() {
+		if ends {
 			text += " The stop this organization made is ended too, so later changes of the parent's defaults reach it again."
 		}
 		resp.Diagnostics.AddWarning("What destroying this resource moves", text)
+	case ends:
+		resp.Diagnostics.AddWarning("What destroying this resource moves",
+			"Destroying this resource hands the organization back to its parent's repository defaults, and it moves no value now. The stop this organization made is ended too, so later changes of the parent's defaults reach it again.")
 	}
 	if resp.Private != nil {
 		b, _ := json.Marshal(p.Fingerprint)
