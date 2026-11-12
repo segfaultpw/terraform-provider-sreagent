@@ -369,16 +369,37 @@ func checkPreviewShape(responses map[string]struct {
 	}
 	for _, status := range []string{"428", "409"} {
 		preview := responses[status].Content["application/json"].Schema.Properties["preview"]
-		props, published := preview["properties"].(map[string]any)
-		if !published {
-			continue
-		}
-		for _, key := range engine.PreviewKeys() {
-			if _, ok := props[key]; !ok {
-				add("the %s answer publishes a preview without %s, which the provider reads", status, key)
-			}
+		for _, problem := range previewSchemaProblems(preview) {
+			add("the %s answer %s", status, problem)
 		}
 	}
+}
+
+// previewSchemaProblems holds a published preview schema to the wire shape: the
+// keys the provider reads are under preview.data (the body is {"preview":
+// {"data": {...}}}), not directly under preview. A schema that publishes no
+// properties (today's bare object, or a bare data object) is accepted; one that
+// publishes them must publish them at that path and list every key.
+func previewSchemaProblems(preview map[string]any) []string {
+	props, published := preview["properties"].(map[string]any)
+	if !published {
+		return nil
+	}
+	data, ok := props["data"].(map[string]any)
+	if !ok {
+		return []string{"publishes preview properties without data, but the provider reads the preview under preview.data"}
+	}
+	dataProps, published := data["properties"].(map[string]any)
+	if !published {
+		return nil
+	}
+	var out []string
+	for _, key := range engine.PreviewKeys() {
+		if _, ok := dataProps[key]; !ok {
+			out = append(out, fmt.Sprintf("publishes preview.data without %s, which the provider reads", key))
+		}
+	}
+	return out
 }
 
 // checkIgnored holds each list entry the provider ignores to the items the
@@ -681,7 +702,17 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 		{"the 428 publishes a preview without a key the provider reads", "repository_defaults", func(d *Doc) {
 			op := d.Paths["/repository_defaults"]["put"]
 			schema := op.Responses["428"].Content["application/json"].Schema
-			schema.Properties["preview"] = map[string]any{"type": "object", "properties": map[string]any{"fingerprint": map[string]any{"type": "string"}}}
+			schema.Properties["preview"] = map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": map[string]any{"fingerprint": map[string]any{"type": "string"}}}}}
+			d.Paths["/repository_defaults"]["put"] = op
+		}},
+		{"the 428 publishes the preview's keys one level too high", "repository_defaults", func(d *Doc) {
+			op := d.Paths["/repository_defaults"]["put"]
+			schema := op.Responses["428"].Content["application/json"].Schema
+			flat := map[string]any{}
+			for _, k := range engine.PreviewKeys() {
+				flat[k] = map[string]any{}
+			}
+			schema.Properties["preview"] = map[string]any{"type": "object", "properties": flat}
 			d.Paths["/repository_defaults"]["put"] = op
 		}},
 		{"a list's maxItems changes", "service_bindings", func(d *Doc) {
@@ -704,6 +735,34 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			c.mutate(d)
 			if len(specProblems(d, spec)) == 0 {
 				t.Fatal("the contract test missed this drift")
+			}
+		})
+	}
+}
+
+func TestPreviewSchemaIsHeldToTheWireShape(t *testing.T) {
+	full := map[string]any{}
+	for _, k := range engine.PreviewKeys() {
+		full[k] = map[string]any{}
+	}
+	partial := map[string]any{"fingerprint": map[string]any{}}
+	nested := func(keys map[string]any) map[string]any {
+		return map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object", "properties": keys}}}
+	}
+	for _, c := range []struct {
+		name    string
+		preview map[string]any
+		bad     bool
+	}{
+		{"a bare object is accepted until the platform publishes the shape", map[string]any{"type": "object"}, false},
+		{"a bare data object is accepted", map[string]any{"type": "object", "properties": map[string]any{"data": map[string]any{"type": "object"}}}, false},
+		{"the full nested set passes", nested(full), false},
+		{"a nested set missing a key fails", nested(partial), true},
+		{"the keys one level too high fail", map[string]any{"type": "object", "properties": full}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := previewSchemaProblems(c.preview); (len(got) > 0) != c.bad {
+				t.Fatalf("problems = %v, want bad = %v", got, c.bad)
 			}
 		})
 	}
