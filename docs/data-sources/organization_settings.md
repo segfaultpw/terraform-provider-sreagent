@@ -39,7 +39,7 @@ output "fix_request_floor" {
 - `fix_request_floor` (String) Who may ask SRE Agent for a fix pull request, or to change one it opened: org_admin for org admins only, member for members too. Changed by an org admin in the app.
 - `id` (String) The row's identifier on the platform.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
-- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app.
+- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is managed with sreagent_repository_defaults.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.
 - `investigation_paused` (Boolean) Pause automatic investigations.
 - `mfa_effective` (String) The two-step rule that applies to this organization, counting the strictest of its own and its parent's settings.

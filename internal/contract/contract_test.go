@@ -199,6 +199,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 		}
 	}
 	checkFollows(s, res, add)
+	checkIgnored(s, enums.Properties, add)
 	checkSecrets(d, s, res, add)
 	checkAddressing(s, res, add)
 	checkListBounds(s, put.Properties, add)
@@ -226,6 +227,20 @@ func checkWriteOnly(a engine.Attr, res Resource, post, put map[string]map[string
 		}
 		if !slices.Equal(a.OneOf, want) {
 			add("write-only %s OneOf %v, %s body enum %v", a.Name, a.OneOf, method, want)
+		}
+	}
+}
+
+// checkIgnored holds each list entry the provider ignores to the items the
+// write body publishes: an entry the platform stopped listing would be a dead
+// rule, and one it never listed a typo.
+func checkIgnored(s engine.Spec, body map[string]map[string]any, add func(string, ...any)) {
+	for _, a := range s.Attrs {
+		for _, v := range a.IgnoredValues {
+			items, _ := body[a.Name]["items"].(map[string]any)
+			if enum, _ := items["enum"].([]any); !slices.Contains(enum, any(v)) {
+				add("%s ignores %q, which the update body does not publish", a.Name, v)
+			}
 		}
 	}
 }
@@ -497,6 +512,12 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r.ComputedFields = maps.Clone(r.ComputedFields)
 			delete(r.ComputedFields, "set_here")
 			d.Resources["repo_settings"] = r
+		}},
+		{"inheritance_stopped stops listing repository_defaults", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["inheritance_stopped"]["items"].(map[string]any)
+			items["enum"] = []any{"slack", "github_installation", "ai_providers", "outbound_targets", "ticket_integrations"}
+			d.Paths["/organization_settings"]["put"] = op
 		}},
 		{"draft_prs stops being nullable", "repo_settings", func(d *Doc) {
 			op := d.Paths["/repo_settings/{id}"]["put"]

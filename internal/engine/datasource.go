@@ -96,7 +96,7 @@ func readable(attrs []Attr) map[string]Attr {
 		case a.Secret:
 			out[a.Attribute()+"_set"] = Attr{Name: a.Name + "_set", Kind: Bool, Description: fmt.Sprintf("Whether the platform holds a value for %s.", a.Attribute())}
 		default:
-			out[a.Attribute()] = Attr{Name: a.Name, Kind: a.Kind, Description: a.Description}
+			out[a.Attribute()] = Attr{Name: a.Name, Kind: a.Kind, Description: a.Description, IgnoredValues: a.IgnoredValues}
 		}
 	}
 	return out
@@ -135,6 +135,9 @@ func (d *facadeDataSource) values(row map[string]any) (map[string]attr.Value, ma
 		v, err := fromJSON(a.Kind, row[a.Name])
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
+		}
+		if len(a.IgnoredValues) > 0 {
+			v = withoutValues(v, a.IgnoredValues)
 		}
 		vals[name] = v
 		typs[name] = kindType(a.Kind)

@@ -52,7 +52,10 @@ var OrganizationSettings = singleton("organization_settings", "The organization'
 	computed(i("api_key_max_days", "The longest life, in days, a new API key or personal token may be given, or null for no limit. Changed by an org admin in the app.")),
 	computed(engine.Attr{Name: "mfa_effective", Kind: engine.JSON, Description: "The two-step rule that applies to this organization, counting the strictest of its own and its parent's settings."}),
 	computed(i("session_idle_effective", "The idle sign-out limit that applies to this organization, in minutes, counting its parent's, or null for none.")),
-	l("inheritance_stopped", "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app."),
+	engine.Attr{Name: "inheritance_stopped", Kind: engine.StringList,
+		IgnoredValues: []string{"repository_defaults"},
+		IgnoredWhy:    "A child stops following its parent's repository defaults with sreagent_repository_defaults (destroy it to follow again) or in the app; this list never changes it.",
+		Description:   "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is managed with sreagent_repository_defaults."},
 )
 
 // NotificationSettings mirrors x-sreagent-resources.notification_settings.
