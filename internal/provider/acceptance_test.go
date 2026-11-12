@@ -382,3 +382,112 @@ func TestAccDataSources(t *testing.T) {
 		})
 	}
 }
+
+// The organization's repository defaults are changed against the platform's own
+// preview: the plan asks for it, the apply sends its fingerprint, and the next
+// plan is empty. The last step puts the stack back.
+func TestAccRepositoryDefaultsTwoStep(t *testing.T) {
+	accPreCheck(t)
+	const addr = "sreagent_repository_defaults.test"
+	cfg := func(dispatch string) string {
+		return accProvider() + fmt.Sprintf("resource \"sreagent_repository_defaults\" \"test\" {\n  auto_dispatch = %s\n}\n", dispatch)
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{Config: cfg("false"), Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(addr, "auto_dispatch", "false"),
+				resource.TestCheckResourceAttr(addr, "source", "own"),
+			)},
+			{Config: cfg("false"), PlanOnly: true},
+			{ResourceName: addr, ImportState: true, ImportStateId: "repository_defaults", ImportStateVerify: true, ImportStateVerifyIgnore: []string{"preview_fingerprint"}, Config: cfg("false")},
+			{Config: cfg("true"), Check: resource.TestCheckResourceAttr(addr, "auto_dispatch", "true")},
+		},
+	})
+}
+
+// A child organization that follows its parent reads 404 for its defaults:
+// creating the resource gives it its own and stops it following, and destroying
+// it follows the parent again.
+func TestAccRepositoryDefaultsChild(t *testing.T) {
+	accPreCheck(t)
+	key, slug := os.Getenv("SREAGENT_CHILD_API_KEY"), os.Getenv("SREAGENT_CHILD_ORGANIZATION")
+	if key == "" || slug == "" {
+		t.Skip("SREAGENT_CHILD_API_KEY and SREAGENT_CHILD_ORGANIZATION are not set; the seed of a platform that links an acceptance child prints them")
+	}
+	provider := fmt.Sprintf("provider \"sreagent\" {\n  base_url     = %q\n  organization = %q\n  api_key      = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), slug, key)
+	childClient, err := client.New(client.Config{BaseURL: os.Getenv("SREAGENT_BASE_URL"), APIKey: key, UserAgent: "acceptance", MaxRetries: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const addr = "sreagent_repository_defaults.test"
+	cfg := provider + "resource \"sreagent_repository_defaults\" \"test\" {\n  auto_dispatch = false\n}\n"
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		PreCheck: func() {
+			if _, err := childClient.Do(context.Background(), client.Request{Method: http.MethodGet, Path: "repository_defaults"}); !client.IsNotFound(err) {
+				t.Fatalf("the acceptance child should follow its parent and read 404, got %v", err)
+			}
+		},
+		CheckDestroy: func(*terraform.State) error {
+			if _, err := childClient.Do(context.Background(), client.Request{Method: http.MethodGet, Path: "repository_defaults"}); !client.IsNotFound(err) {
+				return fmt.Errorf("destroying the resource must hand the child back to its parent: %w", err)
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{Config: cfg, Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr(addr, "source", "own"),
+				resource.TestCheckResourceAttrSet(addr, "parent_name"),
+				resource.TestCheckResourceAttr(addr, "auto_dispatch", "false"),
+			)},
+			{Config: cfg, PlanOnly: true},
+		},
+	})
+}
+
+// A CI job holding only the api:config_read key plans a change to the defaults
+// without a preview, and says so.
+func TestAccRepositoryDefaultsReadOnlyKeyPlansWithoutAPreview(t *testing.T) {
+	accPreCheck(t)
+	admin := newCLI(t)
+	t.Cleanup(func() { _, _ = admin.run("destroy", "-auto-approve") })
+	admin.write("resource \"sreagent_repository_defaults\" \"d\" {\n  auto_dispatch = true\n}\n")
+	if out, err := admin.run("apply", "-auto-approve"); err != nil {
+		t.Fatal(out)
+	}
+	admin.write("resource \"sreagent_repository_defaults\" \"d\" {\n  auto_dispatch = false\n}\n")
+	reader := &cli{t: t, dir: admin.dir, env: append(append([]string{}, admin.env...), "SREAGENT_API_KEY="+os.Getenv("SREAGENT_READ_API_KEY"))}
+	out, err := reader.run("plan", "-detailed-exitcode")
+	if err == nil || !regexp.MustCompile(`needs\s+an\s+api:admin\s+key`).MatchString(out) || !strings.Contains(out, "auto_dispatch") {
+		t.Fatalf("a read-only key must plan the change and say it cannot preview it, got: %v %s", err, out)
+	}
+}
+
+// The view of what every repository runs with reads whole against the real
+// platform, with every page.
+func TestAccEffectiveRepoSettings(t *testing.T) {
+	accPreCheck(t)
+	const addr = "data.sreagent_effective_repo_settings.test"
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{
+				Config: accProvider() + "data \"sreagent_effective_repo_settings\" \"test\" {}\n",
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "truncated", "false"),
+					resource.TestCheckResourceAttrSet(addr, "defaults"),
+					resource.TestCheckResourceAttrSet(addr, "counts"),
+					resource.TestCheckResourceAttrSet(addr, "runner_registered"),
+				),
+			},
+			{
+				Config: accProvider() + "data \"sreagent_effective_repo_settings\" \"test\" {\n  name = \"no-such-repository-*\"\n}\n",
+				Check:  resource.TestCheckResourceAttr(addr, "items.#", "0"),
+			},
+		},
+	})
+}
