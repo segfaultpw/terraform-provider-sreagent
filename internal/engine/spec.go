@@ -83,6 +83,27 @@ type Attr struct {
 	// the secret is no longer set instead of keeping the prior state's true.
 	DroppedWhenAttr  string
 	DroppedWhenValue string
+	// WriteOnly: a list action argument the API never answers. It is read from
+	// the configuration, never held in plan or state, and sent only when the
+	// resource decides to (Spec.FollowsDefault), so it can never be a diff by
+	// itself and an import has nothing to plan for it. Its OneOf bounds the
+	// items.
+	WriteOnly bool
+	// Complement: Computed. The members of this list that the answered list
+	// named Name does not hold, in this list's order; null when the API answers
+	// no such list.
+	Complement []string
+	// NullUnlessIn: for a Clearable attribute whose answer is the value in force
+	// rather than the value the row holds. When the answered list named here does
+	// not hold this attribute's name and the prior value is null, the attribute
+	// stays null: the row follows a default, and a configuration that leaves the
+	// attribute out is satisfied by it.
+	NullUnlessIn string
+	// IgnoredValues: entries of a list that the platform keeps through every
+	// write of this attribute. A read drops them and a write never sends them,
+	// and a configuration that names one is refused at validate with IgnoredWhy.
+	IgnoredValues []string
+	IgnoredWhy    string
 }
 
 // Attribute is the Terraform attribute name.
@@ -163,6 +184,12 @@ type Spec struct {
 	AlwaysPresent bool
 	// MinPlatform names the platform release a read of an AlwaysPresent singleton needs.
 	MinPlatform string
+	// FollowsDefault names the WriteOnly list attribute (an API name) that puts
+	// settings back on the organization default, and SetHere the answered list of
+	// the settings a row holds itself. ModifyPlan turns a name in the first that
+	// the second holds into a planned change, and Update sends exactly those.
+	FollowsDefault string
+	SetHere        string
 	// DiscoveredAttr is the computed boolean that, true in state, makes a
 	// destroy warn that a discovery sweep files the row again.
 	DiscoveredAttr string

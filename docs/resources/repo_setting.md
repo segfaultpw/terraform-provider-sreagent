@@ -2,12 +2,18 @@
 page_title: "sreagent_repo_setting Resource - sreagent"
 subcategory: ""
 description: |-
-  One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.
+  One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.
+  fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest. A setting the configuration leaves out is left as it is, whether the row holds a value or follows. A setting the configuration states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. To put a setting back on the default, remove it from the configuration and name it in follows_default.
+  fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, and every mapping of one repository must name the same runner. State them the same way on every block of a repository, or on the all-branches block only; a block that leaves one out follows along with no change, and a block that states a different value fights the reset.
 ---
 
 # sreagent_repo_setting (Resource)
 
-One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.
+One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.
+
+fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest. A setting the configuration leaves out is left as it is, whether the row holds a value or follows. A setting the configuration states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. To put a setting back on the default, remove it from the configuration and name it in follows_default.
+
+fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, and every mapping of one repository must name the same runner. State them the same way on every block of a repository, or on the all-branches block only; a block that leaves one out follows along with no change, and a block that states a different value fights the reset.
 
 ## Example Usage
 
@@ -21,9 +27,18 @@ resource "sreagent_repo_setting" "api_main" {
   # Several directories a fix may change; use path_prefix for exactly one.
   path_prefixes = ["services/api/", "services/web/"]
 
-  # Open fix pull requests ready for review on this branch (leave it out to
-  # follow the GitHub installation's draft_prs setting).
+  # Open fix pull requests ready for review on this branch.
   draft_prs = false
+}
+
+# A setting a configuration leaves out is left as it is. To put a setting back
+# on the organization's repository defaults, remove it and name it in
+# follows_default; set_here and following say which settings a row holds.
+resource "sreagent_repo_setting" "api_staging" {
+  repo   = "acme/api"
+  branch = "staging"
+
+  follows_default = ["check_network", "allow_ci_config", "draft_prs"]
 }
 ```
 
@@ -36,24 +51,29 @@ resource "sreagent_repo_setting" "api_main" {
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `alerting_sns_topic_arn` (String) An SNS topic alarms for this repository publish to.
-- `allow_ci_config` (Boolean) Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside the directories. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent; with this on, the repository's CI runs that change, with the repository's secrets, as soon as the branch is pushed and before anyone reviews the pull request.
-- `auto_dispatch` (Boolean) Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Defaults to true.
+- `allow_ci_config` (Boolean) Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside the directories. Off unless the organization default says otherwise. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent; with this on, the repository's CI runs that change, with the repository's secrets, as soon as the branch is pushed and before anyone reviews the pull request.
+- `auto_dispatch` (Boolean) Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Follows the organization default (true unless it was changed) while the row does not hold a value.
 - `branch` (String) The branch; omit for the all-branches row.
-- `check_network` (Boolean) Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Turning it on is accepted only where the Integrations page offers it; turning it off always is.
+- `check_network` (Boolean) Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off unless the organization default says otherwise. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Turning it on is accepted only where the Integrations page offers it; turning it off always is.
 - `ci_fallback_to_platform` (Boolean) Stored and unused: the platform no longer reads it. Defaults to false.
-- `draft_prs` (Boolean) Whether a fix pull request for this row opens as a draft (true), ready for review (false), or as the GitHub installation's draft_prs setting says (unset, the default). A branch row that leaves it unset follows the repository's all-branches row. A change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft whatever this says.
+- `draft_prs` (Boolean) Whether a fix pull request for this row opens as a draft (true), ready for review (false), or as the organization's repository defaults and the GitHub installation's draft_prs setting say (unset, the default). Reads null while the row follows the default, so a configuration that leaves it out plans nothing; read data.sreagent_effective_repo_settings for the value in force. Removing it from the configuration sends null, which puts it back on the default, and naming it in follows_default means the same. A branch row that leaves it unset follows the repository's all-branches row. A change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft whatever this says.
 - `environment` (String) The environment this branch deploys to.
 - `fix_runner` (String) Who executes the repository's fix requests: platform (SRE Agent's own agent) or self_hosted (a runner on your own machine, which needs one registered for the organization). Applies to the whole repository, so every mapping of it must name the same runner.
+- `follows_default` (List of String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Settings to put back on the organization's repository defaults, from among the six above. Applied only to a setting the row holds itself (set_here); one that already follows changes nothing, so the list never plans a change by itself and an imported row plans nothing for it. A setting named here must not also be stated. The platform refuses a reset to a value it would refuse to set: your own runner with none registered, network where the Integrations page does not offer it, and CI configuration off while the directories list a CI path. fix_runner, platform_fallback and auto_dispatch are reset on every row of the repository. One of: fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config. Write-only: never stored in state or plan.
 - `path_prefix` (String) One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; use path_prefixes for several, and set only one of the two.
 - `path_prefixes` (List of String) The directories a proposed fix may change, relative to the repository root, such as ["services/api/", "services/web/"], or ["."] for the whole repository. At most 20; no entry may sit inside another, start with a slash or contain "..". Sending it replaces the whole list; [] clears it, and the directories are then detected from the repository's layout the first time a fix runs. Set only one of path_prefix and path_prefixes.
-- `platform_fallback` (Boolean) Defaults to true: a request this repository's own runner could not finish may run on SRE Agent's own runner, so it still gets an answer. false keeps the repository's code on your machines and the request fails instead. Applies to the whole repository.
+- `platform_fallback` (Boolean) Follows the organization default (true unless it was changed) while the row does not hold a value: a request this repository's own runner could not finish may run on SRE Agent's own runner, so it still gets an answer. false keeps the repository's code on your machines and the request fails instead. Applies to the whole repository.
 - `service` (String) The service this repository deploys.
 - `writable_extensions` (List of String) File extensions a fix may write.
 
 ### Read-Only
 
+- `following` (List of String) The settings this row does not hold: it reads the organization's repository defaults for them. Null on a platform from before release v0.482.0.
 - `id` (String) The row's identifier on the platform.
+- `set_here` (List of String) The settings this row holds itself, from among fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config. Null on a platform from before release v0.482.0.
 
 ## Import
 

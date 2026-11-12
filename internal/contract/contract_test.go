@@ -172,9 +172,20 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	}
 	for _, a := range s.Attrs {
 		switch {
+		case a.WriteOnly:
+			checkWriteOnly(a, res, post.Properties, put.Properties, add)
 		case a.NotRead:
 			if !slices.Contains(res.ActionArgs, a.Name) {
 				add("NotRead %s is not an action argument", a.Name)
+			}
+		case len(a.Complement) > 0:
+			if _, ok := res.ComputedFields[a.Name]; !ok {
+				add("complement %s is derived from %s, which the API does not publish as a computed field", a.Attribute(), a.Name)
+			}
+			for _, name := range a.Complement {
+				if !slices.Contains(res.Fields, name) {
+					add("complement %s names %s, which is not a field of %s", a.Attribute(), name, s.Key)
+				}
 			}
 		case a.Computed:
 			if _, ok := res.ComputedFields[a.Name]; !ok && !slices.Contains(res.Fields, a.Name) {
@@ -187,11 +198,56 @@ func specProblems(d *Doc, s engine.Spec) []string {
 			}
 		}
 	}
+	checkFollows(s, res, add)
 	checkSecrets(d, s, res, add)
 	checkAddressing(s, res, add)
 	checkListBounds(s, put.Properties, add)
 	checkReadOnlySingleton(s, res, add)
 	return p
+}
+
+// checkWriteOnly holds a write-only list to the API: an action argument whose
+// create and update bodies declare an array of the attribute's OneOf values.
+func checkWriteOnly(a engine.Attr, res Resource, post, put map[string]map[string]any, add func(string, ...any)) {
+	if !slices.Contains(res.ActionArgs, a.Name) {
+		add("write-only %s is not an action argument", a.Name)
+	}
+	for method, props := range map[string]map[string]map[string]any{"POST": {a.Name: post[a.Name]}, "PUT": {a.Name: put[a.Name]}} {
+		body := props[a.Name]
+		if t, _ := typeOf(body); t != "array" {
+			add("write-only %s is not an array in the %s body", a.Name, method)
+			continue
+		}
+		items, _ := body["items"].(map[string]any)
+		enum, _ := items["enum"].([]any)
+		want := make([]string, 0, len(enum))
+		for _, e := range enum {
+			want = append(want, fmt.Sprint(e))
+		}
+		if !slices.Equal(a.OneOf, want) {
+			add("write-only %s OneOf %v, %s body enum %v", a.Name, a.OneOf, method, want)
+		}
+	}
+}
+
+// checkFollows holds the reset machinery to the API: the named write-only list
+// exists, and the list of held settings is a published computed field.
+func checkFollows(s engine.Spec, res Resource, add func(string, ...any)) {
+	if s.FollowsDefault == "" && s.SetHere == "" {
+		return
+	}
+	var writeOnly bool
+	for _, a := range s.Attrs {
+		if a.Name == s.FollowsDefault && a.WriteOnly {
+			writeOnly = true
+		}
+	}
+	if !writeOnly {
+		add("FollowsDefault %q is not a write-only attribute", s.FollowsDefault)
+	}
+	if _, ok := res.ComputedFields[s.SetHere]; !ok {
+		add("SetHere %q is not a computed field the API publishes", s.SetHere)
+	}
 }
 
 // checkListBounds holds each list's MaxItems to the maxItems the update body
@@ -424,6 +480,23 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op := d.Paths["/repo_settings/{id}"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["path_prefixes"]["maxItems"] = float64(50)
 			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"follows_default leaves action_args", "repo_settings", func(d *Doc) {
+			r := d.Resources["repo_settings"]
+			r.ActionArgs = slices.DeleteFunc(slices.Clone(r.ActionArgs), func(f string) bool { return f == "follows_default" })
+			d.Resources["repo_settings"] = r
+		}},
+		{"follows_default gains a setting", "repo_settings", func(d *Doc) {
+			op := d.Paths["/repo_settings/{id}"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["follows_default"]["items"].(map[string]any)
+			items["enum"] = append(slices.Clone(items["enum"].([]any)), "service")
+			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"set_here leaves the computed fields", "repo_settings", func(d *Doc) {
+			r := d.Resources["repo_settings"]
+			r.ComputedFields = maps.Clone(r.ComputedFields)
+			delete(r.ComputedFields, "set_here")
+			d.Resources["repo_settings"] = r
 		}},
 		{"draft_prs stops being nullable", "repo_settings", func(d *Doc) {
 			op := d.Paths["/repo_settings/{id}"]["put"]

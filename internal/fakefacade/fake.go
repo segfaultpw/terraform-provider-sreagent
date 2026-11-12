@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -33,12 +34,14 @@ type Fake struct {
 	readOnly    bool
 	truncated   map[string]bool
 	etagMode    etagMode
+	defaults    map[string]any
+	legacy      map[string]bool
 }
 
 // New starts a fake for specs; the server stops when the test ends.
 func New(t *testing.T, specs []engine.Spec) *Fake {
 	t.Helper()
-	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}}
+	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}}
 	for _, s := range specs {
 		f.specs[s.Key] = s
 		f.rows[s.Key] = map[string]map[string]any{}
@@ -183,7 +186,7 @@ func etag(spec engine.Spec, row map[string]any) string {
 		switch {
 		case a.Secret:
 			keys = append(keys, a.Name+"_set")
-		case !a.Computed && !a.NotRead:
+		case !a.Computed && !a.NotRead && !a.WriteOnly:
 			keys = append(keys, a.Name)
 		}
 	}
@@ -331,7 +334,7 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		sort.Strings(ids)
 		list := []any{}
 		for _, id := range ids {
-			list = append(list, f.rows[spec.Key][id])
+			list = append(list, f.present(spec.Key, f.rows[spec.Key][id]))
 		}
 		reply(w, 200, map[string]any{"organization": wrap(nil)["organization"], "data": list, "truncated": f.truncated[spec.Key]}, "")
 	case r.Method == http.MethodGet:
@@ -340,7 +343,7 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 404, "not_found", "No row found.")
 			return
 		}
-		reply(w, 200, wrap(row), f.tag(spec, row))
+		reply(w, 200, wrap(f.present(spec.Key, row)), f.tag(spec, row))
 	case r.Method == http.MethodPost:
 		f.create(w, spec, body)
 	case r.Method == http.MethodPut:
@@ -378,7 +381,14 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		fail(w, 422, "unprocessable_entity", msg)
 		return
 	}
+	if msg := f.followsRefusal(spec.Key, body); msg != "" {
+		fail(w, 422, "unprocessable_entity", msg)
+		return
+	}
 	for _, a := range spec.Attrs {
+		if a.WriteOnly || len(a.Complement) > 0 {
+			continue
+		}
 		v, present := body[a.Name]
 		if a.Required && (!present || v == nil) {
 			fail(w, 422, "unprocessable_entity", a.Name+" is required.")
@@ -410,6 +420,12 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		row["id"] = fmt.Sprintf("00000000-0000-0000-0000-%012d", f.nextID)
 	}
 	id := f.rowID(spec, row)
+	if f.following(spec.Key) {
+		f.rows[spec.Key][id] = row
+		f.finishRepoCreate(row, body)
+	} else if spec.SetHere != "" {
+		delete(row, spec.SetHere)
+	}
 	if existing, dup := f.rows[spec.Key][id]; dup && spec.Shape != engine.Generated {
 		reply(w, 409, map[string]any{"error": "conflict", "message": "has already been taken", "existing": existing}, "")
 		return
@@ -419,7 +435,7 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 	}
 	f.rows[spec.Key][id] = row
 	w.Header().Set("Location", "/api/v1/config/"+spec.Key+"/"+id)
-	reply(w, 201, wrap(row), f.tag(spec, row))
+	reply(w, 201, wrap(f.present(spec.Key, row)), f.tag(spec, row))
 }
 
 // setHost answers the companion <secret>_host a platform derives from a secret
@@ -459,16 +475,24 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		return
 	}
 	byName := map[string]engine.Attr{}
+	previous := map[string]any{}
 	for _, a := range spec.Attrs {
 		if !a.Computed && !a.CreateOnly {
 			byName[a.Name] = a
 		}
+		previous[a.Name] = row[a.Name]
+	}
+	if f.legacy[spec.Key] {
+		delete(byName, "follows_default")
 	}
 	for k, v := range body {
 		a, ok := byName[k]
 		if !ok {
 			fail(w, 422, "unprocessable_entity", k+" is not an argument this tool declares.")
 			return
+		}
+		if v == nil && f.following(spec.Key) && slices.Contains(repoWide, k) {
+			continue
 		}
 		if v == nil && !a.Clearable {
 			fail(w, 422, "unprocessable_entity", k+" cannot be null; omit it to keep the stored value.")
@@ -479,8 +503,16 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		fail(w, 422, "unprocessable_entity", msg)
 		return
 	}
+	if msg := f.followsRefusal(spec.Key, body); msg != "" {
+		fail(w, 422, "unprocessable_entity", msg)
+		return
+	}
+	before := heldOf(row)
 	for k, v := range body {
 		a := byName[k]
+		if a.WriteOnly || (v == nil && f.following(spec.Key) && slices.Contains(repoWide, k)) {
+			continue
+		}
 		if a.Secret {
 			row[k+"_set"] = v != nil && v != ""
 			setHost(spec, row, a, v)
@@ -500,7 +532,38 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 	}
 	discardSecrets(spec, row)
 	mirrorFence(spec, row, body)
-	reply(w, 200, wrap(row), f.tag(spec, row))
+	if f.following(spec.Key) {
+		f.finishRepoUpdate(row, body, before)
+	}
+	carryIgnored(spec, row, previous)
+	reply(w, 200, wrap(f.present(spec.Key, row)), f.tag(spec, row))
+}
+
+// carryIgnored keeps the entries of a list the platform holds through every
+// write (engine.Attr.IgnoredValues) in the list a write just stored.
+func carryIgnored(spec engine.Spec, row, previous map[string]any) {
+	for _, a := range spec.Attrs {
+		if len(a.IgnoredValues) == 0 {
+			continue
+		}
+		old, _ := previous[a.Name].([]any)
+		cur, _ := row[a.Name].([]any)
+		for _, e := range old {
+			if slices.Contains(a.IgnoredValues, fmt.Sprint(e)) && !slices.Contains(cur, e) {
+				cur = append(cur, e)
+			}
+		}
+		if cur != nil {
+			row[a.Name] = cur
+		}
+	}
+}
+
+func (f *Fake) followsRefusal(key string, body map[string]any) string {
+	if !f.following(key) {
+		return ""
+	}
+	return followsRefusal(body)
 }
 
 // bothFences is the platform's refusal of a repository write that names the

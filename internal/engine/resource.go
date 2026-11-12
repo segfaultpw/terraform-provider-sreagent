@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -168,6 +169,22 @@ func (r *facadeResource) ValidateConfig(ctx context.Context, req resource.Valida
 			}
 		}
 	}
+	r.validateFollows(ctx, req, resp)
+	for _, a := range r.spec.Attrs {
+		if len(a.IgnoredValues) == 0 {
+			continue
+		}
+		var list types.List
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(a.Attribute()), &list)...)
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		for _, e := range list.Elements() {
+			if v, ok := e.(types.String); ok && !v.IsUnknown() && slices.Contains(a.IgnoredValues, v.ValueString()) {
+				resp.Diagnostics.AddAttributeError(path.Root(a.Attribute()), fmt.Sprintf("%q is not managed by this list", v.ValueString()), a.IgnoredWhy)
+			}
+		}
+	}
 	for _, a := range r.spec.Attrs {
 		if a.RefusedWith == "" {
 			continue
@@ -222,6 +239,13 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			// Stable until ModifyPlan says the secret is being sent.
 			n + "_set": schema.BoolAttribute{Computed: true, Description: fmt.Sprintf("Whether the platform holds a value for %s.", n), PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()}},
 		}
+	}
+	if a.WriteOnly {
+		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{
+			ElementType: types.StringType, Optional: true, WriteOnly: true,
+			Description: describe(a) + " Write-only: never stored in state or plan.",
+			Validators:  []validator.List{listvalidator.UniqueValues(), listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...))},
+		}}
 	}
 	required := a.Required && !a.Computed
 	optional := !required && !a.Computed
@@ -383,7 +407,7 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 	body := map[string]any{}
 	var secrets []string
 	for _, a := range r.spec.Attrs {
-		if a.Computed || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
+		if a.Computed || a.WriteOnly || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
 			continue
 		}
 		if a.Secret {
@@ -441,7 +465,17 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 		if o == opUpdate && a.MergedObject {
 			j = clearRemovedKeys(j, prior)
 		}
+		if list, ok := j.([]string); ok && len(a.IgnoredValues) > 0 {
+			j = slices.DeleteFunc(slices.Clone(list), func(e string) bool { return slices.Contains(a.IgnoredValues, e) })
+		}
 		body[a.Name] = j
+	}
+	if o == opUpdate && r.spec.FollowsDefault != "" {
+		names, d := r.resets(ctx, config, state)
+		diags.Append(d...)
+		if len(names) > 0 {
+			body[r.spec.FollowsDefault] = names
+		}
 	}
 	return body, secrets, diags
 }
@@ -551,6 +585,7 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
 	}
+	r.planResets(ctx, req, resp)
 	for _, a := range r.spec.Attrs {
 		if !a.Secret {
 			continue
@@ -657,14 +692,28 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			}
 			continue
 		}
+		if a.WriteOnly {
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), types.ListNull(types.StringType))...)
+			continue
+		}
+		if len(a.Complement) > 0 {
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), complement(a, row[a.Name]))...)
+			continue
+		}
 		remote, err := fromJSON(a.Kind, row[a.Name])
 		if err != nil {
 			diags.AddAttributeError(path.Root(a.Attribute()), "Unexpected API answer", err.Error())
 			continue
 		}
+		if len(a.IgnoredValues) > 0 {
+			remote = withoutValues(remote, a.IgnoredValues)
+		}
 		if prior != nil && !a.Computed {
 			before, d := getValue(ctx, prior, a)
 			diags.Append(d...)
+			if a.NullUnlessIn != "" && before != nil && before.IsNull() && !before.IsUnknown() && follows(row[a.NullUnlessIn], a.Name) {
+				remote = nullOf(a.Kind)
+			}
 			if keep(a, before, remote) {
 				remote = before
 			}
@@ -710,7 +759,7 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		return false, diags
 	}
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.Secret || a.NotRead {
+		if a.Computed || a.Secret || a.NotRead || a.WriteOnly {
 			continue
 		}
 		held, d := getValue(ctx, state, a)
@@ -801,7 +850,7 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	followed, err := r.followUp(ctx, req.Plan, out)
+	followed, err := r.followUp(ctx, req.Plan, req.Config, out)
 	if err != nil {
 		resp.Diagnostics.AddError(r.title("create"), "The row was created, but setting the fields its create does not take failed; it is marked tainted and the next apply replaces it. "+err.Error())
 		return
@@ -811,8 +860,8 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 }
 
-// followUp sends UpdateOnly fields whose planned value differs from the created row.
-func (r *facadeResource) followUp(ctx context.Context, plan valueSource, created *client.Response) (*client.Response, error) {
+// followUp sends UpdateOnly fields whose planned value differs from the created row, and the resets a create cannot carry.
+func (r *facadeResource) followUp(ctx context.Context, plan, config valueSource, created *client.Response) (*client.Response, error) {
 	row, err := decodeRow(created.Data)
 	if err != nil {
 		return nil, err
@@ -835,6 +884,13 @@ func (r *facadeResource) followUp(ctx context.Context, plan valueSource, created
 			return nil, err
 		}
 		body[a.Name] = j
+	}
+	// A create leaves every setting it is not given following already; one the
+	// answer lists as held (a branch row copies its repository's runner) and the
+	// configuration puts back on the default is reset by this second write, so a
+	// platform that does not know the argument is never sent it.
+	if names, d := r.resets(ctx, config, answered{row: row}); !d.HasError() && len(names) > 0 {
+		body[r.spec.FollowsDefault] = names
 	}
 	if len(body) == 0 {
 		return created, nil

@@ -14,13 +14,19 @@ func fenceChecks(c engine.Config) []engine.Issue {
 		Detail: "path_prefix is one directory and path_prefixes is the whole list; the platform refuses a write that sends both. Keep path_prefixes and remove path_prefix."}}
 }
 
+// repoSettingNames is the six settings that can follow the organization
+// default, in the order the platform lists them.
+var repoSettingNames = []string{"fix_runner", "platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"}
+
 // RepoSetting mirrors x-sreagent-resources.repo_settings: one row per branch
 // mapping. The list groups mappings by repository, so the list data source
 // reads repo, fix_runner and branches.
 var RepoSetting = engine.Spec{
 	Key: "repo_settings", TypeName: "repo_setting", ListName: "repo_settings",
-	Description: "One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.",
-	Shape:       engine.Generated, Lifecycle: true,
+	Description: "One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.\n\n" +
+		"fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest. A setting the configuration leaves out is left as it is, whether the row holds a value or follows. A setting the configuration states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. To put a setting back on the default, remove it from the configuration and name it in follows_default.\n\n" +
+		"fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, and every mapping of one repository must name the same runner. State them the same way on every block of a repository, or on the all-branches block only; a block that leaves one out follows along with no change, and a block that states a different value fights the reset.",
+	Shape: engine.Generated, Lifecycle: true,
 	Attrs: []engine.Attr{
 		{Name: "repo", Kind: engine.String, Required: true, CreateOnly: true, Description: "owner/name; must be reachable by the organization's GitHub App."},
 		{Name: "branch", Kind: engine.String, Description: "The branch; omit for the all-branches row."},
@@ -28,18 +34,23 @@ var RepoSetting = engine.Spec{
 		{Name: "environment", Kind: engine.String, Description: "The environment this branch deploys to."},
 		{Name: "path_prefix", Kind: engine.String, Recomputed: true, Description: "One directory a proposed fix may change. Sending it replaces the whole list with that one directory. Answered when the fence has exactly one directory and null otherwise; use path_prefixes for several, and set only one of the two."},
 		{Name: "path_prefixes", Kind: engine.StringList, Recomputed: true, MaxItems: 20, Description: "The directories a proposed fix may change, relative to the repository root, such as [\"services/api/\", \"services/web/\"], or [\".\"] for the whole repository. At most 20; no entry may sit inside another, start with a slash or contain \"..\". Sending it replaces the whole list; [] clears it, and the directories are then detected from the repository's layout the first time a fix runs. Set only one of path_prefix and path_prefixes."},
-		{Name: "allow_ci_config", Kind: engine.Bool, Description: "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside the directories. Off by default. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent; with this on, the repository's CI runs that change, with the repository's secrets, as soon as the branch is pushed and before anyone reviews the pull request."},
+		{Name: "allow_ci_config", Kind: engine.Bool, Description: "Whether fixes may change CI configuration (.github/, .circleci/, .gitlab-ci.yml, Jenkinsfile and similar) inside the directories. Off unless the organization default says otherwise. Each such change opens as a draft pull request that names the CI files and is never merged by SRE Agent; with this on, the repository's CI runs that change, with the repository's secrets, as soon as the branch is pushed and before anyone reviews the pull request."},
 		{Name: "writable_extensions", Kind: engine.StringList, Description: "File extensions a fix may write."},
 		{Name: "alerting_sns_topic_arn", Kind: engine.String, Description: "An SNS topic alarms for this repository publish to."},
 		{Name: "fix_runner", Kind: engine.String, Description: "Who executes the repository's fix requests: platform (SRE Agent's own agent) or self_hosted (a runner on your own machine, which needs one registered for the organization). Applies to the whole repository, so every mapping of it must name the same runner."},
-		{Name: "auto_dispatch", Kind: engine.Bool, Description: "Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Defaults to true."},
+		{Name: "auto_dispatch", Kind: engine.Bool, Description: "Whether fix requests for this repository are sent to the runner automatically; false holds each one until a person sends it. Follows the organization default (true unless it was changed) while the row does not hold a value."},
 		{Name: "ci_fallback_to_platform", Kind: engine.Bool, Description: "Stored and unused: the platform no longer reads it. Defaults to false."},
-		{Name: "platform_fallback", Kind: engine.Bool, Description: "Defaults to true: a request this repository's own runner could not finish may run on SRE Agent's own runner, so it still gets an answer. false keeps the repository's code on your machines and the request fails instead. Applies to the whole repository."},
-		{Name: "draft_prs", Kind: engine.Bool, Clearable: true, Description: "Whether a fix pull request for this row opens as a draft (true), ready for review (false), or as the GitHub installation's draft_prs setting says (unset, the default). A branch row that leaves it unset follows the repository's all-branches row. A change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft whatever this says."},
-		{Name: "check_network", Kind: engine.Bool, Description: "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off by default. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Turning it on is accepted only where the Integrations page offers it; turning it off always is."},
+		{Name: "platform_fallback", Kind: engine.Bool, Description: "Follows the organization default (true unless it was changed) while the row does not hold a value: a request this repository's own runner could not finish may run on SRE Agent's own runner, so it still gets an answer. false keeps the repository's code on your machines and the request fails instead. Applies to the whole repository."},
+		{Name: "draft_prs", Kind: engine.Bool, Clearable: true, NullUnlessIn: "set_here", Description: "Whether a fix pull request for this row opens as a draft (true), ready for review (false), or as the organization's repository defaults and the GitHub installation's draft_prs setting say (unset, the default). Reads null while the row follows the default, so a configuration that leaves it out plans nothing; read data.sreagent_effective_repo_settings for the value in force. Removing it from the configuration sends null, which puts it back on the default, and naming it in follows_default means the same. A branch row that leaves it unset follows the repository's all-branches row. A change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft whatever this says."},
+		{Name: "check_network", Kind: engine.Bool, Description: "Whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified. Off unless the organization default says otherwise. On, those commands, and code a fix writes and runs, can send the repository's source or command output to any account on those hosts. Turning it on is accepted only where the Integrations page offers it; turning it off always is."},
+		{Name: "follows_default", Kind: engine.StringList, WriteOnly: true, OneOf: repoSettingNames, Description: "Settings to put back on the organization's repository defaults, from among the six above. Applied only to a setting the row holds itself (set_here); one that already follows changes nothing, so the list never plans a change by itself and an imported row plans nothing for it. A setting named here must not also be stated. The platform refuses a reset to a value it would refuse to set: your own runner with none registered, network where the Integrations page does not offer it, and CI configuration off while the directories list a CI path. fix_runner, platform_fallback and auto_dispatch are reset on every row of the repository."},
+		{Name: "set_here", Kind: engine.StringList, Computed: true, Description: "The settings this row holds itself, from among fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config. Null on a platform from before release v0.482.0."},
+		{Name: "set_here", TFName: "following", Kind: engine.StringList, Computed: true, Complement: repoSettingNames, Description: "The settings this row does not hold: it reads the organization's repository defaults for them. Null on a platform from before release v0.482.0."},
 	},
-	Checks:     []func(engine.Config) []engine.Issue{fenceChecks},
-	ListIDAttr: "repo",
+	Checks:         []func(engine.Config) []engine.Issue{fenceChecks},
+	FollowsDefault: "follows_default",
+	SetHere:        "set_here",
+	ListIDAttr:     "repo",
 	ListAttrs: []engine.Attr{
 		{Name: "repo", Kind: engine.String, Computed: true, Description: "owner/name."},
 		{Name: "fix_runner", Kind: engine.String, Computed: true, Description: "The repository's fix runner."},

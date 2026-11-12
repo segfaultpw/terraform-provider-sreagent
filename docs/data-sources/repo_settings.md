@@ -2,12 +2,18 @@
 page_title: "sreagent_repo_settings Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every repo_setting row, read-only. One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.
+  Every repo_setting row, read-only. One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.
+  fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest. A setting the configuration leaves out is left as it is, whether the row holds a value or follows. A setting the configuration states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. To put a setting back on the default, remove it from the configuration and name it in follows_default.
+  fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, and every mapping of one repository must name the same runner. State them the same way on every block of a repository, or on the all-branches block only; a block that leaves one out follows along with no change, and a block that states a different value fights the reset.
 ---
 
 # sreagent_repo_settings (Data Source)
 
-Every repo_setting row, read-only. One repository branch mapping for fix requests. fix_runner is per repository: every mapping of one repository must name the same runner. Creating one needs the organization's GitHub App to reach the repository.
+Every repo_setting row, read-only. One repository branch mapping for fix requests. Creating one needs the organization's GitHub App to reach the repository.
+
+fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network and allow_ci_config each either belong to this row or follow the organization's repository defaults (sreagent_repository_defaults). set_here lists the ones the row holds; following lists the rest. A setting the configuration leaves out is left as it is, whether the row holds a value or follows. A setting the configuration states with the value the row already reads is not written, so a file that restates what a row follows does not pin it. To put a setting back on the default, remove it from the configuration and name it in follows_default.
+
+fix_runner, platform_fallback and auto_dispatch belong to the whole repository: a write or a reset of one reaches every row of the repository, and every mapping of one repository must name the same runner. State them the same way on every block of a repository, or on the all-branches block only; a block that leaves one out follows along with no change, and a block that states a different value fights the reset.
 
 ## Example Usage
 
