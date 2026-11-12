@@ -176,7 +176,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	}
 	for _, a := range s.Attrs {
 		switch {
-		case a.Local:
+		case a.Local, a.Kept:
 		case a.WriteOnly:
 			checkWriteOnly(a, res, post.Properties, put.Properties, add)
 		case a.NotRead:

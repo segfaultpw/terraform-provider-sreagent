@@ -189,7 +189,7 @@ func etag(spec engine.Spec, row map[string]any) string {
 		switch {
 		case a.Secret:
 			keys = append(keys, a.Name+"_set")
-		case !a.Computed && !a.NotRead && !a.WriteOnly:
+		case !a.Computed && !a.NotRead && !a.WriteOnly && !a.Kept:
 			keys = append(keys, a.Name)
 		}
 	}

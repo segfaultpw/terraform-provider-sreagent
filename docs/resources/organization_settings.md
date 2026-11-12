@@ -32,7 +32,7 @@ resource "sreagent_organization_settings" "this" {
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
-- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is managed with sreagent_repository_defaults.
+- `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.
 - `investigation_paused` (Boolean) Pause automatic investigations.
 - `monthly_ai_budget_usd` (Number) The monthly AI budget.

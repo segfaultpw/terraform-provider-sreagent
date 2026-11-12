@@ -54,8 +54,8 @@ var OrganizationSettings = singleton("organization_settings", "The organization'
 	computed(i("session_idle_effective", "The idle sign-out limit that applies to this organization, in minutes, counting its parent's, or null for none.")),
 	engine.Attr{Name: "inheritance_stopped", Kind: engine.StringList,
 		IgnoredValues: []string{"repository_defaults"},
-		IgnoredWhy:    "A child stops following its parent's repository defaults with sreagent_repository_defaults (destroy it to follow again) or in the app; this list never changes it.",
-		Description:   "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is managed with sreagent_repository_defaults."},
+		IgnoredWhy:    "A child gives itself its own repository defaults with sreagent_repository_defaults (destroy it to follow the parent again), or stops following its parent's in the app (it then reads the built-in values); this list never changes either.",
+		Description:   "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead."},
 )
 
 // NotificationSettings mirrors x-sreagent-resources.notification_settings.

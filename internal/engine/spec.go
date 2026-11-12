@@ -104,6 +104,10 @@ type Attr struct {
 	// and a configuration that names one is refused at validate with IgnoredWhy.
 	IgnoredValues []string
 	IgnoredWhy    string
+	// Kept: an Optional list of the configuration that the provider keeps in
+	// state and never sends or reads from the API: a value a later operation
+	// that has no configuration (a destroy) needs. It is never a write by itself.
+	Kept bool
 	// Local: Computed and kept by the provider alone. It is never sent, never read
 	// from the API, and carried through a refresh from the prior state.
 	Local bool

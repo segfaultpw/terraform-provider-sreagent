@@ -422,7 +422,10 @@ func TestAccRepositoryDefaultsChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	const addr = "sreagent_repository_defaults.test"
-	cfg := provider + "resource \"sreagent_repository_defaults\" \"test\" {\n  auto_dispatch = false\n}\n"
+	// The destroy is previewed at plan and may need the parent's CI or network
+	// default confirmed, which only confirm_on_destroy can give; the parent's values
+	// are not known here, so both are named.
+	cfg := provider + "resource \"sreagent_repository_defaults\" \"test\" {\n  auto_dispatch      = false\n  confirm_on_destroy = [\"ci_config\", \"check_network\"]\n}\n"
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
 		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
@@ -442,6 +445,7 @@ func TestAccRepositoryDefaultsChild(t *testing.T) {
 				resource.TestCheckResourceAttr(addr, "source", "own"),
 				resource.TestCheckResourceAttrSet(addr, "parent_name"),
 				resource.TestCheckResourceAttr(addr, "auto_dispatch", "false"),
+				resource.TestCheckResourceAttr(addr, "confirm_on_destroy.#", "2"),
 			)},
 			{Config: cfg, PlanOnly: true},
 		},

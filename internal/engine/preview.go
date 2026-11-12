@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -23,6 +24,11 @@ import (
 const (
 	fingerprintAttr = "preview_fingerprint"
 	confirmAttr     = "confirm"
+	// confirmOnDestroyAttr is the Kept list a destroy reads its confirmations
+	// from, since a destroy has no configuration; destroyFingerprintKey is the
+	// private key that carries the destroy plan's fingerprint to the delete.
+	confirmOnDestroyAttr  = "confirm_on_destroy"
+	destroyFingerprintKey = "destroy_fingerprint"
 	// namedRepositories is how many repositories a warning names before it
 	// counts the rest.
 	namedRepositories = 10
@@ -278,6 +284,25 @@ func (r *facadeResource) problems(p preview, confirm []string) []problem {
 	return out
 }
 
+// destroyProblems are the refusals and missing confirmations of the preview of a
+// destroy. A destroy has no configuration to confirm in, so the way out is
+// named: confirm_on_destroy, applied before the destroy, and for a refusal the
+// ways to stop managing the defaults without changing them.
+func (r *facadeResource) destroyProblems(p preview, confirm []string) []problem {
+	var out []problem
+	if len(p.Refusals) > 0 {
+		out = append(out, problem{summary: "The platform refuses to hand the defaults back to the parent", detail: strings.Join(p.Refusals, "\n") +
+			fmt.Sprintf("\n\nThis destroy would fail, so it is stopped before anything is written. To stop managing the defaults without changing them, remove the resource with a removed block (removed { from = sreagent_%s.<name>, lifecycle { destroy = false } }) or terraform state rm; or follow the parent in the app, or change what the platform refuses and destroy again.", r.spec.TypeName)})
+	}
+	for _, name := range p.NeedsConfirm {
+		if !slices.Contains(confirm, name) {
+			c := r.spec.Confirmations[name]
+			out = append(out, problem{summary: "Confirmation needed to destroy", detail: fmt.Sprintf("%s Destroying this resource turns it on for every repository that reads the parent's defaults, so the platform wants the confirmation first. In Terraform, set %s = [%q] on sreagent_%s, run terraform apply, then destroy. Terraform never gives the confirmation for you.", c.Sentence, confirmOnDestroyAttr, name, r.spec.TypeName)})
+		}
+	}
+	return out
+}
+
 func (r *facadeResource) missingConfirm(name string) problem {
 	c := r.spec.Confirmations[name]
 	return problem{attr: confirmAttr, summary: "Confirmation needed",
@@ -334,7 +359,7 @@ func (r *facadeResource) configuredConfirm(ctx context.Context, cfg valueSource)
 // settingsKnown reports that every setting the configuration states is known.
 func (r *facadeResource) settingsKnown(ctx context.Context, cfg valueSource) bool {
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.WriteOnly || a.Local || a.Secret {
+		if a.Computed || a.WriteOnly || a.Local || a.Kept || a.Secret {
 			continue
 		}
 		v, d := getValue(ctx, cfg, a)
@@ -396,9 +421,9 @@ func (r *facadeResource) staleError(diags *diag.Diagnostics, verb string, err er
 
 // previewedWrite sends a previewed write. With the plan's fingerprint it sends
 // that and nothing else can happen but a write or a refusal. Without one (a
-// plan made with a key that cannot preview) it takes the preview itself, judges
-// it as the plan would have, says what moves and applies that fingerprint. It
-// answers the fingerprint it applied.
+// plan made with a key that cannot preview, or a destroy whose plan carried
+// nothing) it takes the preview itself, judges it as the plan would have, says
+// what moves and applies that fingerprint. It answers the fingerprint it applied.
 func (r *facadeResource) previewedWrite(ctx context.Context, diags *diag.Diagnostics, verb string, body map[string]any, ifMatch string, confirm []string, planned string) (*client.Response, string, error) {
 	if planned != "" {
 		out, err := r.client.Do(ctx, r.previewedRequest(body, ifMatch, confirm, planned))
@@ -408,16 +433,28 @@ func (r *facadeResource) previewedWrite(ctx context.Context, diags *diag.Diagnos
 		}
 		return out, planned, err
 	}
+	warned := false
 	for attempt := 0; ; attempt++ {
 		p, err := r.previewCall(ctx, body, ifMatch, confirm)
 		if err != nil {
 			return nil, "", err
 		}
-		if probs := r.problems(p, confirm); len(probs) > 0 {
+		probs := r.problems(p, confirm)
+		if verb == "delete" {
+			probs = r.destroyProblems(p, confirm)
+		}
+		if len(probs) > 0 {
 			r.addProblems(diags, probs)
 			return nil, "", errReported
 		}
-		diags.AddWarning("Applying against a preview taken now", "The plan could not preview this change, so the apply did. "+p.warning())
+		if !warned {
+			if verb == "delete" {
+				diags.AddWarning("Destroying against a preview taken now", "The destroy plan carried no preview, so the destroy took one. "+p.warning())
+			} else {
+				diags.AddWarning("Applying against a preview taken now", "The plan could not preview this change, so the apply did. "+p.warning())
+			}
+			warned = true
+		}
 		out, err := r.client.Do(ctx, r.previewedRequest(body, ifMatch, confirm, p.Fingerprint))
 		if client.IsConflict(err) {
 			if attempt == 0 {
@@ -464,6 +501,19 @@ func (r *facadeResource) planPreview(ctx context.Context, req resource.ModifyPla
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	confirm, known, d := r.configuredConfirm(ctx, req.Config)
+	resp.Diagnostics.Append(d...)
+	if !known || !r.settingsKnown(ctx, req.Config) {
+		if r.client != nil {
+			resp.Diagnostics.AddWarning("This change is not previewed",
+				"A value in it is known only at apply, so the plan cannot ask the platform what it moves; the apply previews it and applies what it finds.")
+			if known {
+				r.addProblems(&resp.Diagnostics, r.confirmedFromState(ctx, req.Plan, prior, confirm))
+			}
+		}
+		setFingerprint(types.StringUnknown())
+		return
+	}
 	if len(body) == 0 {
 		held := types.StringNull()
 		if !creating {
@@ -472,9 +522,7 @@ func (r *facadeResource) planPreview(ctx context.Context, req resource.ModifyPla
 		setFingerprint(held)
 		return
 	}
-	confirm, known, d := r.configuredConfirm(ctx, req.Config)
-	resp.Diagnostics.Append(d...)
-	if r.client == nil || !known || !r.settingsKnown(ctx, req.Config) {
+	if r.client == nil {
 		setFingerprint(types.StringUnknown())
 		return
 	}
@@ -484,6 +532,9 @@ func (r *facadeResource) planPreview(ctx context.Context, req resource.ModifyPla
 		switch {
 		case err == nil:
 			ifMatch = current.ETag
+			if row, derr := decodeRow(current.Data); derr == nil {
+				prior = answered{row: row}
+			}
 		case client.IsNotFound(err) && followsParent(err):
 		case client.IsNotFound(err):
 			resp.Diagnostics.AddError(r.title("plan"), r.platformTooOld(err))
@@ -610,7 +661,68 @@ func (r *facadeResource) destroyFollows(ctx context.Context, state valueSource) 
 	return !d.HasError() && v != nil && !v.IsNull() && !v.IsUnknown()
 }
 
-// destroyPreviewed sends DestroyBody as a previewed write.
+// kept is the list a Kept attribute holds in a state.
+func (r *facadeResource) kept(ctx context.Context, state valueSource, name string) []string {
+	var list types.List
+	if state.GetAttribute(ctx, path.Root(name), &list).HasError() || list.IsNull() || list.IsUnknown() {
+		return nil
+	}
+	return stringsOf(list)
+}
+
+// planDestroy plans a destroy like a change: it asks the platform what the
+// destroy moves, fails the plan when the platform would refuse it or wants a
+// confirmation the state does not hold (confirm_on_destroy), warns with what
+// moves, and carries the fingerprint to the delete in private state.
+func (r *facadeResource) planDestroy(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if r.client == nil || req.State.Raw.IsNull() || !r.destroyFollows(ctx, req.State) {
+		return
+	}
+	ifMatch := ""
+	if req.Private != nil {
+		tag, d := r.etag(ctx, req.Private)
+		resp.Diagnostics.Append(d...)
+		ifMatch = tag
+	}
+	confirm := r.kept(ctx, req.State, confirmOnDestroyAttr)
+	p, err := r.previewCall(ctx, maps.Clone(r.spec.DestroyBody), ifMatch, confirm)
+	switch {
+	case err == nil:
+	case client.IsReadOnlyKey(err):
+		resp.Diagnostics.AddWarning("This destroy is not previewed",
+			"The preview of what this destroy moves needs an api:admin key; the destroy previews it, and applies it only when the platform accepts it.")
+		return
+	case client.IsNotFound(err):
+		return
+	case client.IsPreconditionFailed(err):
+		summary, detail := r.precondition("plan", err)
+		resp.Diagnostics.AddError(summary, detail)
+		return
+	default:
+		resp.Diagnostics.AddError(r.title("plan"), err.Error())
+		return
+	}
+	if probs := r.destroyProblems(p, confirm); len(probs) > 0 {
+		r.addProblems(&resp.Diagnostics, probs)
+		return
+	}
+	if len(p.Changes) > 0 || len(p.Moved) > 0 || len(p.Children) > 0 {
+		text := "Destroying this resource hands the organization back to its parent's repository defaults, and the values it holds of its own are dropped. " + p.warning()
+		var stopped types.Bool
+		if a, ok := r.attrNamed("stopped"); ok && !req.State.GetAttribute(ctx, path.Root(a.Attribute()), &stopped).HasError() && stopped.ValueBool() {
+			text += " The stop this organization made is ended too, so later changes of the parent's defaults reach it again."
+		}
+		resp.Diagnostics.AddWarning("What destroying this resource moves", text)
+	}
+	if resp.Private != nil {
+		b, _ := json.Marshal(p.Fingerprint)
+		resp.Diagnostics.Append(resp.Private.SetKey(ctx, destroyFingerprintKey, b)...)
+	}
+}
+
+// destroyPreviewed sends DestroyBody as a previewed write, against the
+// fingerprint the destroy plan took, or a preview of its own when the plan
+// could not carry one.
 func (r *facadeResource) destroyPreviewed(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	etag, d := r.etag(ctx, req.Private)
 	resp.Diagnostics.Append(d...)
@@ -622,7 +734,12 @@ func (r *facadeResource) destroyPreviewed(ctx context.Context, req resource.Dele
 		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
-	_, _, err := r.previewedWrite(ctx, &resp.Diagnostics, "delete", maps.Clone(r.spec.DestroyBody), etag, nil, "")
+	planned := ""
+	if b, d := req.Private.GetKey(ctx, destroyFingerprintKey); !d.HasError() && len(b) > 0 {
+		_ = json.Unmarshal(b, &planned)
+	}
+	confirm := r.kept(ctx, req.State, confirmOnDestroyAttr)
+	_, _, err := r.previewedWrite(ctx, &resp.Diagnostics, "delete", maps.Clone(r.spec.DestroyBody), etag, confirm, planned)
 	switch {
 	case err == nil:
 		if r.spec.DestroyWarning != "" {

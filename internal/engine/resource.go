@@ -243,6 +243,13 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	if a.Local {
 		return map[string]schema.Attribute{a.Attribute(): schema.StringAttribute{Computed: true, Description: a.Description}}
 	}
+	if a.Kept {
+		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{
+			ElementType: types.StringType, Optional: true,
+			Description: describe(a),
+			Validators:  []validator.List{listvalidator.UniqueValues(), listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...))},
+		}}
+	}
 	if a.WriteOnly {
 		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{
 			ElementType: types.StringType, Optional: true, WriteOnly: true,
@@ -410,7 +417,7 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 	body := map[string]any{}
 	var secrets []string
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.WriteOnly || a.Local || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
+		if a.Computed || a.WriteOnly || a.Local || a.Kept || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
 			continue
 		}
 		if a.Secret {
@@ -586,6 +593,9 @@ func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) 
 // plans a re-send at the same version. A cleared secret plans _set false.
 func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.Plan.Raw.IsNull() {
+		if r.spec.Previewed && r.spec.Shape == Singleton {
+			r.planDestroy(ctx, req, resp)
+		}
 		return
 	}
 	if r.spec.Previewed {
@@ -705,6 +715,18 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), types.ListNull(types.StringType))...)
 			continue
 		}
+		if a.Kept {
+			held := attr.Value(types.ListNull(types.StringType))
+			if prior != nil {
+				v, d := getValue(ctx, prior, a)
+				diags.Append(d...)
+				if v != nil && !v.IsUnknown() {
+					held = v
+				}
+			}
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+			continue
+		}
 		if a.Local {
 			held := types.StringNull()
 			if prior != nil {
@@ -779,7 +801,7 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		return false, diags
 	}
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.Secret || a.NotRead || a.WriteOnly || a.Local {
+		if a.Computed || a.Secret || a.NotRead || a.WriteOnly || a.Local || a.Kept {
 			continue
 		}
 		held, d := getValue(ctx, state, a)

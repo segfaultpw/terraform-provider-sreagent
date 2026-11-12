@@ -35,15 +35,25 @@ func stringsOf(l types.List) []string {
 	return out
 }
 
-// answered lets followUp ask resets about the row a create answered: it holds
-// the answered list under the set-here attribute's name.
+// answered reads the row the platform answered as a state: followUp asks resets
+// about the lists of a created row, and the plan of a create compares the
+// booleans with the organization's current ones.
 type answered struct{ row map[string]any }
 
 func (a answered) GetAttribute(_ context.Context, p path.Path, target any) diag.Diagnostics {
 	var diags diag.Diagnostics
+	if dst, ok := target.(*types.Bool); ok {
+		*dst = types.BoolNull()
+		for key, raw := range a.row {
+			if b, isBool := raw.(bool); isBool && p.Equal(path.Root(key)) {
+				*dst = types.BoolValue(b)
+			}
+		}
+		return diags
+	}
 	dst, ok := target.(*types.List)
 	if !ok {
-		diags.AddError("Provider bug", "answered reads lists only")
+		diags.AddError("Provider bug", "answered reads lists and booleans only")
 		return diags
 	}
 	*dst = types.ListNull(types.StringType)
