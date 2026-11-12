@@ -211,6 +211,19 @@ type Spec struct {
 	DestroyWhen string
 	// DestroyWarning is said when the destroy took effect.
 	DestroyWarning string
+	// Cursor names the key of the answer that holds the next page's cursor; a spec
+	// that sets it is a paged list, read until that key is null. PageSize is the
+	// limit asked for each page (the API's list_max) and MaxPages the pages read
+	// before the read fails naming the bound.
+	Cursor   string
+	PageSize int
+	MaxPages int
+	// QueryAttrs are the optional arguments of the list data source, sent as
+	// query values under their API names (String and Bool only).
+	QueryAttrs []Attr
+	// ExtraAttrs are the computed attributes of the list data source read from
+	// the keys beside the rows in the first page's answer.
+	ExtraAttrs []Attr
 	// DiscoveredAttr is the computed boolean that, true in state, makes a
 	// destroy warn that a discovery sweep files the row again.
 	DiscoveredAttr string

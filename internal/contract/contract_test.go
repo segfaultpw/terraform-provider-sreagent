@@ -203,6 +203,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 		}
 	}
 	checkFollows(s, res, add)
+	checkPaged(d, s, res, add)
 	checkPreviewed(d, s, res, add)
 	checkIgnored(s, enums.Properties, add)
 	checkSecrets(d, s, res, add)
@@ -232,6 +233,49 @@ func checkWriteOnly(a engine.Attr, res Resource, post, put map[string]map[string
 		}
 		if !slices.Equal(a.OneOf, want) {
 			add("write-only %s OneOf %v, %s body enum %v", a.Name, a.OneOf, method, want)
+		}
+	}
+}
+
+// checkPaged holds a paged list data source to the API: the page size is the
+// list's cap, every query argument is a parameter of the GET, the cursor and the
+// extras are keys of its 200 answer, and every computed field is read.
+func checkPaged(d *Doc, s engine.Spec, res Resource, add func(string, ...any)) {
+	if s.Cursor == "" {
+		return
+	}
+	get := d.Paths["/"+s.Key]["get"]
+	if res.ListMax == nil || *res.ListMax != s.PageSize {
+		add("PageSize %d, contract list_max %v", s.PageSize, res.ListMax)
+	}
+	have := map[string]bool{}
+	for _, p := range get.Parameters {
+		have[p.Name] = true
+	}
+	for _, q := range s.QueryAttrs {
+		if !have[q.Name] {
+			add("query argument %s is not a parameter of GET /%s", q.Name, s.Key)
+		}
+	}
+	if !have["cursor"] || !have["limit"] {
+		add("GET /%s no longer takes cursor and limit", s.Key)
+	}
+	answer := get.Responses["200"].Content["application/json"].Schema.Properties
+	if _, ok := answer[s.Cursor]; !ok {
+		add("the 200 answer of GET /%s has no %s", s.Key, s.Cursor)
+	}
+	for _, x := range s.ExtraAttrs {
+		if _, ok := answer[x.Name]; !ok {
+			add("extra %s is not a key of the 200 answer of GET /%s", x.Name, s.Key)
+		}
+	}
+	read := map[string]bool{}
+	for _, a := range s.Attrs {
+		read[a.Name] = true
+	}
+	for name := range res.ComputedFields {
+		if !read[name] {
+			add("computed field %s is published by the contract but has no attribute", name)
 		}
 	}
 }
@@ -428,6 +472,10 @@ func checkAddressing(s engine.Spec, res Resource, add func(string, ...any)) {
 		want = []string{}
 	case engine.Generated:
 		want = []string{"id"}
+		// A paged view is not stored configuration: it has no row to address.
+		if s.Cursor != "" {
+			want = []string{}
+		}
 	case engine.NaturalKey:
 		want = []string{s.IDAttr}
 		if !slices.Equal(res.NaturalKey, want) {

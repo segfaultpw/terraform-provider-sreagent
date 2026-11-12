@@ -26,6 +26,14 @@ type Resource struct {
 	// NullMeans maps a Clearable field to the value the platform acts on
 	// when the field is null, which the spec's NullMeans must equal.
 	NullMeans map[string]any `json:"null_means"`
+	// ListMax is the most rows a list answers at once, null for a list with no
+	// cap.
+	ListMax *int `json:"list_max"`
+}
+
+// Parameter is one query parameter of an operation.
+type Parameter struct {
+	Name string `json:"name"`
 }
 
 // Doc is the part of the document the provider is held to.
@@ -37,8 +45,15 @@ type Doc struct {
 		} `json:"schemas"`
 	} `json:"components"`
 	Paths map[string]map[string]struct {
-		// Responses names the statuses an operation can answer.
-		Responses   map[string]json.RawMessage `json:"responses"`
+		Parameters []Parameter `json:"parameters"`
+		// Responses are the statuses an operation can answer.
+		Responses map[string]struct {
+			Content map[string]struct {
+				Schema struct {
+					Properties map[string]map[string]any `json:"properties"`
+				} `json:"schema"`
+			} `json:"content"`
+		} `json:"responses"`
 		RequestBody struct {
 			Content map[string]struct {
 				Schema struct {

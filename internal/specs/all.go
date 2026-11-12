@@ -40,6 +40,7 @@ func All() []engine.Spec {
 		AWSExternalID,
 		RequestSigning,
 		CompliancePeriod,
+		EffectiveRepoSettings,
 		CodeDetectionSettings,
 		SecuritySLAPolicy,
 		SecurityDigestSettings,

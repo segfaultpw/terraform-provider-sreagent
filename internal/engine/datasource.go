@@ -1,9 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -118,13 +122,102 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 		resp.Schema = schema.Schema{Description: d.spec.Description, Attributes: fields}
 		return
 	}
-	resp.Schema = schema.Schema{
-		Description: "Every " + d.spec.TypeName + " row, read-only. " + d.spec.Description,
-		Attributes: map[string]schema.Attribute{
-			"id":        schema.StringAttribute{Computed: true, Description: "The resource key the list was read from."},
-			"truncated": schema.BoolAttribute{Computed: true, Description: "True when the API returned as many rows as its cap and may hold more."},
-			"items":     schema.ListNestedAttribute{Computed: true, Description: "The rows.", NestedObject: schema.NestedAttributeObject{Attributes: fields}},
-		},
+	truncated := "True when the API returned as many rows as its cap and may hold more."
+	if d.spec.Cursor != "" {
+		truncated = "Always false: every page was read, or the read failed."
+	}
+	attrs := map[string]schema.Attribute{
+		"id":        schema.StringAttribute{Computed: true, Description: "The resource key the list was read from."},
+		"truncated": schema.BoolAttribute{Computed: true, Description: truncated},
+		"items":     schema.ListNestedAttribute{Computed: true, Description: "The rows.", NestedObject: schema.NestedAttributeObject{Attributes: fields}},
+	}
+	for _, q := range d.spec.QueryAttrs {
+		switch q.Kind {
+		case Bool:
+			attrs[q.Attribute()] = schema.BoolAttribute{Optional: true, Description: q.Description}
+		default:
+			attrs[q.Attribute()] = schema.StringAttribute{Optional: true, Description: q.Description}
+		}
+	}
+	for _, x := range d.spec.ExtraAttrs {
+		attrs[x.Attribute()] = computedAttribute(x)
+	}
+	resp.Schema = schema.Schema{Description: "Every " + d.spec.TypeName + " row, read-only. " + d.spec.Description, Attributes: attrs}
+}
+
+// query is the query string a list read sends: the arguments the configuration
+// states, and the page size of a paged list.
+func (d *facadeDataSource) query(ctx context.Context, cfg valueSource) (url.Values, error) {
+	q := url.Values{}
+	for _, a := range d.spec.QueryAttrs {
+		v, diags := getValue(ctx, cfg, a)
+		if diags.HasError() {
+			return nil, fmt.Errorf("reading %s: %s", a.Attribute(), diags.Errors()[0].Detail())
+		}
+		if v == nil || v.IsNull() || v.IsUnknown() {
+			continue
+		}
+		switch t := v.(type) {
+		case types.String:
+			q.Set(a.Name, t.ValueString())
+		case types.Bool:
+			q.Set(a.Name, strconv.FormatBool(t.ValueBool()))
+		}
+	}
+	if d.spec.Cursor != "" && d.spec.PageSize > 0 {
+		q.Set("limit", strconv.Itoa(d.spec.PageSize))
+	}
+	return q, nil
+}
+
+// readPages reads a list: one request for a plain list, every page for a paged
+// one. It answers the rows, the keys beside them in the first page and whether
+// the API says it cut the list.
+func (d *facadeDataSource) readPages(ctx context.Context, cfg valueSource) ([]map[string]any, map[string]json.RawMessage, bool, error) {
+	q, err := d.query(ctx, cfg)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if d.spec.Cursor == "" {
+		out, err := d.client.Do(ctx, client.Request{Method: http.MethodGet, Path: d.spec.Key, Query: q})
+		if err != nil {
+			return nil, nil, false, err
+		}
+		rows, err := decodeRows(out.Data)
+		return rows, out.Extras, out.Truncated, err
+	}
+	maxPages := d.spec.MaxPages
+	if maxPages == 0 {
+		maxPages = 200
+	}
+	var all []map[string]any
+	var first map[string]json.RawMessage
+	for page := 1; ; page++ {
+		out, err := d.client.Do(ctx, client.Request{Method: http.MethodGet, Path: d.spec.Key, Query: q})
+		if err != nil {
+			return nil, nil, false, err
+		}
+		rows, err := decodeRows(out.Data)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		all = append(all, rows...)
+		if first == nil {
+			first = out.Extras
+		}
+		var next *string
+		if raw, ok := out.Extras[d.spec.Cursor]; ok {
+			if err := json.Unmarshal(raw, &next); err != nil {
+				return nil, nil, false, fmt.Errorf("the API answered a %s that is not text or null: %w", d.spec.Cursor, err)
+			}
+		}
+		if next == nil || *next == "" {
+			return all, first, false, nil
+		}
+		if page >= maxPages {
+			return nil, nil, false, fmt.Errorf("the list has more than %d pages of %d rows (%d rows read); narrow it with the query arguments instead of reading it whole", maxPages, d.spec.PageSize, len(all))
+		}
+		q.Set("cursor", *next)
 	}
 }
 
@@ -145,20 +238,21 @@ func (d *facadeDataSource) values(row map[string]any) (map[string]attr.Value, ma
 	return vals, typs, nil
 }
 
-func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	name := "sreagent_" + d.spec.TypeName
+func (d *facadeDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	if d.list {
-		name = "sreagent_" + d.spec.ListName
+		d.readList(ctx, req, resp)
+		return
 	}
+	name := "sreagent_" + d.spec.TypeName
 	out, err := d.client.Do(ctx, client.Request{Method: http.MethodGet, Path: d.spec.Key})
-	if !d.list && d.spec.AlwaysPresent && client.IsNotFound(err) {
+	if d.spec.AlwaysPresent && client.IsNotFound(err) {
 		resp.Diagnostics.AddError(
 			"The platform does not serve "+d.spec.Key,
 			"Every organization has "+d.spec.Key+", so the platform answered 404 because it predates the resource. "+
 				"Upgrade the platform to "+d.spec.MinPlatform+" before reading "+name+".\n\nThe platform said: "+err.Error())
 		return
 	}
-	if !d.list && client.IsNotFound(err) {
+	if client.IsNotFound(err) {
 		// No row of its own (Slack not connected, or settings inherited from a
 		// parent): a fact to branch on in HCL, not an error.
 		vals, _, _ := d.values(map[string]any{})
@@ -172,28 +266,29 @@ func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, r
 		resp.Diagnostics.AddError("Could not read "+name, err.Error())
 		return
 	}
-	if !d.list {
-		row, err := decodeRow(out.Data)
-		if err != nil {
-			resp.Diagnostics.AddError("Unexpected API answer", err.Error())
-			return
-		}
-		vals, _, err := d.values(row)
-		if err != nil {
-			resp.Diagnostics.AddError("Unexpected API answer", err.Error())
-			return
-		}
-		if _, answered := row["configured"]; !answered {
-			vals["configured"] = types.BoolValue(true)
-		}
-		for n, v := range vals {
-			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(n), v)...)
-		}
-		return
-	}
-	rows, err := decodeRows(out.Data)
+	row, err := decodeRow(out.Data)
 	if err != nil {
 		resp.Diagnostics.AddError("Unexpected API answer", err.Error())
+		return
+	}
+	vals, _, err := d.values(row)
+	if err != nil {
+		resp.Diagnostics.AddError("Unexpected API answer", err.Error())
+		return
+	}
+	if _, answered := row["configured"]; !answered {
+		vals["configured"] = types.BoolValue(true)
+	}
+	for n, v := range vals {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(n), v)...)
+	}
+}
+
+func (d *facadeDataSource) readList(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	name := "sreagent_" + d.spec.ListName
+	rows, extras, truncated, err := d.readPages(ctx, req.Config)
+	if err != nil {
+		resp.Diagnostics.AddError("Could not read "+name, err.Error())
 		return
 	}
 	_, typs, _ := d.values(map[string]any{})
@@ -210,7 +305,24 @@ func (d *facadeDataSource) Read(ctx context.Context, _ datasource.ReadRequest, r
 	}
 	list, diags := types.ListValue(types.ObjectType{AttrTypes: typs}, objs)
 	resp.Diagnostics.Append(diags...)
+	for _, x := range d.spec.ExtraAttrs {
+		var raw any
+		if blob, ok := extras[x.Name]; ok {
+			dec := json.NewDecoder(bytes.NewReader(blob))
+			dec.UseNumber()
+			if err := dec.Decode(&raw); err != nil {
+				resp.Diagnostics.AddError("Unexpected API answer", fmt.Sprintf("%s: %s", x.Name, err))
+				return
+			}
+		}
+		v, err := fromJSON(x.Kind, raw)
+		if err != nil {
+			resp.Diagnostics.AddError("Unexpected API answer", fmt.Sprintf("%s: %s", x.Name, err))
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(x.Attribute()), v)...)
+	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(d.spec.Key))...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("truncated"), types.BoolValue(out.Truncated))...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("truncated"), types.BoolValue(truncated))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("items"), list)...)
 }

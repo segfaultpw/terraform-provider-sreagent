@@ -262,3 +262,19 @@ func TestAPreviewThatIsNotAnObjectNeverBreaksAnotherAnswer(t *testing.T) {
 		t.Fatalf("want the 409, got %v", err)
 	}
 }
+
+func TestAListAnswerKeepsWhatIsBesideData(t *testing.T) {
+	c := newTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 200, map[string]any{"organization": org, "data": []any{}, "truncated": false, "next_cursor": "c2", "counts": map[string]any{"total": 7}}, nil)
+	}, "")
+	out, err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "effective_repo_settings"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out.Extras["next_cursor"]) != `"c2"` || !strings.Contains(string(out.Extras["counts"]), `"total":7`) {
+		t.Fatalf("extras %v", out.Extras)
+	}
+	if _, kept := out.Extras["data"]; kept {
+		t.Fatalf("the rows are not an extra: %v", out.Extras)
+	}
+}

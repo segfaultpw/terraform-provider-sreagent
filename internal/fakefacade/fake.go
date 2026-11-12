@@ -37,6 +37,7 @@ type Fake struct {
 	defaults    map[string]any
 	legacy      map[string]bool
 	dm          defaultsModel
+	em          effectiveModel
 	history     map[string][]map[string]any
 }
 
@@ -331,6 +332,10 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if spec.Key == "repository_defaults" {
 		f.serveDefaults(w, r, body)
+		return
+	}
+	if spec.Key == "effective_repo_settings" && r.Method == http.MethodGet {
+		f.serveEffective(w, r)
 		return
 	}
 

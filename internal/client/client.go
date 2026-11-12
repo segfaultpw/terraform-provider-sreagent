@@ -70,6 +70,10 @@ type Response struct {
 	Organization Organization
 	Data         json.RawMessage
 	Truncated    bool
+	// Extras holds every top-level key of the answer other than the organization,
+	// the data and the truncation flag: the paging cursor and whatever totals a
+	// list carries beside its rows.
+	Extras map[string]json.RawMessage
 }
 
 // APIError is a non-2xx answer.
@@ -301,7 +305,7 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 		return nil, fmt.Errorf("%s %s answered without naming its organization, so the pin to %q cannot be checked; nothing was recorded in state", r.Method, r.Path, c.org)
 	}
 	if success {
-		out := &Response{Status: resp.StatusCode, ETag: resp.Header.Get("ETag"), Data: env.Data, Truncated: env.Truncated}
+		out := &Response{Status: resp.StatusCode, ETag: resp.Header.Get("ETag"), Data: env.Data, Truncated: env.Truncated, Extras: extras(body)}
 		if env.Organization != nil {
 			out.Organization = *env.Organization
 		}
@@ -326,6 +330,22 @@ func (c *Client) decode(r Request, resp *http.Response, body []byte, secrets []s
 		}
 	}
 	return nil, apiErr
+}
+
+// extras is every top-level key of a success body that the envelope does not
+// name.
+func extras(body []byte) map[string]json.RawMessage {
+	var all map[string]json.RawMessage
+	if json.Unmarshal(body, &all) != nil {
+		return nil
+	}
+	for _, k := range []string{"organization", "data", "truncated"} {
+		delete(all, k)
+	}
+	if len(all) == 0 {
+		return nil
+	}
+	return all
 }
 
 func redact(s string, secrets []string) string {
