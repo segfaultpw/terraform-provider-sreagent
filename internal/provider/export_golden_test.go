@@ -116,8 +116,15 @@ func problemsInExport(t *testing.T, name string, src []byte, schemas map[string]
 						}
 					}
 				}
-				if typeName == "sreagent_repository_defaults" && attr == "confirm" {
-					problems = append(problems, fmt.Sprintf("%s.%s writes confirm: an exported row is already on, and a confirmation only ever belongs to a change", typeName, label))
+				if typeName == "sreagent_repository_defaults" && (attr == "confirm" || attr == "confirm_on_destroy") {
+					problems = append(problems, fmt.Sprintf("%s.%s writes %s: an exported row is already on, and a confirmation only ever belongs to a change", typeName, label, attr))
+				}
+				if attr == "follows_default" {
+					for _, name := range literalStrings(a.Expr) {
+						if _, stated := blk.Body.Attributes[name]; stated {
+							problems = append(problems, fmt.Sprintf("%s.%s states %s and names it in follows_default, which terraform validate refuses", typeName, label, name))
+						}
+					}
 				}
 			}
 			if len(blk.Body.Blocks) > 0 {
@@ -174,6 +181,8 @@ func TestTheExportCheckNamesWhatTheProviderDoesNotTake(t *testing.T) {
 		"a resource the provider lacks":   {`resource "sreagent_nope" "d" {}`, "has no resource"},
 		"a value outside the enum":        {`resource "sreagent_repo_setting" "r" { follows_default = ["service"] }`, "refuses"},
 		"a confirmation":                  {`resource "sreagent_repository_defaults" "d" { confirm = ["ci_config"] }`, "already on"},
+		"a destroy confirmation":          {`resource "sreagent_repository_defaults" "d" { confirm_on_destroy = ["ci_config"] }`, "already on"},
+		"a setting stated and reset":      {"resource \"sreagent_repo_setting\" \"r\" {\n  check_network   = true\n  follows_default = [\"check_network\"]\n}", "terraform validate refuses"},
 		"an import with no resource":      {"import {\n  to = sreagent_team.gone\n  id = \"x\"\n}", "does not declare"},
 	} {
 		t.Run(name, func(t *testing.T) {
