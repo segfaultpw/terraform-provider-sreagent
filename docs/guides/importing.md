@@ -18,6 +18,8 @@ Every resource imports, either with `terraform import` or with an
 | Collections (alert routes, SLOs, teams and the rest) | the row's id | `00000000-0000-0000-0000-000000000000` |
 | `sreagent_ticket_integration`, `sreagent_ticket_import_rule` | the provider | `jira` |
 | Singletons (`sreagent_organization_settings` and the other settings) | the resource's own name | `organization_settings` |
+| `sreagent_security_sla_policy`, `sreagent_security_digest_settings`, `sreagent_security_code_classes` | the resource's own name | `security_sla_policy` |
+| `sreagent_security_notification_rule`, `sreagent_secret_allow_rule` | the row's id | `00000000-0000-0000-0000-000000000000` |
 | `sreagent_service_binding` | the service, plus `?environment=<name>` when the environment is not the default, each part escaped as in a URL | `checkout?environment=prod` |
 
 A collection's id is on the row's page in the app and in its list data source:
@@ -99,6 +101,41 @@ the resource instead gives the child its own defaults for all six settings and s
 plan says so and lists what moves). Destroying the resource hands the child back to the parent and is planned like
 a change: the destroy plan lists what moves, and if the parent's defaults turn CI configuration or network access
 on, it fails until `confirm_on_destroy` holds the confirmation (set it, apply, then destroy).
+
+## The security settings and rules
+
+The security SLA policy, the digest, the code classes, the notification rules and the secret allow rules are managed by
+`sreagent_security_sla_policy`, `sreagent_security_digest_settings`, `sreagent_security_code_classes`,
+`sreagent_security_notification_rule` and `sreagent_secret_allow_rule`. They need the infrastructure suite in the plan.
+Their data sources are unchanged, and each id they answer is the id to import. The exported file writes all five.
+
+- **Two nulls are values.** An SLA with no days for a severity, and a digest with no Slack channel, are stored as null
+  on the platform. The resources write them as `0` (days) and `""` (channel) and send null for them; the data sources
+  keep reading null. An imported singleton that holds one plans nothing once the configuration says `info_days = 0` or
+  `slack_channel = ""`, and a configuration that leaves the attribute out leaves it as it is.
+- **A singleton attribute left out is left as it is.** This holds for the three settings, so importing one and stating
+  only the attributes you care about changes nothing else. Destroying one leaves the settings in place, with a warning.
+- **A notification rule takes the platform's defaults for what it leaves out.** That includes `page` (false) and
+  `events` (`new_finding`), so removing `page = true` stops paging. The rule the platform seeds, Critical and high
+  findings, has four events (`new_finding`, `sla_breached`, `acceptance_expired`, `fix_verified`); state every field of it
+  to import it without a change. Destroying a rule deletes it, the seeded one included, and the platform never creates it
+  again.
+- **The code classes are a set.** The order does not matter, the platform stores them sorted, and `[]` unmarks them all.
+- **An allow rule cannot be edited.** Any change replaces it. The repository is stored in lower case and the end time
+  with microseconds; neither is a change. A rule whose end has passed imports without a change, and the plan warns that it
+  covers nothing.
+
+```terraform
+import {
+  to = sreagent_security_sla_policy.this
+  id = "security_sla_policy"
+}
+
+import {
+  to = sreagent_secret_allow_rule.fixtures
+  id = "00000000-0000-0000-0000-000000000000"
+}
+```
 
 ## Arguments the platform never answers
 

@@ -33,7 +33,16 @@ Most of the provider works against any platform that serves the configuration AP
 | `sreagent_repository_defaults`, `data.sreagent_repository_defaults` | v0.477.0 |
 | `follows_default`, `set_here` and `following` on `sreagent_repo_setting` | v0.482.0 |
 | `data.sreagent_effective_repo_settings` | v0.477.0 |
-| The security, code detection and allow rule data sources | the release that first served each, named in the error an older platform answers |
+| `data.sreagent_code_detection_settings` | v0.475.0 |
+| `sreagent_security_sla_policy`, `data.sreagent_security_sla_policy` | v0.476.3 |
+| `sreagent_security_digest_settings`, `sreagent_security_notification_rule`, and their data sources | v0.476.4 |
+| `sreagent_security_code_classes`, `data.sreagent_security_code_classes` | v0.476.6 |
+| `sreagent_secret_allow_rule`, `data.sreagent_secret_allow_rules` | v0.477.0 |
+
+The security resources need nothing newer than the release that first served each (0.3.0 changes the provider and the
+platform's published API document, not what a platform serves). They also need the infrastructure suite in the
+organization's plan, besides the configuration API's advanced integrations: without it every read and write answers 403
+and the plan fails with the platform's sentence and the ways to stop managing the resource.
 
 On a platform from before a part, the provider says which release the part needs; nothing else is affected.
 

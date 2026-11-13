@@ -62,6 +62,20 @@ other settings resources) cannot be deleted: destroying it only stops Terraform 
 `sreagent_repository_defaults` in a child organization, which hands the child back to its parent's defaults and is
 planned like a change (see below).
 
+The three security singletons (`sreagent_security_sla_policy`, `sreagent_security_digest_settings` and
+`sreagent_security_code_classes`) leave their settings in place on destroy and say so: a destroy would otherwise change
+the whole organization's security behavior (the digest stops, every marked class is unmarked, every due date is
+recomputed). To go back to the defaults, state them, apply, then remove the block. The security notification rules and
+the secret allow rules are rows, and destroying one deletes it.
+
+## Resources that need the infrastructure suite
+
+The security SLA policy, digest, code classes, notification rules and allow rules need the infrastructure suite in the
+organization's plan, on top of the advanced integrations every resource needs. When the plan does not include it the
+platform answers 403 to every read, and the plan fails with `Could not read sreagent_<type>`, the platform's sentence
+and the ways to stop managing the resource: `terraform state rm`, or a `removed` block whose `lifecycle` sets
+`destroy = false`. The provider never reads that answer as a deleted row, so a lapsed plan cannot plan a re-create.
+
 ## Changes the platform previews
 
 A change to the organization's repository defaults (`sreagent_repository_defaults`) moves every repository that
