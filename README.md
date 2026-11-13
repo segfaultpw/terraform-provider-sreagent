@@ -71,3 +71,26 @@ docker compose -f acceptance/docker-compose.yml down -v
 `acceptance/IMAGE` holds the short commit SHA (one line, no tag prefix, for example `8f621a6`) of the sre-agent image the
 stack runs, pulled from `ghcr.io/segfaultpw/sre-agent`. Set it to the tag production serves when a release is cut, so the
 acceptance run exercises the platform the provider ships against.
+
+## Releasing
+
+A release is cut by pushing to `main`: the Release workflow runs after CI is green, computes the version from the
+conventional commit subjects since the last tag, tags it, signs the checksums and publishes. Nothing is tagged by hand.
+
+| Commits since the last tag | Before 1.0.0 | From 1.0.0 |
+| --- | --- | --- |
+| a breaking change (`!` before the colon, or a `BREAKING CHANGE` footer) | minor | major |
+| a `feat` | minor | minor |
+| a `fix` | patch | patch |
+| only `docs`, `ci`, `test`, `chore` or `refactor` | no release | no release |
+
+Before 1.0.0 a feature bumps the minor version and a fix the patch version, so a release that adds a resource is 0.3.0,
+not 0.2.1. Everything not releasable accumulates into the next release that is.
+
+The rule lives in `scripts/release-version.sh`, which the workflow calls and `internal/release` tests against throwaway
+git histories (`go test ./internal/release`). `scripts/release-version.sh compute` prints the version the commits call
+for, or `none`; run it from the repository root to see what a push would release.
+
+The changelog is the gate: a releasable push whose computed version has no `## [x.y.z]` section in `CHANGELOG.md` fails
+the workflow instead of tagging (`scripts/release-version.sh require-changelog vX.Y.Z`). Write the section in the same
+push as the first releasable commit, listing every breaking change under `BREAKING CHANGES:` with its upgrade step.

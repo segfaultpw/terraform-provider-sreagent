@@ -2,11 +2,12 @@
 # same run (a tag pushed with GITHUB_TOKEN starts no other workflow, so tagging and the
 # goreleaser build cannot be split across workflows).
 #
-# The version comes from conventional commits since the last tag: a subject with `!` before
-# the colon or a BREAKING CHANGE footer is a breaking change, `feat:` a feature, `fix:` a fix;
-# anything else (docs, ci, chore, test) accumulates into the next real release. Before 1.0.0 a
-# breaking change bumps the minor and a feature or fix bumps the patch. With no tag yet, the
-# first version is the newest `## [x.y.z]` section of CHANGELOG.md.
+# The version comes from conventional commits since the last tag (scripts/release-version.sh,
+# which internal/release tests): a subject with `!` before the colon or a BREAKING CHANGE footer
+# is a breaking change, `feat:` a feature, `fix:` a fix; anything else (docs, ci, chore, test,
+# refactor) accumulates into the next real release. Before 1.0.0 a breaking change or a feature
+# bumps the minor and a fix bumps the patch. With no tag yet, the first version is the newest
+# `## [x.y.z]` section of CHANGELOG.md.
 #
 # The changelog is the human gate: a releasable commit with no `## [x.y.z]` section for the
 # computed version FAILS this workflow instead of tagging a release nobody described. The
@@ -64,44 +65,11 @@ jobs:
             exit 0
           fi
 
-          last=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -z "$last" ]; then
-            first=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '#[] ' || true)
-            if [ -z "$first" ]; then
-              echo "No tag and no ## [x.y.z] section in CHANGELOG.md: nothing to release."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            next="v$first"
-          else
-            subjects=$(git log --format=%s "$last"..HEAD)
-            bodies=$(git log --format=%b "$last"..HEAD)
-            level=none
-            if echo "$subjects" | grep -qE '^[a-z]+(\(.*\))?!:' || echo "$bodies" | grep -q 'BREAKING CHANGE'; then
-              level=breaking
-            elif echo "$subjects" | grep -qE '^feat(\(.*\))?:'; then
-              level=feature
-            elif echo "$subjects" | grep -qE '^fix(\(.*\))?:'; then
-              level=fix
-            fi
-            if [ "$level" = none ]; then
-              echo "Nothing releasable since $last."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            IFS=. read -r maj min pat <<< "${last#v}"
-            if [ "$maj" = 0 ]; then
-              case "$level" in
-                breaking) next="v0.$((min + 1)).0" ;;
-                *) next="v0.$min.$((pat + 1))" ;;
-              esac
-            else
-              case "$level" in
-                breaking) next="v$((maj + 1)).0.0" ;;
-                feature) next="v$maj.$((min + 1)).0" ;;
-                fix) next="v$maj.$min.$((pat + 1))" ;;
-              esac
-            fi
+          next=$(bash scripts/release-version.sh compute)
+          if [ "$next" = none ]; then
+            echo "Nothing releasable since the last tag."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           if gh release view "$next" >/dev/null 2>&1; then
@@ -109,12 +77,7 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if ! grep -q "^## \[${next#v}\]" CHANGELOG.md; then
-            echo "::error::The commits call for $next, but CHANGELOG.md has no ## [${next#v}]" \
-              "section. Write the entry (that IS the release decision) and push it; this" \
-              "workflow then tags and publishes it."
-            exit 1
-          fi
+          bash scripts/release-version.sh require-changelog "$next"
           echo "next=$next" >> "$GITHUB_OUTPUT"
           echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "Releasing $next."
