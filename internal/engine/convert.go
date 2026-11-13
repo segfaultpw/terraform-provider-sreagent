@@ -176,6 +176,34 @@ func fromJSON(k Kind, raw any) (attr.Value, error) {
 	return nil, fmt.Errorf("unsupported kind %d", k)
 }
 
+// nullAsValue is the value an attribute reads a null answer as (Attr.NullAs).
+// A literal that is not valid JSON of the attribute's kind is a bug in the spec.
+func (a Attr) nullAsValue() (attr.Value, bool) {
+	return a.literal(a.NullAs)
+}
+
+// defaultValue is the platform's create default (Attr.Default).
+func (a Attr) defaultValue() (attr.Value, bool) {
+	return a.literal(a.Default)
+}
+
+func (a Attr) literal(text string) (attr.Value, bool) {
+	if text == "" {
+		return nil, false
+	}
+	d := json.NewDecoder(strings.NewReader(text))
+	d.UseNumber()
+	var raw any
+	if err := d.Decode(&raw); err != nil {
+		panic(fmt.Sprintf("attribute %s: %q is not JSON: %v", a.Name, text, err))
+	}
+	v, err := fromJSON(a.Kind, raw)
+	if err != nil {
+		panic(fmt.Sprintf("attribute %s: %q is not a %d: %v", a.Name, text, a.Kind, err))
+	}
+	return v, true
+}
+
 // keep reports whether the configured value should stay in state although
 // the server answered a different spelling of the same value.
 func keep(a Attr, before, remote attr.Value) bool {

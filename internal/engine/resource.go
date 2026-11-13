@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -19,11 +20,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -263,7 +269,12 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	// A NotRead argument is never answered, so the platform can never fill it:
 	// left out of the configuration it stays null rather than unknown.
 	computed := a.Computed || (!required && !clearable && !a.NotRead)
-	stable := computed && !a.Computed && !a.Recomputed
+	// A default makes the attribute Computed so that the framework can plan it.
+	// It is never carried from state: removing a stated value must plan the
+	// default, not the value the row still holds.
+	_, defaulted := a.defaultValue()
+	computed = computed || defaulted
+	stable := computed && !a.Computed && !a.Recomputed && !defaulted
 	switch a.Kind {
 	case String, JSON:
 		mods := []planmodifier.String{}
@@ -283,6 +294,12 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if len(a.HiddenKeys) > 0 {
 			sa.Validators = append(sa.Validators, refuseKeys{keys: a.HiddenKeys})
 		}
+		if a.Kind == String {
+			sa.Validators = append(sa.Validators, a.stringBounds()...)
+		}
+		if v, ok := a.defaultValue(); ok {
+			sa.Default = stringdefault.StaticString(v.(types.String).ValueString())
+		}
 		return map[string]schema.Attribute{a.Attribute(): sa}
 	case Int:
 		mods := []planmodifier.Int64{}
@@ -292,7 +309,18 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, int64planmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		ia := schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		if a.Min != nil || a.Max != nil {
+			var v validator.Int64 = intBounds{min: a.Min, max: a.Max}
+			if sentinel, ok := a.nullAsValue(); ok {
+				v = nullAsInt{sentinel: sentinel.(types.Int64).ValueInt64(), inner: v}
+			}
+			ia.Validators = append(ia.Validators, v)
+		}
+		if v, ok := a.defaultValue(); ok {
+			ia.Default = int64default.StaticInt64(v.(types.Int64).ValueInt64())
+		}
+		return map[string]schema.Attribute{a.Attribute(): ia}
 	case Float:
 		mods := []planmodifier.Float64{}
 		if stable {
@@ -301,7 +329,11 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, float64planmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		fa := schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		if v, ok := a.defaultValue(); ok {
+			fa.Default = float64default.StaticFloat64(v.(types.Float64).ValueFloat64())
+		}
+		return map[string]schema.Attribute{a.Attribute(): fa}
 	case Bool:
 		mods := []planmodifier.Bool{}
 		if stable {
@@ -310,7 +342,11 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, boolplanmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		ba := schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		if v, ok := a.defaultValue(); ok {
+			ba.Default = booldefault.StaticBool(v.(types.Bool).ValueBool())
+		}
+		return map[string]schema.Attribute{a.Attribute(): ba}
 	case StringList:
 		mods := []planmodifier.List{}
 		if stable {
@@ -328,12 +364,41 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		} else {
 			validators = append(validators, listvalidator.ValueStringsAre(trimmed{}))
 		}
+		if len(a.OneOf) > 0 {
+			validators = append(validators, listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...)))
+		}
 		if a.MaxItems > 0 {
 			validators = append(validators, listvalidator.SizeAtMost(a.MaxItems))
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods, Validators: validators}}
+		if a.MinItems > 0 {
+			validators = append(validators, listvalidator.SizeAtLeast(a.MinItems))
+		}
+		la := schema.ListAttribute{ElementType: types.StringType, Description: describe(a), Required: required, Optional: optional, Computed: computed, PlanModifiers: mods, Validators: validators}
+		if v, ok := a.defaultValue(); ok {
+			la.Default = listdefault.StaticValue(v.(types.List))
+		}
+		return map[string]schema.Attribute{a.Attribute(): la}
 	}
 	return nil
+}
+
+// stringBounds are the validators the published length bounds and pattern
+// become. A value the attribute reads a null as (NullAs) passes them, since it
+// stands for none of the value the bounds describe.
+func (a Attr) stringBounds() []validator.String {
+	var out []validator.String
+	if a.MinLength > 0 || a.MaxLength > 0 {
+		out = append(out, codePoints{min: a.MinLength, max: a.MaxLength})
+	}
+	if a.Pattern != "" {
+		out = append(out, matchesPattern{re: regexp.MustCompile(a.Pattern), raw: a.Pattern})
+	}
+	if sentinel, ok := a.nullAsValue(); ok {
+		for i, v := range out {
+			out[i] = nullAsString{sentinel: sentinel.(types.String).ValueString(), inner: v}
+		}
+	}
+	return out
 }
 
 // replaceString replaces the row when a CreateOnly string changes. For a
@@ -465,6 +530,12 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			continue
 		}
 		if o == opUpdate && len(a.HiddenKeys) > 0 && unchanged {
+			continue
+		}
+		// The value the attribute reads a null as is how the platform's null is
+		// written in the configuration; it goes out as the null it stands for.
+		if sentinel, ok := a.nullAsValue(); ok && sentinel.Equal(v) {
+			body[a.Name] = nil
 			continue
 		}
 		j, err := toJSON(v)
@@ -748,6 +819,9 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			diags.AddAttributeError(path.Root(a.Attribute()), "Unexpected API answer", err.Error())
 			continue
 		}
+		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() {
+			remote = sentinel
+		}
 		if len(a.IgnoredValues) > 0 {
 			remote = withoutValues(remote, a.IgnoredValues)
 		}
@@ -810,6 +884,9 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		remote, err := fromJSON(a.Kind, row[a.Name])
 		if err != nil || held == nil {
 			return false, diags
+		}
+		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() {
+			remote = sentinel
 		}
 		if !keep(a, held, remote) && (!held.IsNull() || !remote.IsNull()) {
 			return false, diags

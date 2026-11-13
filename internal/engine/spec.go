@@ -55,7 +55,8 @@ type Attr struct {
 	NotRead bool
 	// Normalize: the server stores this form; values equal after it are equal.
 	Normalize func(string) string
-	OneOf     []string
+	// OneOf bounds a String to these values and, on a StringList, each item.
+	OneOf []string
 	// HiddenKeys: top-level keys of a JSON attribute the platform stores but
 	// never answers, because they can carry a credential. Terraform could only
 	// hold them in state, so configuration naming one is refused. The platform
@@ -111,6 +112,29 @@ type Attr struct {
 	// Local: Computed and kept by the provider alone. It is never sent, never read
 	// from the API, and carried through a refresh from the prior state.
 	Local bool
+	// NullAs is a JSON literal the resource reads a null answer as and sends null
+	// for: a null that is a real setting on a singleton (no SLA, no channel), whose
+	// attributes are Optional and Computed so that leaving one out leaves it as it
+	// is. The data source reads the null. The contract publishes the literal as
+	// terraform_null_as and the contract test pins it, and a value equal to it is
+	// accepted by Min, Max and Pattern even though it lies outside them.
+	NullAs string
+	// Min and Max are the published minimum and maximum of an Int, checked at plan.
+	Min, Max *int64
+	// MinLength and MaxLength are the published length bounds of a String, in code
+	// points (the platform counts code points; the framework's own validator counts
+	// bytes). Zero means none.
+	MinLength, MaxLength int
+	// Pattern is the published pattern of a String (RE2 syntax, matched anywhere
+	// the pattern is not anchored).
+	Pattern string
+	// MinItems is the published minItems of a StringList. Zero means none.
+	MinItems int
+	// Default is a JSON literal: the platform's published create default. The
+	// attribute is Optional and Computed and takes it when the configuration
+	// leaves it out, on a create and on an update that removes a stated value,
+	// where every other attribute leaves the stored value as it is.
+	Default string
 }
 
 // Attribute is the Terraform attribute name.

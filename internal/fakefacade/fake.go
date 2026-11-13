@@ -204,7 +204,9 @@ func etag(spec engine.Spec, row map[string]any) string {
 }
 
 func zero(a engine.Attr) any {
-	if a.Clearable {
+	// A null that is a real setting (engine.Attr.NullAs) is what the platform
+	// stores before anyone sets it.
+	if a.Clearable || a.NullAs != "" {
 		return nil
 	}
 	switch a.Kind {
@@ -508,7 +510,7 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		if v == nil && f.following(spec.Key) && slices.Contains(repoWide, k) {
 			continue
 		}
-		if v == nil && !a.Clearable {
+		if v == nil && !a.Clearable && a.NullAs == "" {
 			fail(w, 422, "unprocessable_entity", k+" cannot be null; omit it to keep the stored value.")
 			return
 		}
