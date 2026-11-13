@@ -40,7 +40,7 @@ jobs:
       - name: Start and seed the stack
         run: |
           ./acceptance/seed.sh > "$RUNNER_TEMP/acc.env"
-          for name in SREAGENT_API_KEY SREAGENT_READ_API_KEY; do
+          for name in SREAGENT_API_KEY SREAGENT_READ_API_KEY SREAGENT_CHILD_API_KEY SREAGENT_NOINFRA_API_KEY; do
             echo "::add-mask::$(grep "^$name=" "$RUNNER_TEMP/acc.env" | cut -d= -f2-)"
           done
           cat "$RUNNER_TEMP/acc.env" >> "$GITHUB_ENV"

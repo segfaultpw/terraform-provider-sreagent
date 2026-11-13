@@ -1,0 +1,468 @@
+{
+  "sreagent_code_detection_settings": {
+    "available_classes": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "configured": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "default_classes": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": [
+        "list",
+        "string"
+      ]
+    },
+    "id": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "jitter_minutes": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "manual_runs_today": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "open_ended_enabled": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "run_day": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "run_hour": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "scan_all": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "updated_at": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "weekly_enabled": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    }
+  },
+  "sreagent_secret_allow_rules": {
+    "id": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "items": {
+      "computed": true,
+      "nested": {
+        "attributes": {
+          "created_at": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "detector_type": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "expires_at": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "id": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "path_glob": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "reason": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "repository": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          }
+        },
+        "nesting": "list"
+      },
+      "optional": false,
+      "required": false,
+      "sensitive": false
+    },
+    "truncated": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    }
+  },
+  "sreagent_security_code_classes": {
+    "available_classes": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "built_in_classes": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "classes": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": [
+        "list",
+        "string"
+      ]
+    },
+    "configured": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "id": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "limit": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    }
+  },
+  "sreagent_security_digest_settings": {
+    "cadence": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "configured": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "email": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "enabled": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "hour": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "id": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "last_sent_at": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "last_sent_period": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "slack_channel": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "timezone": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "weekday": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    }
+  },
+  "sreagent_security_notification_rules": {
+    "id": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "items": {
+      "computed": true,
+      "nested": {
+        "attributes": {
+          "areas": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": [
+              "list",
+              "string"
+            ]
+          },
+          "email": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "bool"
+          },
+          "enabled": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "bool"
+          },
+          "events": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": [
+              "list",
+              "string"
+            ]
+          },
+          "id": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "min_severity": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "name": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "page": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "bool"
+          },
+          "slack": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "bool"
+          },
+          "slack_channel": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          },
+          "updated_at": {
+            "computed": true,
+            "optional": false,
+            "required": false,
+            "sensitive": false,
+            "type": "string"
+          }
+        },
+        "nesting": "list"
+      },
+      "optional": false,
+      "required": false,
+      "sensitive": false
+    },
+    "truncated": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    }
+  },
+  "sreagent_security_sla_policy": {
+    "configured": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "critical_days": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "defaults": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "bool"
+    },
+    "high_days": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "id": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    },
+    "info_days": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "low_days": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "medium_days": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "number"
+    },
+    "updated_at": {
+      "computed": true,
+      "optional": false,
+      "required": false,
+      "sensitive": false,
+      "type": "string"
+    }
+  }
+}

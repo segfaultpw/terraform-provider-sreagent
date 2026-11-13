@@ -1037,11 +1037,6 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 					spec = s
 				}
 			}
-			// A resource still read as a data source has no Lifecycle spec to hold to
-			// the document; its stand-in is the spec it will be.
-			if standIn := standIns[c.key]; !spec.Lifecycle && standIn != nil {
-				spec = standIn()
-			}
 			if problems := specProblems(d, spec); len(problems) != 0 {
 				t.Fatalf("the untouched document already disagrees: %v", problems)
 			}
@@ -1084,7 +1079,7 @@ func TestPreviewSchemaIsHeldToTheWireShape(t *testing.T) {
 // Every published pattern the engine copies must compile in the engine's regular
 // expression syntax, or a schema would panic at the first plan.
 func TestEveryPatternTheEngineHoldsCompiles(t *testing.T) {
-	for _, s := range append(specs.All(), standIns["security_digest_settings"](), standIns["security_notification_rules"]()) {
+	for _, s := range specs.All() {
 		for _, a := range s.Attrs {
 			if a.Pattern == "" {
 				continue

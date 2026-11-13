@@ -20,7 +20,7 @@ if [ "$healthy" != true ]; then
   echo "the app never answered /api/health; see: docker compose -f acceptance/docker-compose.yml logs app" >&2
   exit 1
 fi
-docker compose exec -T app bin/sre_agent eval 'SreData.Release.seed_tf_acceptance("tf-acc")' | grep -E '^SREAGENT_(API_KEY|READ_API_KEY|ACC_MEMBER_EMAIL|ORGANIZATION|CHILD_API_KEY|CHILD_ORGANIZATION)='
+docker compose exec -T app bin/sre_agent eval 'SreData.Release.seed_tf_acceptance("tf-acc")' | grep -E '^SREAGENT_(API_KEY|READ_API_KEY|ACC_MEMBER_EMAIL|ORGANIZATION|CHILD_API_KEY|CHILD_ORGANIZATION|NOINFRA_API_KEY|NOINFRA_ORGANIZATION)='
 echo "SREAGENT_BASE_URL=http://127.0.0.1:4000"
 # The acceptance tests refuse to run without this line, so an environment
 # holding a real key and nothing else can never reach a real organization.

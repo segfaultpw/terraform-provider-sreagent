@@ -57,6 +57,8 @@ go generate ./...          # regenerates docs/
 terraform fmt -check -recursive examples
 ```
 
+The CI workflow runs the same checks on Terraform 1.12.2 (the supported floor) and the latest release.
+
 Acceptance tests run against a throwaway local stack, never production:
 
 ```shell
@@ -65,3 +67,7 @@ set -a; . /tmp/tf-acc.env; set +a
 TF_ACC=1 go test ./internal/provider/ -run TestAcc -timeout 60m
 docker compose -f acceptance/docker-compose.yml down -v
 ```
+
+`acceptance/IMAGE` holds the short commit SHA (one line, no tag prefix, for example `8f621a6`) of the sre-agent image the
+stack runs, pulled from `ghcr.io/segfaultpw/sre-agent`. Set it to the tag production serves when a release is cut, so the
+acceptance run exercises the platform the provider ships against.
