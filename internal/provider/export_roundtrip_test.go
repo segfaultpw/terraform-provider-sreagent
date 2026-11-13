@@ -285,7 +285,7 @@ resource "sreagent_security_notification_rule" "page_on_critical" {
   page          = true
 }
 
-resource "sreagent_secret_allow_rule" "acme_web_testdata" {
+resource "sreagent_secret_allow_rule" "acme_web_testdata_aws_access_key" {
   path_glob     = "**/testdata/**"
   reason        = "Vendored test fixtures, not real keys"
   repository    = "acme/web"
@@ -361,7 +361,7 @@ import {
 }
 
 import {
-  to = sreagent_secret_allow_rule.acme_web_testdata
+  to = sreagent_secret_allow_rule.acme_web_testdata_aws_access_key
   id = %q
 }
 
