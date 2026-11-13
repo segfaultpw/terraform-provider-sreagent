@@ -3,6 +3,7 @@ package specs
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 )
@@ -263,17 +264,56 @@ var SecurityNotificationRules = engine.Spec{
 	PlanChecks:      []func(plan, prior engine.Config) []engine.Issue{func(plan, _ engine.Config) []engine.Issue { return ruleIssues(plan) }},
 }
 
-// SecretAllowRules is data.sreagent_secret_allow_rules.
+// allowRuleEnd refuses a rule that ends before it starts, and says so of one that has ended:
+// a new or replaced rule must end in the future; one that already ended covers nothing.
+func allowRuleEnd(plan, prior engine.Config) []engine.Issue {
+	planned, p := plan.String("expires_at")
+	if p != engine.Present {
+		return nil
+	}
+	end, err := time.Parse(time.RFC3339, planned)
+	if err != nil {
+		return nil
+	}
+	if prior != nil {
+		if held, h := prior.String("expires_at"); h == engine.Present && engine.RFC3339(held) == engine.RFC3339(planned) {
+			if end.Before(time.Now()) {
+				return []engine.Issue{{Attr: "expires_at", Warning: true, Summary: "This allow rule has ended",
+					Detail: "This allow rule ended at " + planned + " and covers nothing: the weekly scan files its matches again. Remove the block, or replace the rule with a later expires_at."}}
+			}
+			return nil
+		}
+	}
+	if !end.After(time.Now()) {
+		return []engine.Issue{{Attr: "expires_at", Summary: "expires_at must be in the future", Detail: "expires_at must be in the future."}}
+	}
+	return nil
+}
+
+// SecretAllowRules is data.sreagent_secret_allow_rules and sreagent_secret_allow_rule.
 var SecretAllowRules = engine.Spec{
 	Key: "secret_allow_rules", TypeName: "secret_allow_rule", ListName: "secret_allow_rules",
-	Description: "The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector. Read only here.",
+	Description: "A rule that keeps the weekly repository scan from filing a credential match, by path, repository and detector. " +
+		"A rule cannot be edited: any change replaces it (the old rule is deleted first, so for a moment the weekly scan could file a match it covered; set lifecycle create_before_destroy to avoid that, up to the 100 rule limit). " +
+		"Removing repository, detector_type or expires_at replaces the rule with one that covers every repository, every kind, or never ends. " +
+		"A rule holds no credential and closes nothing already filed; mark those findings false positive in the app. An organization has at most 100 rules. " +
+		"Needs the infrastructure suite.",
 	Shape:       engine.Generated,
+	Lifecycle:   true,
+	PlanFeature: infrastructureSuite,
 	Attrs: []engine.Attr{
-		ro("path_glob", engine.String, "The paths the rule covers (** matches any run of characters including /, * any run without /, ? one character)."),
-		ro("reason", engine.String, "Why the match is not a credential."),
-		ro("repository", engine.String, "owner/name, or null for every repository."),
-		ro("detector_type", engine.String, "A detector type, or null for every kind."),
-		ro("expires_at", engine.String, "When the rule ends, or null for never."),
+		{Name: "path_glob", Kind: engine.String, Required: true, CreateOnly: true, Trim: true, MinLength: 1, MaxLength: 200,
+			Description: "The paths the rule covers, at most 200 characters (** matches any run of characters including /, * any run without /, ? one character; case sensitive, from the repository root).", ReadDescription: "The paths the rule covers (** matches any run of characters including /, * any run without /, ? one character)."},
+		{Name: "reason", Kind: engine.String, Required: true, CreateOnly: true, Trim: true, MinLength: 10, MaxLength: 500,
+			Description: "Why the match is not a credential, 10 to 500 characters. It must not quote the credential: the platform refuses a reason that looks like one.", ReadDescription: "Why the match is not a credential."},
+		{Name: "repository", Kind: engine.String, CreateOnly: true, Clearable: true, Normalize: engine.Lower, Pattern: `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`, MaxLength: 255,
+			Description: "owner/name, stored in lower case. Leave it out for every repository.", ReadDescription: "owner/name, or null for every repository."},
+		{Name: "detector_type", Kind: engine.String, CreateOnly: true, Clearable: true, Pattern: `^[a-z0-9_]+$`, MaxLength: 50,
+			Description: "A detector type such as aws_access_key. Leave it out for every kind. The platform refuses a type it does not know, naming the ones it has.", ReadDescription: "A detector type, or null for every kind."},
+		{Name: "expires_at", Kind: engine.String, CreateOnly: true, Clearable: true, Timestamp: true,
+			Description: "When the rule ends, an RFC 3339 time with a zone in the future. Leave it out for never. The platform answers microseconds; the same instant written another way is no change.", ReadDescription: "When the rule ends, or null for never."},
 		ro("created_at", engine.String, "When the rule was added."),
 	},
+	PlanChecks:      []func(plan, prior engine.Config) []engine.Issue{allowRuleEnd},
+	ReadDescription: "The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector." + dataSourceNote("secret_allow_rule"),
 }

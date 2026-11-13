@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -183,4 +185,125 @@ func TestAccSecurityNotificationRule(t *testing.T) {
 			},
 		},
 	})
+}
+
+// An allow rule cannot be edited: a change replaces it, the platform's spelling of the
+// repository and the time is no change, and removing a scope replaces the rule with a wider one.
+func TestAccSecretAllowRule(t *testing.T) {
+	accPreCheck(t)
+	const addr = "sreagent_secret_allow_rule.test"
+	cfg := func(reason, rest string) string {
+		return accProvider() + fmt.Sprintf("resource \"sreagent_secret_allow_rule\" \"test\" {\n  path_glob = \"acc/**\"\n  reason = %q\n%s}\n", reason, rest)
+	}
+	scoped := "  repository = \"Tf/Acc\"\n  expires_at = \"2099-12-31T00:00:00Z\"\n"
+	var id string
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   accSkipBelow112,
+		Steps: []resource.TestStep{
+			{
+				Config:           cfg("Acceptance fixtures, not real keys", scoped),
+				ConfigPlanChecks: accSecurityEmpty,
+				Check: func(s *terraform.State) error {
+					id = s.RootModule().Resources[addr].Primary.ID
+					if got := accRow(t, "secret_allow_rules/"+id)["repository"]; got != "tf/acc" {
+						return fmt.Errorf("the platform stores the repository in lower case, found %v", got)
+					}
+					return nil
+				},
+			},
+			{
+				// A change replaces the rule.
+				Config: cfg("Acceptance fixtures, still not real keys", scoped),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(addr, plancheck.ResourceActionDestroyBeforeCreate),
+				}},
+				Check: func(s *terraform.State) error {
+					if s.RootModule().Resources[addr].Primary.ID == id {
+						return fmt.Errorf("the rule must have been replaced")
+					}
+					return nil
+				},
+			},
+			{ResourceName: addr, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"repository", "expires_at"}, Config: cfg("Acceptance fixtures, still not real keys", scoped)},
+			{
+				// Removing the scope replaces the rule with one that covers every repository and never ends.
+				Config: cfg("Acceptance fixtures, still not real keys", ""),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(addr, plancheck.ResourceActionDestroyBeforeCreate),
+				}},
+				Check: func(s *terraform.State) error {
+					row := accRow(t, "secret_allow_rules/"+s.RootModule().Resources[addr].Primary.ID)
+					if row["repository"] != nil || row["expires_at"] != nil {
+						return fmt.Errorf("the new rule covers every repository and never ends, found %v", row)
+					}
+					return nil
+				},
+			},
+			{Config: cfg("Acceptance fixtures", "  expires_at = \"2020-01-01T00:00:00Z\"\n"), PlanOnly: true, ExpectError: regexp.MustCompile(`expires_at\s+must\s+be\s+in\s+the\s+future`)},
+		},
+	})
+}
+
+// securityAccConfigs is a configuration for each of the five security resources, for the
+// tests that hold all of them to the same rule. The names are resource types, not credentials.
+//
+//nolint:gosec // resource types and HCL, no credential
+var securityAccConfigs = map[string]string{
+	"sreagent_security_sla_policy":        "critical_days = 7",
+	"sreagent_security_digest_settings":   "enabled = false",
+	"sreagent_security_code_classes":      "classes = []",
+	"sreagent_security_notification_rule": "name = \"acc-readonly\"",
+	"sreagent_secret_allow_rule":          "path_glob = \"acc/**\"\nreason = \"Acceptance fixtures, not real keys\"",
+}
+
+// A CI job holding only the api:config_read key plans the five and cannot apply them.
+func TestAccSecurityResourcesReadOnlyKeyPlans(t *testing.T) {
+	accPreCheck(t)
+	if os.Getenv("SREAGENT_READ_API_KEY") == "" {
+		t.Skip("SREAGENT_READ_API_KEY is not set; acceptance/seed.sh prints it")
+	}
+	admin := newCLI(t)
+	t.Cleanup(func() { _, _ = admin.run("destroy", "-auto-approve") })
+	var body strings.Builder
+	for typeName, config := range securityAccConfigs {
+		fmt.Fprintf(&body, "resource %q \"test\" {\n%s\n}\n", typeName, config)
+	}
+	admin.write(body.String())
+	if out, err := admin.run("apply", "-auto-approve"); err != nil {
+		t.Fatal(out)
+	}
+	reader := &cli{t: t, dir: admin.dir, env: append(append([]string{}, admin.env...), "SREAGENT_API_KEY="+os.Getenv("SREAGENT_READ_API_KEY"))}
+	if out, err := reader.run("plan", "-detailed-exitcode"); err != nil {
+		t.Fatalf("a read-only key must plan cleanly against unchanged rows: %s", out)
+	}
+	admin.write(strings.Replace(body.String(), "critical_days = 7", "critical_days = 8", 1))
+	if out, err := reader.run("apply", "-auto-approve"); err == nil || !regexp.MustCompile(`can plan but not apply`).MatchString(out) {
+		t.Fatalf("a read-only key must be refused on apply with the read-only diagnostic, got: %v %s", err, out)
+	}
+}
+
+// An organization whose plan has the configuration API but not the infrastructure suite gets
+// the platform's 403 for every verb of the five: the apply says so, naming the feature.
+// The seed prints that organization and its key when it can make the plan; without them the
+// test says so and skips.
+func TestAccSecurityResourcesRefusedForThePlan(t *testing.T) {
+	accPreCheck(t)
+	key, slug := os.Getenv("SREAGENT_NOINFRA_API_KEY"), os.Getenv("SREAGENT_NOINFRA_ORGANIZATION")
+	if key == "" || slug == "" {
+		t.Skip("SREAGENT_NOINFRA_API_KEY and SREAGENT_NOINFRA_ORGANIZATION are not set; the seed prints them when it can make a plan with the configuration API and without the infrastructure suite")
+	}
+	provider := fmt.Sprintf("provider \"sreagent\" {\n  base_url     = %q\n  organization = %q\n  api_key      = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), slug, key)
+	for typeName, config := range securityAccConfigs {
+		t.Run(typeName, func(t *testing.T) {
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				TerraformVersionChecks:   accSkipBelow112,
+				Steps: []resource.TestStep{{
+					Config:      provider + fmt.Sprintf("resource %q \"test\" {\n%s\n}\n", typeName, config),
+					ExpectError: wrapped("Could not create "+typeName, "The infrastructure suite is not included in your plan.", "needs the infrastructure suite in the organization's plan", "terraform state rm "+typeName),
+				}},
+			})
+		})
+	}
 }

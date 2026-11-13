@@ -2,12 +2,12 @@
 page_title: "sreagent_secret_allow_rules Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every secret_allow_rule row, read-only. The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector. Read only here.
+  Every secret_allow_rule row, read-only. The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector. This data source only reads; sreagent_secret_allow_rule manages it.
 ---
 
 # sreagent_secret_allow_rules (Data Source)
 
-Every secret_allow_rule row, read-only. The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector. Read only here.
+Every secret_allow_rule row, read-only. The rules that keep the weekly repository scan from filing a credential match, by path, repository and detector. This data source only reads; sreagent_secret_allow_rule manages it.
 
 ## Example Usage
 

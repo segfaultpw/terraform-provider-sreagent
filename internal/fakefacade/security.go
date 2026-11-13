@@ -20,6 +20,8 @@ const micro = "2006-01-02T15:04:05.000000Z07:00"
 
 const maxRules = 20
 
+const maxAllowRules = 100
+
 var builtInClasses = []any{"hardcoded_secret", "unsafe_deserialization", "ci_unpinned_action", "ci_plain_secret"}
 
 // securityKeys are the five resources whose writes get the platform's own refusals.
@@ -28,6 +30,7 @@ var securityKeys = map[string]bool{
 	"security_digest_settings":    true,
 	"security_code_classes":       true,
 	"security_notification_rules": true,
+	"secret_allow_rules":          true,
 }
 
 func isSecurity(key string) bool { return securityKeys[key] }
@@ -160,6 +163,8 @@ func (f *Fake) securityRefusal(spec engine.Spec, id string, prior, body map[stri
 		}
 	case "security_notification_rules":
 		return f.ruleRefusal(spec, id, prior, body)
+	case "secret_allow_rules":
+		return f.allowRefusal(spec, body)
 	}
 	return 0, ""
 }
@@ -207,6 +212,28 @@ func ruleDefaults(body map[string]any) map[string]any {
 	return row
 }
 
+func (f *Fake) allowRefusal(spec engine.Spec, body map[string]any) (int, string) {
+	if len(f.rows[spec.Key]) >= maxAllowRules {
+		return 422, "At most 100 allow rules can be kept. Delete one you no longer need first."
+	}
+	if n := utf8.RuneCountInString(strings.TrimSpace(text(body["reason"]))); n < 10 || n > 500 {
+		return 422, "reason must be 10 to 500 characters."
+	}
+	if raw, ok := body["expires_at"].(string); ok && strings.TrimSpace(raw) != "" {
+		end, err := time.Parse(time.RFC3339, strings.TrimSpace(raw))
+		if err != nil {
+			return 422, "expires_at must be an ISO 8601 time."
+		}
+		if !end.After(time.Now()) {
+			return 422, "expires_at must be in the future."
+		}
+	}
+	if strings.Contains(text(body["reason"]), "AKIA") {
+		return 422, "The reason looks like it holds a credential. Say why the match is safe without quoting it."
+	}
+	return 0, ""
+}
+
 // securityStore is the platform's own normalization of a row it stored: sorted
 // classes, trimmed text, blanks as none, microsecond times, the defaults a rule
 // takes, the flag that says the SLA is still the platform's.
@@ -252,6 +279,26 @@ func (f *Fake) securityStore(spec engine.Spec, row, body map[string]any, creatin
 			row["slack_channel"] = nil
 		}
 		row["updated_at"] = now
+	case "secret_allow_rules":
+		for _, k := range []string{"path_glob", "reason", "repository", "detector_type", "expires_at"} {
+			if s, ok := row[k].(string); ok {
+				row[k] = strings.TrimSpace(s)
+			}
+			if blankOrNil(row[k]) && k != "path_glob" && k != "reason" {
+				row[k] = nil
+			}
+		}
+		if s, ok := row["repository"].(string); ok {
+			row["repository"] = strings.ToLower(s)
+		}
+		if s, ok := row["expires_at"].(string); ok {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				row["expires_at"] = t.UTC().Format(micro)
+			}
+		}
+		if creating {
+			row["created_at"] = now
+		}
 	}
 }
 

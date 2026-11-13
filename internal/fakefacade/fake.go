@@ -101,6 +101,13 @@ func (f *Fake) ReadOnly() {
 	f.readOnly = true
 }
 
+// AllowWrites undoes ReadOnly, for a test that must clean up after proving the refusal.
+func (f *Fake) AllowWrites() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.readOnly = false
+}
+
 // RefusePlan makes every request for key, reads included, answer the 403 the
 // platform gives an organization whose plan lacks the feature the resource needs:
 // error "forbidden" with the platform's own sentence. A read-only key still gets
