@@ -88,7 +88,7 @@ conventional commit subjects since the last tag, tags it, signs the checksums an
 
 | Commits since the last tag | Before 1.0.0 | From 1.0.0 |
 | --- | --- | --- |
-| a breaking change (`!` before the colon, or a `BREAKING CHANGE` footer) | minor | major |
+| a breaking change (`!` before the colon, or a footer line that starts `BREAKING CHANGE:`) | minor | major |
 | a `feat` | minor | minor |
 | a `fix` | patch | patch |
 | only `docs`, `ci`, `test`, `chore` or `refactor` | no release | no release |

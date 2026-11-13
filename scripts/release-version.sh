@@ -5,7 +5,7 @@
 #   scripts/release-version.sh require-changelog vX.Y.Z   fails unless CHANGELOG.md has "## [X.Y.Z]"
 #
 # The version comes from conventional commits since the last tag: a subject with `!` before the
-# colon or a BREAKING CHANGE footer is a breaking change, `feat:` a feature, `fix:` a fix; anything
+# colon or a footer line starting BREAKING CHANGE: (or BREAKING-CHANGE:) is a breaking change, `feat:` a feature, `fix:` a fix; anything
 # else (docs, ci, chore, test, refactor) accumulates into the next real release.
 #
 #   before 1.0.0:  breaking or feature -> minor (v0.2.1 -> v0.3.0),  fix -> patch (v0.2.0 -> v0.2.1)
@@ -31,11 +31,11 @@ compute() {
   subjects=$(git log --format=%s "$last"..HEAD)
   bodies=$(git log --format=%b "$last"..HEAD)
   level=none
-  if echo "$subjects" | grep -qE '^[a-z]+(\(.*\))?!:' || echo "$bodies" | grep -q 'BREAKING CHANGE'; then
+  if echo "$subjects" | grep -qE '^[a-z]+(\([^)]*\))?!:' || echo "$bodies" | grep -qE '^BREAKING[ -]CHANGE:'; then
     level=breaking
-  elif echo "$subjects" | grep -qE '^feat(\(.*\))?:'; then
+  elif echo "$subjects" | grep -qE '^feat(\([^)]*\))?:'; then
     level=feature
-  elif echo "$subjects" | grep -qE '^fix(\(.*\))?:'; then
+  elif echo "$subjects" | grep -qE '^fix(\([^)]*\))?:'; then
     level=fix
   fi
   if [ "$level" = none ]; then
