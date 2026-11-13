@@ -1,6 +1,9 @@
 package specs
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 )
 
@@ -136,15 +139,62 @@ var SecurityDigestSettings = func() engine.Spec {
 	return sp
 }()
 
-// SecurityCodeClasses is data.sreagent_security_code_classes.
-var SecurityCodeClasses = readSingleton("security_code_classes",
-	"The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes.",
-	"v0.476.6 or later", infrastructureRefusal,
-	ro("classes", engine.StringList, "The marked classes; the built-in classes always count and are not listed."),
-	ro("available_classes", engine.JSON, "The classes that can be marked."),
-	ro("built_in_classes", engine.JSON, "The classes that always count as security findings."),
-	ro("limit", engine.Int, "The most classes that can be marked."),
-)
+// codeClassesCheck refuses what the platform refuses from the accepted classes the last read
+// reported: a built-in class, and a class the organization never accepted. A create has no
+// prior read, so the platform judges it.
+func codeClassesCheck(plan, prior engine.Config) []engine.Issue {
+	if prior == nil {
+		return nil
+	}
+	classes, ok := plan.Strings("classes")
+	if ok != engine.Present {
+		return nil
+	}
+	builtIn, b := prior.Strings("built_in_classes")
+	available, a := prior.Strings("available_classes")
+	marked, m := prior.Strings("classes")
+	if b != engine.Present || a != engine.Present {
+		return nil
+	}
+	var out []engine.Issue
+	for _, c := range classes {
+		switch {
+		case slices.Contains(builtIn, c):
+			out = append(out, engine.Issue{Attr: "classes", Summary: "A built-in class is not listed",
+				Detail: c + " always counts as security and is not listed; list the other:<kind> classes you want counted."})
+		case m == engine.Present && slices.Contains(marked, c), slices.Contains(available, c):
+		default:
+			named := "none"
+			if len(available) > 0 {
+				named = strings.Join(available, ", ")
+			}
+			out = append(out, engine.Issue{Attr: "classes", Summary: "A class the organization has not accepted",
+				Detail: c + " is not a class this organization accepted. Name a class from available_classes: " + named + "."})
+		}
+	}
+	return out
+}
+
+// SecurityCodeClasses is data.sreagent_security_code_classes and sreagent_security_code_classes.
+var SecurityCodeClasses = func() engine.Spec {
+	sp := readSingleton("security_code_classes",
+		"The accepted other:<kind> code aliases counted as security findings, beyond the four built-in classes (hardcoded_secret, unsafe_deserialization, ci_unpinned_action and ci_plain_secret), which always count and are never listed."+
+			securityNote+" classes is the complete list of marked classes: a class left out is unmarked, and [] unmarks them all. Unmarking a class closes its open security findings; marking it again restores them. Destroying the resource leaves the marks in place.",
+		"v0.476.6 or later", infrastructureRefusal,
+		engine.Attr{Name: "classes", Kind: engine.StringList, Unordered: true, MaxItems: 50,
+			RemovedWarning:  "Unmarking %s closes its open security findings as source_removed, which ends an acceptance on them; marking it again restores them.",
+			Description:     "The marked classes, in any order: only a class from available_classes (an other:<kind> alias accepted on the Code improvement page) or one already marked, at most 50.",
+			ReadDescription: "The marked classes; the built-in classes always count and are not listed."},
+		ro("available_classes", engine.JSON, "The classes that can be marked."),
+		ro("built_in_classes", engine.JSON, "The classes that always count as security findings."),
+		ro("limit", engine.Int, "The most classes that can be marked."),
+	)
+	sp.Lifecycle = true
+	sp.PlanFeature = infrastructureSuite
+	sp.PlanChecks = []func(plan, prior engine.Config) []engine.Issue{codeClassesCheck}
+	sp.ReadDescription = "The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes." + dataSourceNote("security_code_classes")
+	return sp
+}()
 
 // SecurityNotificationRules is data.sreagent_security_notification_rules.
 var SecurityNotificationRules = engine.Spec{

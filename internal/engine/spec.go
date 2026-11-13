@@ -188,7 +188,8 @@ type Config interface {
 	Bool(name string) (bool, Presence)
 	Int(name string) (int64, Presence)
 	// Strings reads a list attribute: Present with its entries (an empty list is
-	// stated), Unknown when the list or any entry is not known yet.
+	// stated), Unknown when the list or any entry is not known yet. A JSON
+	// attribute that holds an array of strings reads the same way.
 	Strings(name string) ([]string, Presence)
 	// List reports whether a list attribute is stated; an empty list is stated.
 	List(name string) Presence

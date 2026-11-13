@@ -334,3 +334,30 @@ func TestAChangeAndARemovedEntryAreWarnedAtPlan(t *testing.T) {
 		t.Errorf("a create has nothing to warn about: %v", create.Diagnostics)
 	}
 }
+
+// A JSON attribute that holds an array of strings (the classes the platform
+// answers as a computed list) is read by Strings, so a check can judge a plan
+// against what the platform said last.
+func TestStringsReadsAJSONArrayOfStrings(t *testing.T) {
+	spec := Spec{Key: "k", TypeName: "k", Shape: Generated, Lifecycle: true, Attrs: []Attr{{Name: "available", Kind: JSON, Computed: true}}}
+	_, s := fixtureOf(t, spec)
+	var diags diag.Diagnostics
+	view := func(v tftypes.Value) Config {
+		return configView{ctx: context.Background(), src: tfsdk.State{Schema: s, Raw: rawObject(t, s, map[string]tftypes.Value{"available": v})}, attrs: spec.Attrs, diags: &diags}
+	}
+	if v, p := view(text(`["other:a","other:b"]`)).Strings("available"); p != Present || len(v) != 2 || v[1] != "other:b" {
+		t.Errorf("Strings = %v %v", v, p)
+	}
+	if v, p := view(text(`[]`)).Strings("available"); p != Present || v == nil || len(v) != 0 {
+		t.Errorf("an empty array is stated and empty: %v %v", v, p)
+	}
+	if _, p := view(unknownText).Strings("available"); p != Unknown {
+		t.Error("an unknown value is Unknown")
+	}
+	if _, p := view(text(`{"a":1}`)).Strings("available"); p != Unknown {
+		t.Error("JSON that is not an array of strings is never judged")
+	}
+	if diags.HasError() {
+		t.Fatal(diags)
+	}
+}

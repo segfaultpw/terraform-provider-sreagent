@@ -18,7 +18,15 @@ import (
 const (
 	sla    = "sreagent_security_sla_policy.p"
 	digest = "sreagent_security_digest_settings.d"
+	codes  = "sreagent_security_code_classes.c"
 )
+
+func noDiff() resource.ConfigPlanChecks {
+	return resource.ConfigPlanChecks{
+		PreApply:             []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+		PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+	}
+}
 
 func slaConfig(f *fakefacade.Fake, body string) string {
 	return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_security_sla_policy\" \"p\" {\n%s}\n", body)
@@ -26,6 +34,10 @@ func slaConfig(f *fakefacade.Fake, body string) string {
 
 func digestConfig(f *fakefacade.Fake, body string) string {
 	return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_security_digest_settings\" \"d\" {\n%s}\n", body)
+}
+
+func codesConfig(f *fakefacade.Fake, body string) string {
+	return providerBlock(f.URL) + fmt.Sprintf("resource \"sreagent_security_code_classes\" \"c\" {\n%s}\n", body)
 }
 
 const slaDefaults = "  critical_days = 7\n  high_days     = 30\n  medium_days   = 90\n  low_days      = 180\n  info_days     = 0\n"
@@ -259,7 +271,8 @@ func TestDigestBoundsAreRefusedAtPlan(t *testing.T) {
 // security change made by terraform destroy, and the platform has no row to delete.
 func TestDestroyingTheSecuritySingletonsLeavesThemInPlace(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
-	cfg := slaConfig(f, "  high_days = 14\n") + "\nresource \"sreagent_security_digest_settings\" \"d\" {\n  email = true\n}\n"
+	f.SetAcceptedClasses("other:a")
+	cfg := slaConfig(f, "  high_days = 14\n") + "\nresource \"sreagent_security_digest_settings\" \"d\" {\n  email = true\n}\n\nresource \"sreagent_security_code_classes\" \"c\" {\n  classes = [\"other:a\"]\n}\n"
 	var writes int
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
@@ -267,14 +280,14 @@ func TestDestroyingTheSecuritySingletonsLeavesThemInPlace(t *testing.T) {
 			{Config: cfg},
 			{
 				PreConfig: func() {
-					for _, k := range []string{"security_sla_policy", "security_digest_settings"} {
+					for _, k := range []string{"security_sla_policy", "security_digest_settings", "security_code_classes"} {
 						writes += f.Calls("PUT", k) + f.Calls("DELETE", k) + f.Calls("POST", k)
 					}
 				},
 				Config: providerBlock(f.URL),
 				Check: func(*terraform.State) error {
 					after := 0
-					for _, k := range []string{"security_sla_policy", "security_digest_settings"} {
+					for _, k := range []string{"security_sla_policy", "security_digest_settings", "security_code_classes"} {
 						after += f.Calls("PUT", k) + f.Calls("DELETE", k) + f.Calls("POST", k)
 					}
 					if after != writes {
@@ -285,6 +298,9 @@ func TestDestroyingTheSecuritySingletonsLeavesThemInPlace(t *testing.T) {
 					}
 					if f.Row("security_digest_settings", "security_digest_settings")["email"] != true {
 						return fmt.Errorf("the digest must stay as it was")
+					}
+					if got := fmt.Sprint(f.Row("security_code_classes", "security_code_classes")["classes"]); got != "[other:a]" {
+						return fmt.Errorf("the marks must stay as they were, got %s", got)
 					}
 					return nil
 				},
@@ -309,14 +325,180 @@ func TestADestroyOfASecuritySingletonSaysItLeftTheSettingsInPlace(t *testing.T) 
 
 func TestTheSecuritySingletonsImportByName(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
+	f.SetAcceptedClasses("other:a")
 	cfg := slaConfig(f, "  critical_days = 5\n") +
-		"\nresource \"sreagent_security_digest_settings\" \"d\" {\n  enabled = false\n}\n"
+		"\nresource \"sreagent_security_digest_settings\" \"d\" {\n  enabled = false\n}\n" +
+		"\nresource \"sreagent_security_code_classes\" \"c\" {\n  classes = [\"other:a\"]\n}\n"
 	steps := []resource.TestStep{{Config: cfg}}
-	for _, r := range []struct{ addr, id string }{{sla, "security_sla_policy"}, {digest, "security_digest_settings"}} {
+	for _, r := range []struct{ addr, id string }{{sla, "security_sla_policy"}, {digest, "security_digest_settings"}, {codes, "security_code_classes"}} {
 		steps = append(steps,
 			resource.TestStep{ResourceName: r.addr, ImportState: true, ImportStateId: r.id, ImportStateVerify: true, Config: cfg},
 			resource.TestStep{ResourceName: r.addr, ImportState: true, ImportStateId: "wrong", Config: cfg, ExpectError: regexp.MustCompile(`Import a singleton by its name`)},
 		)
 	}
 	resource.UnitTest(t, resource.TestCase{ProtoV6ProviderFactories: factories, Steps: steps})
+}
+
+func classesDirect(d *direct, classes ...string) tftypes.Value {
+	return d.value(map[string]tftypes.Value{
+		"id": str("security_code_classes"), "classes": strList(classes...),
+		"built_in_classes": str(`["hardcoded_secret"]`), "available_classes": str(`["other:z"]`), "limit": tfNum(50),
+	})
+}
+
+// The platform stores the marks sorted and deduplicated; the list is a set to Terraform.
+func TestCodeClassesInAnyOrderPlanClean(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.SetAcceptedClasses("other:a", "other:b")
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				Config:           codesConfig(f, "  classes = [\"other:b\", \"other:a\"]\n"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}},
+				Check: func(*terraform.State) error {
+					if got := fmt.Sprint(f.Row("security_code_classes", "security_code_classes")["classes"]); got != "[other:a other:b]" {
+						return fmt.Errorf("the platform stores them sorted, got %s", got)
+					}
+					return nil
+				},
+			},
+			{Config: codesConfig(f, "  classes = [\"other:a\", \"other:b\"]\n"), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}},
+			{Config: codesConfig(f, "  classes = [\"other:b\", \"other:a\"]\n"), PlanOnly: true},
+			{Config: codesConfig(f, "  classes = [\"other:b\", \"other:a\"]\n"), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(codes, "classes.#", "2"),
+					resource.TestCheckResourceAttr(codes, "limit", "50"),
+					resource.TestCheckResourceAttrSet(codes, "built_in_classes"),
+					resource.TestCheckResourceAttrSet(codes, "available_classes"),
+					resource.TestCheckResourceAttr(codes, "id", "security_code_classes"),
+				)},
+			// A block that names no classes leaves the marks as they are.
+			{Config: providerBlock(f.URL) + "resource \"sreagent_security_code_classes\" \"c\" {\n}\n", ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}},
+		},
+	})
+}
+
+func TestUnmarkingAClassWarnsItsFindingsClose(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	d := newDirect(t, specs.SecurityCodeClasses, f)
+	state := classesDirect(d, "other:a", "other:b")
+	if resp := d.plan(state, classesDirect(d, "other:a", "other:b")); resp.Diagnostics.WarningsCount() != 0 {
+		t.Fatalf("keeping every mark says nothing: %v", resp.Diagnostics)
+	}
+	resp := d.plan(state, classesDirect(d, "other:a"))
+	if resp.Diagnostics.HasError() || !warned(resp.Diagnostics, "Unmarking other:b closes its open security findings", "marking it again restores them") {
+		t.Fatalf("unmarking a class must warn that its findings close: %v", resp.Diagnostics)
+	}
+	if n := resp.Diagnostics.WarningsCount(); n != 1 {
+		t.Errorf("one class goes, one warning, got %d", n)
+	}
+	// Marking one is not a removal; unmarking every class warns for each.
+	if resp := d.plan(state, classesDirect(d, "other:a", "other:b", "other:z")); resp.Diagnostics.WarningsCount() != 0 {
+		t.Errorf("adding a class says nothing: %v", resp.Diagnostics)
+	}
+	if resp := d.plan(state, classesDirect(d)); resp.Diagnostics.WarningsCount() != 2 {
+		t.Errorf("[] unmarks both: %v", resp.Diagnostics)
+	}
+}
+
+func TestMarkingAClassThatIsNotAvailableFailsThePlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: codesConfig(f, "  classes = []\n")},
+			{Config: codesConfig(f, "  classes = [\"other:ghost\"]\n"), PlanOnly: true,
+				ExpectError: wrapped("A class the organization has not accepted", "other:ghost is not a class this organization accepted", "available_classes: none.")},
+			// An apply refreshes first, so the accepted classes the plan judges against are current.
+			{PreConfig: func() { f.SetAcceptedClasses("other:real", "other:also") }, Config: codesConfig(f, "  classes = []\n")},
+			{
+				Config:      codesConfig(f, "  classes = [\"other:ghost\"]\n"),
+				PlanOnly:    true,
+				ExpectError: wrapped("other:ghost is not a class this organization accepted", "available_classes: other:real, other:also."),
+			},
+			{Config: codesConfig(f, "  classes = [\"other:real\"]\n"), Check: resource.TestCheckResourceAttr(codes, "classes.0", "other:real")},
+		},
+	})
+}
+
+// A class already marked stays valid when its alias is removed from the accepted ones: the
+// platform keeps the mark, so a configuration that keeps it plans clean.
+func TestAMarkedClassWhoseAliasWasRemovedStaysValid(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.SetAcceptedClasses("other:real")
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: codesConfig(f, "  classes = [\"other:real\"]\n")},
+			{PreConfig: func() { f.SetAcceptedClasses() }, Config: codesConfig(f, "  classes = [\"other:real\"]\n"), ConfigPlanChecks: noDiff()},
+		},
+	})
+}
+
+func TestMarkingABuiltInClassFailsThePlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: codesConfig(f, "  classes = []\n")},
+			{Config: codesConfig(f, "  classes = [\"hardcoded_secret\"]\n"), PlanOnly: true,
+				ExpectError: wrapped("A built-in class is not listed", "hardcoded_secret always counts as security and is not listed", "list the other:<kind> classes you want counted.")},
+		},
+	})
+}
+
+func TestAnEmptyListUnmarksEveryClass(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.SetAcceptedClasses("other:a")
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: codesConfig(f, "  classes = [\"other:a\"]\n"), Check: resource.TestCheckResourceAttr(codes, "classes.#", "1")},
+			{
+				Config:           codesConfig(f, "  classes = []\n"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(codes, "classes.#", "0"),
+					func(*terraform.State) error {
+						body := f.LastBody("PUT", "security_code_classes")
+						if list, ok := body["classes"].([]any); !ok || len(list) != 0 {
+							return fmt.Errorf("[] must be sent as an empty list, the body was %v", body)
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
+func TestFiftyOneClassesAreRefusedAtPlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	list := func(n int) string {
+		names := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			names = append(names, fmt.Sprintf("%q", fmt.Sprintf("other:c%02d", i)))
+		}
+		return "  classes = [" + strings.Join(names, ", ") + "]\n"
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: codesConfig(f, list(51)), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)classes.*at\s+most\s+50`)},
+		},
+	})
+}
+
+// A create has no read of the accepted classes to judge against, so the platform's own
+// refusal is what the apply shows.
+func TestAnUnavailableClassOnCreateIsRefusedByThePlatform(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config:      codesConfig(f, "  classes = [\"other:ghost\"]\n"),
+			ExpectError: wrapped("other:ghost is not a class this organization accepted"),
+		}},
+	})
 }

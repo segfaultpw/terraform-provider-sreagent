@@ -1,6 +1,8 @@
 package fakefacade
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,10 +17,13 @@ import (
 
 const micro = "2006-01-02T15:04:05.000000Z07:00"
 
+var builtInClasses = []any{"hardcoded_secret", "unsafe_deserialization", "ci_unpinned_action", "ci_plain_secret"}
+
 // securityKeys are the five resources whose writes get the platform's own refusals.
 var securityKeys = map[string]bool{
 	"security_sla_policy":      true,
 	"security_digest_settings": true,
+	"security_code_classes":    true,
 }
 
 func isSecurity(key string) bool { return securityKeys[key] }
@@ -33,7 +38,32 @@ func securitySeed(spec engine.Spec, row map[string]any) {
 		row["enabled"], row["cadence"], row["weekday"], row["hour"] = false, "weekly", 1, 9
 		row["slack_channel"], row["email"], row["timezone"] = nil, false, "UTC"
 		row["last_sent_at"], row["last_sent_period"] = nil, nil
+	case "security_code_classes":
+		row["classes"], row["built_in_classes"], row["available_classes"], row["limit"] = []any{}, builtInClasses, []any{}, 50
 	}
+}
+
+// SetAcceptedClasses sets the other:<kind> classes the organization accepted on
+// the Code improvement page; the ones already marked stay marked.
+func (f *Fake) SetAcceptedClasses(classes ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.accepted = classes
+	if row := f.rows["security_code_classes"]["security_code_classes"]; row != nil {
+		f.refreshClasses(row)
+	}
+}
+
+// refreshClasses answers available_classes: the accepted classes that are not marked.
+func (f *Fake) refreshClasses(row map[string]any) {
+	marked, _ := row["classes"].([]any)
+	available := []any{}
+	for _, c := range f.accepted {
+		if !slices.Contains(marked, any(c)) {
+			available = append(available, c)
+		}
+	}
+	row["available_classes"] = available
 }
 
 func number(v any) (int64, bool) {
@@ -103,6 +133,22 @@ func (f *Fake) securityRefusal(spec engine.Spec, _ string, prior, body map[strin
 				return 422, "Choose a Slack channel or email for the digest."
 			}
 		}
+	case "security_code_classes":
+		classes, _ := body["classes"].([]any)
+		if len(classes) > 50 {
+			return 422, "At most 50 classes can be marked."
+		}
+		marked, _ := prior["classes"].([]any)
+		available, _ := prior["available_classes"].([]any)
+		for _, c := range classes {
+			switch {
+			case slices.Contains(builtInClasses, c):
+				return 422, fmt.Sprintf("%v always counts as security and is not listed; list the other:<kind> classes you want counted.", c)
+			case slices.Contains(marked, c), slices.Contains(available, c):
+			default:
+				return 422, fmt.Sprintf("%v is not a class this organization accepted. Name a class from available_classes.", c)
+			}
+		}
 	}
 	return 0, ""
 }
@@ -125,5 +171,24 @@ func (f *Fake) securityStore(spec engine.Spec, row, _ map[string]any, _ bool) {
 		if blankOrNil(row["slack_channel"]) {
 			row["slack_channel"] = nil
 		}
+	case "security_code_classes":
+		names := []string{}
+		for _, c := range anySlice(row["classes"]) {
+			if s := fmt.Sprint(c); !slices.Contains(names, s) {
+				names = append(names, s)
+			}
+		}
+		slices.Sort(names)
+		sorted := make([]any, 0, len(names))
+		for _, n := range names {
+			sorted = append(sorted, n)
+		}
+		row["classes"] = sorted
+		f.refreshClasses(row)
 	}
+}
+
+func anySlice(v any) []any {
+	list, _ := v.([]any)
+	return list
 }

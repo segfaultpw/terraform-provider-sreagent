@@ -97,3 +97,42 @@ func TestAccSecuritySettings(t *testing.T) {
 		}
 	}
 }
+
+// The code classes are a set: the list marks exactly those, in any order, and [] unmarks them
+// all. The seed accepts the class other:tf_acc.
+func TestAccSecurityCodeClasses(t *testing.T) {
+	accPreCheck(t)
+	const codes = "sreagent_security_code_classes.test"
+	cfg := func(list string) string {
+		return accProvider() + fmt.Sprintf("resource \"sreagent_security_code_classes\" \"test\" {\n  classes = %s\n}\n", list)
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   accSkipBelow112,
+		Steps: []resource.TestStep{
+			{
+				Config:           cfg(`["other:tf_acc"]`),
+				ConfigPlanChecks: accSecurityEmpty,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(codes, "classes.#", "1"),
+					resource.TestCheckResourceAttr(codes, "classes.0", "other:tf_acc"),
+					resource.TestCheckResourceAttr(codes, "limit", "50"),
+				),
+			},
+			{ResourceName: codes, ImportState: true, ImportStateId: "security_code_classes", ImportStateVerify: true, Config: cfg(`["other:tf_acc"]`)},
+			// A class the organization never accepted, and a built-in one, are refused at plan.
+			{Config: cfg(`["other:tf_acc", "other:never_accepted"]`), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)other:never_accepted\s+is\s+not\s+a\s+class\s+this\s+organization\s+accepted`)},
+			{Config: cfg(`["hardcoded_secret"]`), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)hardcoded_secret\s+always\s+counts\s+as\s+security`)},
+			{
+				Config:           cfg(`[]`),
+				ConfigPlanChecks: accSecurityEmpty,
+				Check: func(*terraform.State) error {
+					if marked, _ := accRow(t, "security_code_classes")["classes"].([]any); len(marked) != 0 {
+						return fmt.Errorf("[] must unmark every class, the platform still marks %v", marked)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}

@@ -211,6 +211,9 @@ func (c configView) Int(name string) (int64, Presence) {
 }
 
 func (c configView) Strings(name string) ([]string, Presence) {
+	if a, ok := c.lookup(name); ok && a.Kind == JSON {
+		return c.jsonStrings(a)
+	}
 	p, ok := c.attrOf(name, StringList, "a list")
 	if !ok {
 		return nil, Absent
@@ -230,6 +233,28 @@ func (c configView) Strings(name string) ([]string, Presence) {
 			return nil, Unknown
 		}
 		out = append(out, s.ValueString())
+	}
+	return out, Present
+}
+
+// jsonStrings reads a JSON attribute that holds an array of strings (the
+// classes a platform answers as a computed list). A value that is not such an
+// array is Unknown: a check never judges what it cannot read.
+func (c configView) jsonStrings(a Attr) ([]string, Presence) {
+	var v jsontypes.Normalized
+	c.diags.Append(c.src.GetAttribute(c.ctx, path.Root(a.Attribute()), &v)...)
+	switch {
+	case v.IsUnknown():
+		return nil, Unknown
+	case v.IsNull():
+		return nil, Absent
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(v.ValueString()), &out); err != nil {
+		return nil, Unknown
+	}
+	if out == nil {
+		out = []string{}
 	}
 	return out, Present
 }

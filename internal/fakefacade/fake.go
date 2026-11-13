@@ -41,6 +41,7 @@ type Fake struct {
 	dm          defaultsModel
 	em          effectiveModel
 	history     map[string][]map[string]any
+	accepted    []string
 }
 
 // New starts a fake for specs; the server stops when the test ends.
