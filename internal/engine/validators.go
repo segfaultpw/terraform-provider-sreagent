@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -211,4 +212,31 @@ func (v nullAsInt) ValidateInt64(ctx context.Context, req validator.Int64Request
 		return
 	}
 	v.inner.ValidateInt64(ctx, req, resp)
+}
+
+// rfc3339 refuses a time that is not RFC 3339 with a zone: the platform stores an
+// instant, and a time with no zone has none.
+type rfc3339 struct{}
+
+var _ validator.String = rfc3339{}
+
+func (rfc3339) Description(context.Context) string {
+	return "must be an RFC 3339 time with a time zone, such as 2027-01-01T00:00:00Z"
+}
+
+func (v rfc3339) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v rfc3339) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if got := req.ConfigValue.ValueString(); !isInstant(got) {
+		resp.Diagnostics.AddAttributeError(req.Path, "Not a time with a zone", fmt.Sprintf("%s %s, got %q.", req.Path, v.Description(ctx), got))
+	}
+}
+
+// isInstant reports that the text parses as an RFC 3339 time.
+func isInstant(v string) bool {
+	_, err := time.Parse(time.RFC3339, v)
+	return err == nil
 }

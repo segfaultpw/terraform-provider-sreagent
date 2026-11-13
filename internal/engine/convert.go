@@ -237,10 +237,13 @@ func keep(a Attr, before, remote attr.Value) bool {
 	}
 	switch a.Kind {
 	case String:
-		if a.Normalize == nil {
+		normalize := a.normalizer()
+		if normalize == nil {
 			return false
 		}
-		return a.Normalize(before.(types.String).ValueString()) == a.Normalize(remote.(types.String).ValueString())
+		return normalize(before.(types.String).ValueString()) == normalize(remote.(types.String).ValueString())
+	case StringList:
+		return a.Unordered && sameSet(before, remote)
 	case Float:
 		x, y := before.(types.Float64).ValueFloat64(), remote.(types.Float64).ValueFloat64()
 		return math.Abs(x-y) <= 1e-9*math.Max(1, math.Abs(x))
@@ -276,4 +279,38 @@ func isEmptyObject(v attr.Value) bool {
 	}
 	var obj map[string]any
 	return json.Unmarshal([]byte(n.ValueString()), &obj) == nil && obj != nil && len(obj) == 0
+}
+
+// sameSet reports that two known lists hold the same entries, in any order.
+func sameSet(x, y attr.Value) bool {
+	a, aok := x.(types.List)
+	b, bok := y.(types.List)
+	if !aok || !bok || a.IsNull() || a.IsUnknown() || b.IsNull() || b.IsUnknown() {
+		return false
+	}
+	have := map[string]bool{}
+	for _, e := range a.Elements() {
+		s, ok := e.(types.String)
+		if !ok || s.IsNull() || s.IsUnknown() {
+			return false
+		}
+		have[s.ValueString()] = true
+	}
+	other := map[string]bool{}
+	for _, e := range b.Elements() {
+		s, ok := e.(types.String)
+		if !ok || s.IsNull() || s.IsUnknown() {
+			return false
+		}
+		other[s.ValueString()] = true
+	}
+	if len(have) != len(other) {
+		return false
+	}
+	for k := range have {
+		if !other[k] {
+			return false
+		}
+	}
+	return true
 }

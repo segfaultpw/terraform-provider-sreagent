@@ -2,7 +2,10 @@
 // into a Terraform resource and data source.
 package engine
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Kind is an attribute's value type.
 type Kind int
@@ -130,6 +133,23 @@ type Attr struct {
 	Pattern string
 	// MinItems is the published minItems of a StringList. Zero means none.
 	MinItems int
+	// Unordered: a StringList the platform stores sorted and deduplicated, so a
+	// list equal to the stored one as a set is equal: a reordered configuration
+	// plans nothing and a refresh keeps the order the configuration wrote.
+	Unordered bool
+	// Timestamp: an RFC 3339 time with a zone. The platform answers its own form
+	// (microseconds, UTC), so equal instants are equal whatever their spelling.
+	Timestamp bool
+	// Trim: the platform trims the value, so surrounding space is refused at plan
+	// instead of reading back changed.
+	Trim bool
+	// ChangeWarning is said at plan when the planned value differs from state: a
+	// change the platform applies to more than the setting itself.
+	ChangeWarning string
+	// RemovedWarning is said at plan, for a StringList, once for each entry state
+	// holds that the plan drops (%s is the entry): a removal with effects beyond
+	// the list.
+	RemovedWarning string
 	// Default is a JSON literal: the platform's published create default. The
 	// attribute is Optional and Computed and takes it when the configuration
 	// leaves it out, on a create and on an update that removes a stated value,
@@ -160,16 +180,23 @@ const (
 // so a secret's write-only argument is read under the secret's own name.
 type Config interface {
 	String(name string) (string, Presence)
+	// Bool and Int read a boolean and an integer attribute.
+	Bool(name string) (bool, Presence)
+	Int(name string) (int64, Presence)
+	// Strings reads a list attribute: Present with its entries (an empty list is
+	// stated), Unknown when the list or any entry is not known yet.
+	Strings(name string) ([]string, Presence)
 	// List reports whether a list attribute is stated; an empty list is stated.
 	List(name string) Presence
 }
 
 // Issue is one refusal a Check raises at plan, against the attribute named by
-// Attr (an API field name).
+// Attr (an API field name). A Warning is said and does not stop the plan.
 type Issue struct {
 	Attr    string
 	Summary string
 	Detail  string
+	Warning bool
 }
 
 // Shape is how a row is addressed.
@@ -204,6 +231,17 @@ type Spec struct {
 	// judges only what the configuration states: an Unknown value is never
 	// refused, since it could still turn out right.
 	Checks []func(Config) []Issue
+	// PlanChecks run in ModifyPlan on every create and update, over the planned
+	// values (a value the plan carries from state is planned) and the prior state
+	// (nil on a create). They refuse what the platform refuses across attributes
+	// when the configuration leaves one of them to state, which a Check, reading
+	// the configuration alone, cannot see. An Unknown planned value is never
+	// judged.
+	PlanChecks []func(plan, prior Config) []Issue
+	// PlanFeature names the plan feature a 403 refers to ("the infrastructure
+	// suite"). A 403 that is the platform's plan refusal then fails the operation
+	// naming the feature and the ways out, never as a row deleted outside Terraform.
+	PlanFeature string
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
 	// StartsEmpty: a singleton an organization has no row of until its first
@@ -286,3 +324,24 @@ func LowerTrim(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
 
 // Lower is the platform's normalization of mute patterns.
 func Lower(v string) string { return strings.ToLower(v) }
+
+// RFC3339 is the platform's form of a time: the instant in UTC. A value that is
+// not RFC 3339 is returned as it is.
+func RFC3339(v string) string {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return v
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// normalizer is the form the platform stores a String in, if it normalizes it.
+func (a Attr) normalizer() func(string) string {
+	switch {
+	case a.Normalize != nil:
+		return a.Normalize
+	case a.Timestamp:
+		return RFC3339
+	}
+	return nil
+}

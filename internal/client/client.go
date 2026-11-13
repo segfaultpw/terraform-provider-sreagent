@@ -126,6 +126,36 @@ func IsReadOnlyKey(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden && apiErr.Code == "read_only_key"
 }
 
+// planPhrases are the words every plan-gate sentence of the platform holds
+// ("The infrastructure suite is not included in your plan.", "... does not
+// include ...", "... not part of your plan."); the platform answers them with 403
+// "forbidden", the same code it gives a personal session token.
+var planPhrases = []string{"included in your plan", "does not include", "part of your plan"}
+
+// IsPlanRefusal reports the platform refusing a request because the
+// organization's plan lacks the feature: a 403 "forbidden" whose sentence is a
+// plan sentence. A 403 with the same code for another reason (a personal token),
+// a missing scope and a read-only key are not.
+func IsPlanRefusal(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden || apiErr.Code != "forbidden" {
+		return false
+	}
+	for _, phrase := range planPhrases {
+		if strings.Contains(apiErr.Message, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsConfigAPIUnavailable reports the plan lacking the configuration API itself
+// (advanced integrations): a 403 "feature_not_available".
+func IsConfigAPIUnavailable(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden && apiErr.Code == "feature_not_available"
+}
+
 // New validates the configuration before any request is sent.
 func New(cfg Config) (*Client, error) {
 	raw := cfg.BaseURL

@@ -152,9 +152,15 @@ func specProblems(d *Doc, s engine.Spec) []string {
 			if a.UpdateOnly != updateOnly {
 				add("field %s UpdateOnly %v, contract %v", f, a.UpdateOnly, updateOnly)
 			}
-			_, nullable := typeOf(put.Properties[f])
+			// A collection with no update door is written by its create alone, so
+			// that is the body whose nullability a Clearable field follows.
+			body, which := put.Properties, "update"
+			if len(res.UpdateFields) == 0 {
+				body, which = post.Properties, "create"
+			}
+			_, nullable := typeOf(body[f])
 			if a.Clearable != nullable {
-				add("field %s Clearable %v, update body nullable %v", f, a.Clearable, nullable)
+				add("field %s Clearable %v, %s body nullable %v", f, a.Clearable, which, nullable)
 			}
 		}
 		if !s.Lifecycle {
@@ -616,6 +622,13 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 	}
 	switch kw.format {
 	case "", "password":
+		if a.Timestamp {
+			add("field %s is a Timestamp, but the contract publishes no date-time format", f)
+		}
+	case "date-time":
+		if !a.Timestamp {
+			add("field %s is published as a date-time but is not a Timestamp", f)
+		}
 	default:
 		add("field %s: the contract publishes format %q, which the engine does not understand", f, kw.format)
 	}
@@ -922,6 +935,21 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op := d.Paths["/service_bindings/{id}"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["log_inline_fields"]["maxItems"] = float64(5)
 			d.Paths["/service_bindings/{id}"]["put"] = op
+		}},
+		{"an allow rule's repository stops being nullable on create", "secret_allow_rules", func(d *Doc) {
+			op := d.Paths["/secret_allow_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["repository"]["type"] = "string"
+			d.Paths["/secret_allow_rules"]["post"] = op
+		}},
+		{"an allow rule's expiry stops being a date-time", "secret_allow_rules", func(d *Doc) {
+			op := d.Paths["/secret_allow_rules"]["post"]
+			delete(op.RequestBody.Content["application/json"].Schema.Properties["expires_at"], "format")
+			d.Paths["/secret_allow_rules"]["post"] = op
+		}},
+		{"an allow rule's reason minimum moves", "secret_allow_rules", func(d *Doc) {
+			op := d.Paths["/secret_allow_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["reason"]["minLength"] = float64(5)
+			d.Paths["/secret_allow_rules"]["post"] = op
 		}},
 		{"the SLA days lose terraform_null_as", "security_sla_policy", func(d *Doc) {
 			r := d.Resources["security_sla_policy"]

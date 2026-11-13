@@ -278,3 +278,35 @@ func TestAListAnswerKeepsWhatIsBesideData(t *testing.T) {
 		t.Fatalf("the rows are not an extra: %v", out.Extras)
 	}
 }
+
+func TestOnlyThePlatformsPlanSentenceIsAPlanRefusal(t *testing.T) {
+	cases := []struct {
+		name         string
+		status       int
+		code, msg    string
+		plan, config bool
+	}{
+		{"the infrastructure suite", 403, "forbidden", "The infrastructure suite is not included in your plan.", true, false},
+		{"a plan that does not include it", 403, "forbidden", "Your plan does not include code improvement.", true, false},
+		{"not part of the plan", 403, "forbidden", "Code improvement is not part of your plan.", true, false},
+		{"a personal session token", 403, "forbidden", "The configuration API is reachable only with an API key holding the api:admin scope, never a personal session token.", false, false},
+		{"a key with neither scope", 403, "insufficient_scope", "API key does not have the required scope: api:admin or api:config_read", false, false},
+		{"a read-only key", 403, "read_only_key", "This API key holds api:config_read, which reads configuration and never changes it.", false, false},
+		{"a plan without the configuration API", 403, "feature_not_available", "The configuration API is not included in your plan.", false, true},
+		{"a plan sentence on another status", 404, "forbidden", "The infrastructure suite is not included in your plan.", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := error(&APIError{Status: c.status, Code: c.code, Message: c.msg})
+			if got := IsPlanRefusal(err); got != c.plan {
+				t.Errorf("IsPlanRefusal = %v, want %v", got, c.plan)
+			}
+			if got := IsConfigAPIUnavailable(err); got != c.config {
+				t.Errorf("IsConfigAPIUnavailable = %v, want %v", got, c.config)
+			}
+		})
+	}
+	if IsPlanRefusal(errors.New("boom")) || IsConfigAPIUnavailable(nil) {
+		t.Error("an error that is not an API answer is neither")
+	}
+}

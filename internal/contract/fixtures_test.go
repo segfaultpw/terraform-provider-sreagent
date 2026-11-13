@@ -75,6 +75,20 @@ func rulesFixture() engine.Spec {
 	}
 }
 
+func allowFixture() engine.Spec {
+	return engine.Spec{
+		Key: "secret_allow_rules", TypeName: "secret_allow_rule", ListName: "secret_allow_rules", Shape: engine.Generated, Lifecycle: true,
+		Attrs: []engine.Attr{
+			{Name: "path_glob", Kind: engine.String, Required: true, CreateOnly: true, Trim: true, MinLength: 1, MaxLength: 200},
+			{Name: "reason", Kind: engine.String, Required: true, CreateOnly: true, Trim: true, MinLength: 10, MaxLength: 500},
+			{Name: "repository", Kind: engine.String, CreateOnly: true, Clearable: true, Normalize: engine.Lower, Pattern: `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`, MaxLength: 255},
+			{Name: "detector_type", Kind: engine.String, CreateOnly: true, Clearable: true, Pattern: `^[a-z0-9_]+$`, MaxLength: 50},
+			{Name: "expires_at", Kind: engine.String, CreateOnly: true, Clearable: true, Timestamp: true},
+			{Name: "created_at", Kind: engine.String, Computed: true},
+		},
+	}
+}
+
 // standIns are the specs a drift case falls back to while the real one is still
 // a read-only data source.
 var standIns = map[string]func() engine.Spec{
@@ -82,4 +96,5 @@ var standIns = map[string]func() engine.Spec{
 	"security_digest_settings":    digestFixture,
 	"security_code_classes":       codeClassesFixture,
 	"security_notification_rules": rulesFixture,
+	"secret_allow_rules":          allowFixture,
 }
