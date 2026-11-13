@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -19,11 +20,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -93,28 +99,66 @@ func (r *facadeResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 	resp.Schema = schema.Schema{Description: r.spec.Description, Attributes: attrs}
 }
 
-// configView reads the configuration being validated by API field name.
+// configView reads the configuration being validated, the plan being modified or
+// the prior state, by API field name: src is whichever of the three the check is
+// to judge.
 type configView struct {
 	ctx   context.Context
-	cfg   tfsdk.Config
+	src   valueSource
 	attrs []Attr
 	diags *diag.Diagnostics
 }
 
-func (c configView) path(name string) (path.Path, bool) {
+var _ Config = configView{}
+
+func (c configView) lookup(name string) (Attr, bool) {
 	for _, a := range c.attrs {
-		if a.Name != name {
-			continue
+		if a.Name == name {
+			return a, true
 		}
-		if a.Secret {
-			return path.Root(a.Attribute() + "_wo"), true
-		}
-		if a.Kind != String {
-			return path.Path{}, false
-		}
-		return path.Root(a.Attribute()), true
 	}
-	return path.Path{}, false
+	return Attr{}, false
+}
+
+// path is the path of a string attribute, a secret's write-only argument under
+// the secret's own name.
+func (c configView) path(name string) (path.Path, bool) {
+	a, ok := c.lookup(name)
+	if !ok {
+		return path.Path{}, false
+	}
+	if a.Secret {
+		return path.Root(a.Attribute() + "_wo"), true
+	}
+	if a.Kind != String {
+		return path.Path{}, false
+	}
+	return path.Root(a.Attribute()), true
+}
+
+// issuePath is where a refusal about an attribute of any kind is shown.
+func (c configView) issuePath(name string) (path.Path, bool) {
+	a, ok := c.lookup(name)
+	if !ok {
+		return path.Path{}, false
+	}
+	if a.Secret {
+		return path.Root(a.Attribute() + "_wo"), true
+	}
+	return path.Root(a.Attribute()), true
+}
+
+// attrOf is the attribute a check named, which must be of the kind it reads.
+func (c configView) attrOf(name string, want Kind, kind string) (path.Path, bool) {
+	a, ok := c.lookup(name)
+	if !ok || a.Kind != want {
+		c.diags.AddError("Provider bug", fmt.Sprintf("a configuration check names %q, which is not %s attribute of the resource", name, kind))
+		return path.Path{}, false
+	}
+	if a.Secret {
+		return path.Root(a.Attribute() + "_wo"), true
+	}
+	return path.Root(a.Attribute()), true
 }
 
 func (c configView) String(name string) (string, Presence) {
@@ -124,7 +168,7 @@ func (c configView) String(name string) (string, Presence) {
 		return "", Absent
 	}
 	var v types.String
-	c.diags.Append(c.cfg.GetAttribute(c.ctx, p, &v)...)
+	c.diags.Append(c.src.GetAttribute(c.ctx, p, &v)...)
 	switch {
 	case v.IsUnknown():
 		return "", Unknown
@@ -134,6 +178,87 @@ func (c configView) String(name string) (string, Presence) {
 	return v.ValueString(), Present
 }
 
+func (c configView) Bool(name string) (bool, Presence) {
+	p, ok := c.attrOf(name, Bool, "a boolean")
+	if !ok {
+		return false, Absent
+	}
+	var v types.Bool
+	c.diags.Append(c.src.GetAttribute(c.ctx, p, &v)...)
+	switch {
+	case v.IsUnknown():
+		return false, Unknown
+	case v.IsNull():
+		return false, Absent
+	}
+	return v.ValueBool(), Present
+}
+
+func (c configView) Int(name string) (int64, Presence) {
+	p, ok := c.attrOf(name, Int, "an integer")
+	if !ok {
+		return 0, Absent
+	}
+	var v types.Int64
+	c.diags.Append(c.src.GetAttribute(c.ctx, p, &v)...)
+	switch {
+	case v.IsUnknown():
+		return 0, Unknown
+	case v.IsNull():
+		return 0, Absent
+	}
+	return v.ValueInt64(), Present
+}
+
+func (c configView) Strings(name string) ([]string, Presence) {
+	if a, ok := c.lookup(name); ok && a.Kind == JSON {
+		return c.jsonStrings(a)
+	}
+	p, ok := c.attrOf(name, StringList, "a list")
+	if !ok {
+		return nil, Absent
+	}
+	var v types.List
+	c.diags.Append(c.src.GetAttribute(c.ctx, p, &v)...)
+	switch {
+	case v.IsUnknown():
+		return nil, Unknown
+	case v.IsNull():
+		return nil, Absent
+	}
+	out := make([]string, 0, len(v.Elements()))
+	for _, e := range v.Elements() {
+		s, ok := e.(types.String)
+		if !ok || s.IsUnknown() {
+			return nil, Unknown
+		}
+		out = append(out, s.ValueString())
+	}
+	return out, Present
+}
+
+// jsonStrings reads a JSON attribute that holds an array of strings (the
+// classes a platform answers as a computed list). A value that is not such an
+// array is Unknown: a check never judges what it cannot read.
+func (c configView) jsonStrings(a Attr) ([]string, Presence) {
+	var v jsontypes.Normalized
+	c.diags.Append(c.src.GetAttribute(c.ctx, path.Root(a.Attribute()), &v)...)
+	switch {
+	case v.IsUnknown():
+		return nil, Unknown
+	case v.IsNull():
+		return nil, Absent
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(v.ValueString()), &out); err != nil {
+		return nil, Unknown
+	}
+	if out == nil {
+		out = []string{}
+	}
+	return out, Present
+}
+
 // List reports whether the configuration states a list attribute.
 func (c configView) List(name string) Presence {
 	for _, a := range c.attrs {
@@ -141,7 +266,7 @@ func (c configView) List(name string) Presence {
 			continue
 		}
 		var v types.List
-		c.diags.Append(c.cfg.GetAttribute(c.ctx, path.Root(a.Attribute()), &v)...)
+		c.diags.Append(c.src.GetAttribute(c.ctx, path.Root(a.Attribute()), &v)...)
 		switch {
 		case v.IsUnknown():
 			return Unknown
@@ -154,19 +279,31 @@ func (c configView) List(name string) Presence {
 	return Absent
 }
 
+// report shows an issue against its attribute, or against the resource when it
+// names none; a Warning is said and does not fail the plan.
+func (c configView) report(diags *diag.Diagnostics, issue Issue) {
+	p, onAttr := c.issuePath(issue.Attr)
+	switch {
+	case issue.Warning && onAttr:
+		diags.AddAttributeWarning(p, issue.Summary, issue.Detail)
+	case issue.Warning:
+		diags.AddWarning(issue.Summary, issue.Detail)
+	case onAttr:
+		diags.AddAttributeError(p, issue.Summary, issue.Detail)
+	default:
+		diags.AddError(issue.Summary, issue.Detail)
+	}
+}
+
 // ValidateConfig runs the spec's Checks, then refuses at plan a non-empty list
 // the platform would refuse beside another attribute (RefusedWith). Only a
 // configuration that states both is judged: an unknown value could still turn
 // out empty.
 func (r *facadeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	view := configView{ctx: ctx, cfg: req.Config, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+	view := configView{ctx: ctx, src: req.Config, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
 	for _, check := range r.spec.Checks {
 		for _, issue := range check(view) {
-			if p, ok := view.path(issue.Attr); ok {
-				resp.Diagnostics.AddAttributeError(p, issue.Summary, issue.Detail)
-			} else {
-				resp.Diagnostics.AddError(issue.Summary, issue.Detail)
-			}
+			view.report(&resp.Diagnostics, issue)
 		}
 	}
 	r.validateFollows(ctx, req, resp)
@@ -263,7 +400,12 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	// A NotRead argument is never answered, so the platform can never fill it:
 	// left out of the configuration it stays null rather than unknown.
 	computed := a.Computed || (!required && !clearable && !a.NotRead)
-	stable := computed && !a.Computed && !a.Recomputed
+	// A default makes the attribute Computed so that the framework can plan it.
+	// It is never carried from state: removing a stated value must plan the
+	// default, not the value the row still holds.
+	_, defaulted := a.defaultValue()
+	computed = computed || defaulted
+	stable := computed && !a.Computed && !a.Recomputed && !defaulted
 	switch a.Kind {
 	case String, JSON:
 		mods := []planmodifier.String{}
@@ -272,6 +414,9 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		}
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, replaceString(a))
+		}
+		if a.Timestamp {
+			mods = append([]planmodifier.String{sameInstantAsState{}}, mods...)
 		}
 		sa := schema.StringAttribute{Description: describe(a), Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
 		if a.Kind == JSON {
@@ -283,6 +428,18 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if len(a.HiddenKeys) > 0 {
 			sa.Validators = append(sa.Validators, refuseKeys{keys: a.HiddenKeys})
 		}
+		if a.Kind == String {
+			if a.Trim {
+				sa.Validators = append(sa.Validators, trimmed{})
+			}
+			if a.Timestamp {
+				sa.Validators = append(sa.Validators, rfc3339{})
+			}
+			sa.Validators = append(sa.Validators, a.stringBounds()...)
+		}
+		if v, ok := a.defaultValue(); ok {
+			sa.Default = stringdefault.StaticString(v.(types.String).ValueString())
+		}
 		return map[string]schema.Attribute{a.Attribute(): sa}
 	case Int:
 		mods := []planmodifier.Int64{}
@@ -292,7 +449,18 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, int64planmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		ia := schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		if a.Min != nil || a.Max != nil {
+			var v validator.Int64 = intBounds{min: a.Min, max: a.Max}
+			if sentinel, ok := a.nullAsValue(); ok {
+				v = nullAsInt{sentinel: sentinel.(types.Int64).ValueInt64(), inner: v}
+			}
+			ia.Validators = append(ia.Validators, v)
+		}
+		if v, ok := a.defaultValue(); ok {
+			ia.Default = int64default.StaticInt64(v.(types.Int64).ValueInt64())
+		}
+		return map[string]schema.Attribute{a.Attribute(): ia}
 	case Float:
 		mods := []planmodifier.Float64{}
 		if stable {
@@ -301,7 +469,11 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, float64planmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		fa := schema.Float64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		if v, ok := a.defaultValue(); ok {
+			fa.Default = float64default.StaticFloat64(v.(types.Float64).ValueFloat64())
+		}
+		return map[string]schema.Attribute{a.Attribute(): fa}
 	case Bool:
 		mods := []planmodifier.Bool{}
 		if stable {
@@ -310,7 +482,11 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, boolplanmodifier.RequiresReplace())
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}}
+		ba := schema.BoolAttribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		if v, ok := a.defaultValue(); ok {
+			ba.Default = booldefault.StaticBool(v.(types.Bool).ValueBool())
+		}
+		return map[string]schema.Attribute{a.Attribute(): ba}
 	case StringList:
 		mods := []planmodifier.List{}
 		if stable {
@@ -318,6 +494,9 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		}
 		if a.CreateOnly || a.NotRead {
 			mods = append(mods, listplanmodifier.RequiresReplace())
+		}
+		if a.Unordered {
+			mods = append([]planmodifier.List{sameSetAsState{}}, mods...)
 		}
 		// The platform trims and deduplicates list entries (field names aside,
 		// which it keeps as written), so a padded or repeated one would read
@@ -328,12 +507,41 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		} else {
 			validators = append(validators, listvalidator.ValueStringsAre(trimmed{}))
 		}
+		if len(a.OneOf) > 0 {
+			validators = append(validators, listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...)))
+		}
 		if a.MaxItems > 0 {
 			validators = append(validators, listvalidator.SizeAtMost(a.MaxItems))
 		}
-		return map[string]schema.Attribute{a.Attribute(): schema.ListAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods, Validators: validators}}
+		if a.MinItems > 0 {
+			validators = append(validators, listvalidator.SizeAtLeast(a.MinItems))
+		}
+		la := schema.ListAttribute{ElementType: types.StringType, Description: describe(a), Required: required, Optional: optional, Computed: computed, PlanModifiers: mods, Validators: validators}
+		if v, ok := a.defaultValue(); ok {
+			la.Default = listdefault.StaticValue(v.(types.List))
+		}
+		return map[string]schema.Attribute{a.Attribute(): la}
 	}
 	return nil
+}
+
+// stringBounds are the validators the published length bounds and pattern
+// become. A value the attribute reads a null as (NullAs) passes them, since it
+// stands for none of the value the bounds describe.
+func (a Attr) stringBounds() []validator.String {
+	var out []validator.String
+	if a.MinLength > 0 || a.MaxLength > 0 {
+		out = append(out, codePoints{min: a.MinLength, max: a.MaxLength})
+	}
+	if a.Pattern != "" {
+		out = append(out, matchesPattern{re: regexp.MustCompile(a.Pattern), raw: a.Pattern})
+	}
+	if sentinel, ok := a.nullAsValue(); ok {
+		for i, v := range out {
+			out[i] = nullAsString{sentinel: sentinel.(types.String).ValueString(), inner: v}
+		}
+	}
+	return out
 }
 
 // replaceString replaces the row when a CreateOnly string changes. For a
@@ -341,12 +549,16 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 // counts: an import reads the stored "checkout", and a configured "Checkout"
 // is the same service, not a new one.
 func replaceString(a Attr) planmodifier.String {
-	if a.Normalize == nil {
+	normalize := a.normalizer()
+	if normalize == nil {
 		return stringplanmodifier.RequiresReplace()
 	}
 	desc := "Changing it replaces the row; a change of case or surrounding space does not."
+	if a.Timestamp {
+		desc = "Changing it replaces the row; the same instant written another way does not."
+	}
 	return stringplanmodifier.RequiresReplaceIf(func(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-		resp.RequiresReplace = req.PlanValue.IsUnknown() || a.Normalize(req.PlanValue.ValueString()) != a.Normalize(req.StateValue.ValueString())
+		resp.RequiresReplace = req.PlanValue.IsUnknown() || normalize(req.PlanValue.ValueString()) != normalize(req.StateValue.ValueString())
 	}, desc, desc)
 }
 
@@ -465,6 +677,12 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 			continue
 		}
 		if o == opUpdate && len(a.HiddenKeys) > 0 && unchanged {
+			continue
+		}
+		// The value the attribute reads a null as is how the platform's null is
+		// written in the configuration; it goes out as the null it stands for.
+		if sentinel, ok := a.nullAsValue(); ok && sentinel.Equal(v) {
+			body[a.Name] = nil
 			continue
 		}
 		j, err := toJSON(v)
@@ -598,13 +816,23 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		}
 		return
 	}
+	var current *rowSource
+	if r.adopting(req) {
+		current = r.currentRow(ctx, resp)
+	}
+	r.planChecks(ctx, req, resp, current)
 	if r.spec.Previewed {
 		r.planPreview(ctx, req, resp)
 	}
 	r.planRepositoryWide(ctx, req, resp)
 	if req.State.Raw.IsNull() {
+		if current != nil {
+			r.planAdoptionWarnings(ctx, req.Plan, *current, &resp.Diagnostics)
+		}
 		return
 	}
+	r.settleEquivalentPlan(ctx, req, resp)
+	r.planWarnings(ctx, req.Plan, req.State, &resp.Diagnostics)
 	r.planResets(ctx, req, resp)
 	for _, a := range r.spec.Attrs {
 		if !a.Secret {
@@ -748,6 +976,9 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			diags.AddAttributeError(path.Root(a.Attribute()), "Unexpected API answer", err.Error())
 			continue
 		}
+		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() {
+			remote = sentinel
+		}
 		if len(a.IgnoredValues) > 0 {
 			remote = withoutValues(remote, a.IgnoredValues)
 		}
@@ -810,6 +1041,9 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		remote, err := fromJSON(a.Kind, row[a.Name])
 		if err != nil || held == nil {
 			return false, diags
+		}
+		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() {
+			remote = sentinel
 		}
 		if !keep(a, held, remote) && (!held.IsNull() || !remote.IsNull()) {
 			return false, diags
@@ -887,8 +1121,13 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddError(r.title("create"), r.conflict(err))
 		return
 	}
+	if client.IsNotFound(err) && r.alwaysThere() {
+		resp.Diagnostics.AddError(r.title("create"), r.platformTooOld(err))
+		return
+	}
 	if err != nil {
-		resp.Diagnostics.AddError(r.title("create"), err.Error())
+		summary, detail := r.failure("create", err)
+		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
 	// The row exists from here on: state records it before the follow-up, so a
@@ -986,6 +1225,10 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 	resp.Diagnostics.Append(r.setIdentity(ctx, resp.Identity, id.ValueString())...)
 	p, q := r.rowPath(id.ValueString())
 	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
+	if client.IsNotFound(err) && r.alwaysThere() && !r.spec.Previewed {
+		resp.Diagnostics.AddError(r.title("read"), r.platformTooOld(err))
+		return
+	}
 	if client.IsNotFound(err) {
 		if r.spec.Previewed && followsParent(err) {
 			resp.Diagnostics.AddWarning("Following the parent again", fmt.Sprintf("This organization now follows its parent's %s, so sreagent_%s no longer manages anything here. The next plan proposes to create it again, which gives the organization its own and says what moves.", r.spec.Key, r.spec.TypeName))
@@ -994,7 +1237,8 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 	if err != nil {
-		resp.Diagnostics.AddError(r.title("read"), err.Error())
+		summary, detail := r.failure("read", err)
+		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
 	resp.Diagnostics.Append(r.writeState(ctx, out, req.State, &resp.State, resp.Private, resp.Identity)...)
@@ -1057,7 +1301,8 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		resp.Diagnostics.AddError(r.title("update"), "The row was deleted outside Terraform. Run terraform plan to recreate it.")
 		return
 	case err != nil:
-		resp.Diagnostics.AddError(r.title("update"), err.Error())
+		summary, detail := r.failure("update", err)
+		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
 	resp.Diagnostics.Append(r.writeState(ctx, out, req.Plan, &resp.State, resp.Private, resp.Identity)...)
@@ -1072,7 +1317,7 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 	if r.spec.Shape == Singleton {
-		resp.Diagnostics.AddWarning("Settings left in place", fmt.Sprintf("sreagent_%s is one row per organization and cannot be deleted; Terraform stopped managing it and the platform keeps its current values.", r.spec.TypeName))
+		resp.Diagnostics.AddWarning("Settings left in place", fmt.Sprintf("sreagent_%s is one row per organization and cannot be deleted; Terraform stopped managing it and the platform keeps its current values.%s", r.spec.TypeName, r.destroyNote()))
 		return
 	}
 	var id types.String
@@ -1096,7 +1341,8 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 			return
 		}
 		if err != nil {
-			resp.Diagnostics.AddError(r.title("delete"), err.Error())
+			summary, detail := r.failure("delete", err)
+			resp.Diagnostics.AddError(summary, detail)
 			return
 		}
 		same, d := r.matchesState(ctx, req.State, current)
@@ -1122,8 +1368,17 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		summary, detail := r.precondition("delete", err)
 		resp.Diagnostics.AddError(summary, detail)
 	default:
-		resp.Diagnostics.AddError(r.title("delete"), err.Error())
+		summary, detail := r.failure("delete", err)
+		resp.Diagnostics.AddError(summary, detail)
 	}
+}
+
+// destroyNote is what the spec says stays in force when its destroy leaves the settings.
+func (r *facadeResource) destroyNote() string {
+	if r.spec.DestroyNote == "" {
+		return ""
+	}
+	return " " + r.spec.DestroyNote
 }
 
 // describe is an attribute's description, naming its allowed values.
@@ -1168,4 +1423,115 @@ func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportSta
 		}
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
+}
+
+// planChecks runs the spec's PlanChecks over the planned values and, on an
+// update, the prior state. On a create that adopts a singleton the prior is the
+// row the organization holds (current), and a value the block leaves out is the
+// one the apply leaves as it is.
+func (r *facadeResource) planChecks(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse, current *rowSource) {
+	if len(r.spec.PlanChecks) == 0 {
+		return
+	}
+	planned := configView{ctx: ctx, src: req.Plan, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+	var plan, prior Config = planned, nil
+	switch {
+	case !req.State.Raw.IsNull():
+		prior = configView{ctx: ctx, src: req.State, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+	case current != nil:
+		held := configView{ctx: ctx, src: *current, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+		left := configView{ctx: ctx, src: req.Config, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+		plan, prior = adoptedConfig{plan: planned, config: left, current: held}, held
+	}
+	for _, check := range r.spec.PlanChecks {
+		for _, issue := range check(plan, prior) {
+			planned.report(&resp.Diagnostics, issue)
+		}
+	}
+}
+
+// planWarnings says what a change does beyond the setting itself: a ChangeWarning
+// when the planned value is not the one the prior holds, a RemovedWarning for each
+// entry of a list the plan drops, a ClearedWarning when the plan removes a value.
+// The prior is the state of an update, or the row an adopting create overwrites.
+func (r *facadeResource) planWarnings(ctx context.Context, plan, prior valueSource, diags *diag.Diagnostics) {
+	for _, a := range r.spec.Attrs {
+		if a.ChangeWarning == "" && a.RemovedWarning == "" && a.ClearedWarning == "" {
+			continue
+		}
+		planned, d := getValue(ctx, plan, a)
+		diags.Append(d...)
+		held, d := getValue(ctx, prior, a)
+		diags.Append(d...)
+		if planned == nil || held == nil || planned.IsUnknown() || held.IsUnknown() {
+			continue
+		}
+		p := path.Root(a.Attribute())
+		if a.ChangeWarning != "" && !planned.Equal(held) && !keep(a, held, planned) {
+			diags.AddAttributeWarning(p, "A change with effects beyond this setting", a.ChangeWarning)
+		}
+		if a.ClearedWarning != "" && planned.IsNull() && !held.IsNull() {
+			diags.AddAttributeWarning(p, "A scope is being removed", a.ClearedWarning)
+		}
+		if a.RemovedWarning == "" {
+			continue
+		}
+		before, ok1 := held.(types.List)
+		after, ok2 := planned.(types.List)
+		if !ok1 || !ok2 || before.IsNull() {
+			continue
+		}
+		kept := stringsOf(after)
+		for _, entry := range stringsOf(before) {
+			if !slices.Contains(kept, entry) {
+				diags.AddAttributeWarning(p, "An entry is being removed", fmt.Sprintf(a.RemovedWarning, entry))
+			}
+		}
+	}
+}
+
+// equivalence reports that the spec has an attribute whose configuration can
+// differ from state in spelling alone (a list in another order, a time in another
+// zone).
+func (r *facadeResource) equivalence() bool {
+	for _, a := range r.spec.Attrs {
+		if a.Unordered || a.Timestamp {
+			return true
+		}
+	}
+	return false
+}
+
+// settleEquivalentPlan ends a diff that is only spelling. The framework marks the
+// attributes the platform answers unknown as soon as the configuration differs
+// from state at all, before the attribute modifiers have put the stored list or
+// time back; when every attribute the configuration sets then holds what state
+// holds, those answers are what state has too, and the plan is empty.
+func (r *facadeResource) settleEquivalentPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || !r.equivalence() {
+		return
+	}
+	for _, a := range r.spec.Attrs {
+		if a.Computed || a.Secret || a.Local || a.WriteOnly || a.Kept || a.NotRead || len(a.Complement) > 0 {
+			continue
+		}
+		planned, d := getValue(ctx, resp.Plan, a)
+		if d.HasError() || planned == nil || planned.IsUnknown() {
+			return
+		}
+		held, d := getValue(ctx, req.State, a)
+		if d.HasError() || held == nil || !planned.Equal(held) {
+			return
+		}
+	}
+	for _, a := range r.spec.Attrs {
+		if !a.Computed || a.Secret || a.Local || a.WriteOnly || a.Kept {
+			continue
+		}
+		held, d := getValue(ctx, req.State, a)
+		if d.HasError() || held == nil {
+			continue
+		}
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+	}
 }

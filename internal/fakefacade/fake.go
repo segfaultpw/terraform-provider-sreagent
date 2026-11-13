@@ -32,6 +32,8 @@ type Fake struct {
 	calls       map[string]int
 	bodies      map[string]map[string]any
 	readOnly    bool
+	refused     map[string]string
+	onWrite     map[string]func(map[string]any)
 	truncated   map[string]bool
 	etagMode    etagMode
 	defaults    map[string]any
@@ -39,18 +41,22 @@ type Fake struct {
 	dm          defaultsModel
 	em          effectiveModel
 	history     map[string][]map[string]any
+	accepted    []string
 }
 
 // New starts a fake for specs; the server stops when the test ends.
 func New(t *testing.T, specs []engine.Spec) *Fake {
 	t.Helper()
-	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}, history: map[string][]map[string]any{}, dm: defaultsModel{source: "built_in", parentValues: builtInDefaults()}}
+	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, refused: map[string]string{}, onWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}, history: map[string][]map[string]any{}, dm: defaultsModel{source: "built_in", parentValues: builtInDefaults()}}
 	for _, s := range specs {
 		f.specs[s.Key] = s
 		f.rows[s.Key] = map[string]map[string]any{}
 		// The platform answers defaults for most singletons before any write.
 		if s.Shape == engine.Singleton && !s.StartsEmpty {
 			f.rows[s.Key][s.Key] = blank(s)
+			if isSecurity(s.Key) {
+				securitySeed(s, f.rows[s.Key][s.Key])
+			}
 		}
 	}
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
@@ -93,6 +99,38 @@ func (f *Fake) ReadOnly() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.readOnly = true
+}
+
+// AllowWrites undoes ReadOnly, for a test that must clean up after proving the refusal.
+func (f *Fake) AllowWrites() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.readOnly = false
+}
+
+// RefusePlan makes every request for key, reads included, answer the 403 the
+// platform gives an organization whose plan lacks the feature the resource needs:
+// error "forbidden" with the platform's own sentence. A read-only key still gets
+// its own refusal for a write, as it does on the platform, where that check runs
+// first. An empty sentence lifts the refusal.
+func (f *Fake) RefusePlan(key, sentence string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if sentence == "" {
+		delete(f.refused, key)
+		return
+	}
+	f.refused[key] = sentence
+}
+
+// OnWrite registers fn to run on a row of key after a create or an update stored
+// it and before it is answered: the platform's own normalization of what it was
+// sent (sorted lists, canonical times, nulls), which the generic fake does not
+// know.
+func (f *Fake) OnWrite(key string, fn func(row map[string]any)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onWrite[key] = fn
 }
 
 type etagMode int
@@ -204,7 +242,9 @@ func etag(spec engine.Spec, row map[string]any) string {
 }
 
 func zero(a engine.Attr) any {
-	if a.Clearable {
+	// A null that is a real setting (engine.Attr.NullAs) is what the platform
+	// stores before anyone sets it.
+	if a.Clearable || a.NullAs != "" {
 		return nil
 	}
 	switch a.Kind {
@@ -308,6 +348,11 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if sentence, ok := f.refused[spec.Key]; ok {
+		fail(w, 403, "forbidden", sentence)
+		return
+	}
+
 	id := ""
 	if len(parts) == 2 {
 		seg, _ := url.PathUnescape(parts[1])
@@ -399,6 +444,12 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		fail(w, 422, "unprocessable_entity", msg)
 		return
 	}
+	if isSecurity(spec.Key) {
+		if status, msg := f.securityRefusal(spec, "", nil, body); status != 0 {
+			fail(w, status, map[int]string{409: "conflict", 422: "unprocessable_entity"}[status], msg)
+			return
+		}
+	}
 	for _, a := range spec.Attrs {
 		if a.WriteOnly || len(a.Complement) > 0 {
 			continue
@@ -446,6 +497,12 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 	}
 	if spec.Shape != engine.Generated {
 		row["id"] = id
+	}
+	if isSecurity(spec.Key) {
+		f.securityStore(spec, row, body, true)
+	}
+	if fn := f.onWrite[spec.Key]; fn != nil {
+		fn(row)
 	}
 	f.rows[spec.Key][id] = row
 	w.Header().Set("Location", "/api/v1/config/"+spec.Key+"/"+id)
@@ -508,7 +565,7 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		if v == nil && f.following(spec.Key) && slices.Contains(repoWide, k) {
 			continue
 		}
-		if v == nil && !a.Clearable {
+		if v == nil && !a.Clearable && a.NullAs == "" {
 			fail(w, 422, "unprocessable_entity", k+" cannot be null; omit it to keep the stored value.")
 			return
 		}
@@ -520,6 +577,12 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 	if msg := f.followsRefusal(spec.Key, body); msg != "" {
 		fail(w, 422, "unprocessable_entity", msg)
 		return
+	}
+	if isSecurity(spec.Key) {
+		if status, msg := f.securityRefusal(spec, id, row, body); status != 0 {
+			fail(w, status, map[int]string{409: "conflict", 422: "unprocessable_entity"}[status], msg)
+			return
+		}
 	}
 	before := heldOf(row)
 	for k, v := range body {
@@ -550,6 +613,12 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		f.finishRepoUpdate(row, body, before)
 	}
 	carryIgnored(spec, row, previous)
+	if isSecurity(spec.Key) {
+		f.securityStore(spec, row, body, false)
+	}
+	if fn := f.onWrite[spec.Key]; fn != nil {
+		fn(row)
+	}
 	reply(w, 200, wrap(f.present(spec.Key, row)), f.tag(spec, row))
 }
 

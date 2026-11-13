@@ -1871,6 +1871,7 @@
             ]
           },
           "expires_at": {
+            "format": "date-time",
             "type": [
               "string",
               "null"
@@ -1935,6 +1936,10 @@
       "security_digest_settings_row": {
         "properties": {
           "cadence": {
+            "enum": [
+              "daily",
+              "weekly"
+            ],
             "type": [
               "string",
               "null"
@@ -2003,6 +2008,17 @@
         "properties": {
           "areas": {
             "items": {
+              "enum": [
+                "secrets",
+                "iam",
+                "kubernetes",
+                "images",
+                "dependencies",
+                "anomalies",
+                "drift",
+                "code",
+                "certificates"
+              ],
               "type": "string"
             },
             "type": [
@@ -2024,6 +2040,13 @@
           },
           "events": {
             "items": {
+              "enum": [
+                "new_finding",
+                "sla_breached",
+                "acceptance_expiring",
+                "acceptance_expired",
+                "fix_verified"
+              ],
               "type": "string"
             },
             "type": [
@@ -2035,6 +2058,13 @@
             "type": "string"
           },
           "min_severity": {
+            "enum": [
+              "info",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
             "type": [
               "string",
               "null"
@@ -7052,7 +7082,7 @@
     },
     "/repository_defaults": {
       "get": {
-        "description": "The organization's repository defaults: the six settings every repository without its own value follows (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config), as one flat object. `source` says where they come from: \"own\" (this organization set them), \"parent\" (a child organization follows its parent's), or \"built_in\" (none set: platform runner, fallback on, automatic dispatch, no network for checks, no CI configuration changes, pull requests by the installation's setting). `inherited_from` is the parent organization's id when the values are the parent's, `parent_name` the parent's name when there is one, and `stopped` is true when a child chose to stop following its parent. Change them with update_repository_defaults; list_effective_repo_settings shows what each repository ends up with.",
+        "description": "The organization's repository defaults: the six settings every repository without its own value follows (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config), as one flat object. `source` says where they come from: \"own\" (this organization set them), \"parent\" (a child organization follows its parent's), or \"built_in\" (none set: platform runner, fallback on, automatic dispatch, no network for checks, no CI configuration changes, pull requests by the installation's setting). `inherited_from` is the parent organization's id when the values are the parent's, `parent_name` the parent's name when there is one, and `stopped` is true when a child chose to stop following its parent. Change them with update_repository_defaults; list_effective_repo_settings shows what each repository ends up with. On the configuration API reading stays open when the plan no longer includes GitHub; the MCP endpoint itself still needs the plan.",
         "operationId": "get_repository_defaults",
         "parameters": [],
         "responses": {
@@ -7081,7 +7111,7 @@
         "summary": "Read the repository_defaults"
       },
       "put": {
-        "description": "Change the organization's repository defaults: the settings a repository follows until it has its own value. An organization admin's tool, the same as the Organization defaults for repositories panel under Integrations. Send the settings to change, or follow_parent true (a child organization goes back to its parent's defaults and drops its own), or stop_following true (a child stops following its parent and uses the built-in values); send only one of those three kinds. The preview lists the change, the repositories that would move, how many keep a value of their own, a count per following child organization, the confirmations needed (needs_confirm) and anything that refuses it, with a fingerprint. Over this API a write takes two requests. Send the change: the answer is 428 with the preview in preview and its fingerprint at preview.data.fingerprint, and nothing is written. Send the same body with expected_fingerprint set to that fingerprint to apply it (200). If what would move changed since the preview, nothing is written and the answer is 409 with a fresh preview. Turning allow_ci_config or check_network on needs confirm [\"ci_config\"] or [\"check_network\"] when applying. A child organization that follows its parent and sends only some of the six settings starts its own defaults from the parent's current values for the rest and stops following the parent for all six; the preview says so with leaves_parent true, and follow_parent undoes it. An API key with mcp:admin (api:admin on the configuration API) may use every part of it, follow_parent and stop_following included. An applied change leaves one repository_defaults.changed audit entry. This changes what repositories follow; update_repo_settings writes a repository's own value (or puts it back on the default with follows_default), and set_platform_fallback_for_all sets the runner fallback default and makes every repository follow it.",
+        "description": "Change the organization's repository defaults: the settings a repository follows until it has its own value. An organization admin's tool, the same as the Organization defaults for repositories panel under Integrations. Send the settings to change, or follow_parent true (a child organization goes back to its parent's defaults and drops its own), or stop_following true (a child stops following its parent and uses the built-in values); send only one of those three kinds. The preview lists the change, the repositories that would move, how many keep a value of their own, a count per following child organization, the confirmations needed (needs_confirm) and anything that refuses it, with a fingerprint. Over this API a write takes two requests. Send the change: the answer is 428 with the preview in preview and its fingerprint at preview.data.fingerprint, and nothing is written. Send the same body with expected_fingerprint set to that fingerprint to apply it (200). If what would move changed since the preview, nothing is written and the answer is 409 with a fresh preview. Turning allow_ci_config or check_network on needs confirm [\"ci_config\"] or [\"check_network\"] when applying. A child organization that follows its parent and sends only some of the six settings starts its own defaults from the parent's current values for the rest and stops following the parent for all six; the preview says so with leaves_parent true, and follow_parent undoes it. An API key with mcp:admin (api:admin on the configuration API) may use every part of it, follow_parent and stop_following included. When the plan no longer includes GitHub, the configuration API still accepts follow_parent alone unless it would turn something on (the preview lists that in refusals); every other call is refused with the plan sentence. An applied change leaves one repository_defaults.changed audit entry. This changes what repositories follow; update_repo_settings writes a repository's own value (or puts it back on the default with follows_default), update_repo_settings_bulk does the same for several repositories at once, and set_platform_fallback_for_all sets the runner fallback default and makes every repository follow it.",
         "operationId": "update_repository_defaults",
         "parameters": [],
         "requestBody": {
@@ -7169,6 +7199,120 @@
                       "type": "string"
                     },
                     "preview": {
+                      "properties": {
+                        "data": {
+                          "properties": {
+                            "applied": {
+                              "type": "boolean"
+                            },
+                            "changes": {
+                              "additionalProperties": {
+                                "properties": {
+                                  "from": {},
+                                  "to": {}
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "The settings that change, by name: each holds the value it has now (from) and the value it would take (to). Empty when nothing would change.",
+                              "type": "object"
+                            },
+                            "children": {
+                              "description": "The child organizations that follow these defaults and would be affected.",
+                              "items": {
+                                "properties": {
+                                  "ci_pinned": {
+                                    "type": "integer"
+                                  },
+                                  "moved": {
+                                    "type": "integer"
+                                  },
+                                  "no_runner": {
+                                    "type": "boolean"
+                                  },
+                                  "organization_id": {
+                                    "type": "string"
+                                  },
+                                  "organization_name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "organization_id",
+                                  "organization_name",
+                                  "moved",
+                                  "ci_pinned",
+                                  "no_runner"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "differs_by_branch": {
+                              "description": "The changed settings that some repository's branch entries read differently.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "fingerprint": {
+                              "description": "Send this as expected_fingerprint, with the same body, to apply the change.",
+                              "type": "string"
+                            },
+                            "kept": {
+                              "description": "How many repositories keep every value they read now.",
+                              "type": "integer"
+                            },
+                            "leaves_parent": {
+                              "description": "True when a child organization that follows its parent's defaults would stop following them.",
+                              "type": "boolean"
+                            },
+                            "moved": {
+                              "description": "The repositories that would read a different value for at least one changed setting.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "needs_confirm": {
+                              "description": "The confirmations (ci_config, check_network) the apply must carry in confirm.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "refusals": {
+                              "description": "Why the platform would refuse this change, in plain sentences.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "stale": {
+                              "description": "True on the 409: the fingerprint sent no longer describes what would move.",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "fingerprint",
+                            "changes",
+                            "moved",
+                            "kept",
+                            "differs_by_branch",
+                            "needs_confirm",
+                            "refusals",
+                            "leaves_parent",
+                            "children"
+                          ],
+                          "type": "object"
+                        },
+                        "organization": {
+                          "type": "object"
+                        }
+                      },
                       "type": "object"
                     }
                   },
@@ -7196,6 +7340,120 @@
                       "type": "string"
                     },
                     "preview": {
+                      "properties": {
+                        "data": {
+                          "properties": {
+                            "applied": {
+                              "type": "boolean"
+                            },
+                            "changes": {
+                              "additionalProperties": {
+                                "properties": {
+                                  "from": {},
+                                  "to": {}
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "type": "object"
+                              },
+                              "description": "The settings that change, by name: each holds the value it has now (from) and the value it would take (to). Empty when nothing would change.",
+                              "type": "object"
+                            },
+                            "children": {
+                              "description": "The child organizations that follow these defaults and would be affected.",
+                              "items": {
+                                "properties": {
+                                  "ci_pinned": {
+                                    "type": "integer"
+                                  },
+                                  "moved": {
+                                    "type": "integer"
+                                  },
+                                  "no_runner": {
+                                    "type": "boolean"
+                                  },
+                                  "organization_id": {
+                                    "type": "string"
+                                  },
+                                  "organization_name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "organization_id",
+                                  "organization_name",
+                                  "moved",
+                                  "ci_pinned",
+                                  "no_runner"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "differs_by_branch": {
+                              "description": "The changed settings that some repository's branch entries read differently.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "fingerprint": {
+                              "description": "Send this as expected_fingerprint, with the same body, to apply the change.",
+                              "type": "string"
+                            },
+                            "kept": {
+                              "description": "How many repositories keep every value they read now.",
+                              "type": "integer"
+                            },
+                            "leaves_parent": {
+                              "description": "True when a child organization that follows its parent's defaults would stop following them.",
+                              "type": "boolean"
+                            },
+                            "moved": {
+                              "description": "The repositories that would read a different value for at least one changed setting.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "needs_confirm": {
+                              "description": "The confirmations (ci_config, check_network) the apply must carry in confirm.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "refusals": {
+                              "description": "Why the platform would refuse this change, in plain sentences.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "stale": {
+                              "description": "True on the 409: the fingerprint sent no longer describes what would move.",
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "fingerprint",
+                            "changes",
+                            "moved",
+                            "kept",
+                            "differs_by_branch",
+                            "needs_confirm",
+                            "refusals",
+                            "leaves_parent",
+                            "children"
+                          ],
+                          "type": "object"
+                        },
+                        "organization": {
+                          "type": "object"
+                        }
+                      },
                       "type": "object"
                     }
                   },
@@ -7284,6 +7542,8 @@
                 "properties": {
                   "detector_type": {
                     "description": "A detector type, or null for every kind.",
+                    "maxLength": 50,
+                    "pattern": "^[a-z0-9_]+$",
                     "type": [
                       "string",
                       "null"
@@ -7291,6 +7551,7 @@
                   },
                   "expires_at": {
                     "description": "When the rule ends, ISO 8601 and in the future, or null for never.",
+                    "format": "date-time",
                     "type": [
                       "string",
                       "null"
@@ -7298,14 +7559,20 @@
                   },
                   "path_glob": {
                     "description": "At most 200 characters, for example vendor/** or **/fixtures/*.pem.",
+                    "maxLength": 200,
+                    "minLength": 1,
                     "type": "string"
                   },
                   "reason": {
                     "description": "10 to 500 characters.",
+                    "maxLength": 500,
+                    "minLength": 10,
                     "type": "string"
                   },
                   "repository": {
                     "description": "owner/name, or null for every repository.",
+                    "maxLength": 255,
+                    "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
                     "type": [
                       "string",
                       "null"
@@ -7448,6 +7715,7 @@
                     "items": {
                       "type": "string"
                     },
+                    "maxItems": 50,
                     "type": "array"
                   }
                 },
@@ -7521,6 +7789,10 @@
                 "properties": {
                   "cadence": {
                     "description": "One of daily, weekly.",
+                    "enum": [
+                      "daily",
+                      "weekly"
+                    ],
                     "type": "string"
                   },
                   "email": {
@@ -7533,10 +7805,14 @@
                   },
                   "hour": {
                     "description": "0 to 23.",
+                    "maximum": 23,
+                    "minimum": 0,
                     "type": "integer"
                   },
                   "slack_channel": {
                     "description": "A Slack channel such as #security, or null for none.",
+                    "maxLength": 80,
+                    "pattern": "^#\\w+(-\\w+)*$",
                     "type": [
                       "string",
                       "null"
@@ -7544,6 +7820,8 @@
                   },
                   "weekday": {
                     "description": "1 (Monday) to 7 (Sunday).",
+                    "maximum": 7,
+                    "minimum": 1,
                     "type": "integer"
                   }
                 },
@@ -7617,45 +7895,84 @@
               "schema": {
                 "properties": {
                   "areas": {
+                    "default": [],
                     "description": "Any of secrets, iam, kubernetes, images, dependencies, anomalies, drift, code, certificates. Empty means every area.",
                     "items": {
+                      "enum": [
+                        "secrets",
+                        "iam",
+                        "kubernetes",
+                        "images",
+                        "dependencies",
+                        "anomalies",
+                        "drift",
+                        "code",
+                        "certificates"
+                      ],
                       "type": "string"
                     },
                     "type": "array"
                   },
                   "email": {
+                    "default": true,
                     "description": "Send by email. Default true.",
                     "type": "boolean"
                   },
                   "enabled": {
+                    "default": true,
                     "description": "Default true.",
                     "type": "boolean"
                   },
                   "events": {
+                    "default": [
+                      "new_finding"
+                    ],
                     "description": "Any of new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified. Default new_finding.",
                     "items": {
+                      "enum": [
+                        "new_finding",
+                        "sla_breached",
+                        "acceptance_expiring",
+                        "acceptance_expired",
+                        "fix_verified"
+                      ],
                       "type": "string"
                     },
+                    "minItems": 1,
                     "type": "array"
                   },
                   "min_severity": {
+                    "default": "high",
                     "description": "One of info, low, medium, high, critical. Default high.",
+                    "enum": [
+                      "info",
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
                     "type": "string"
                   },
                   "name": {
                     "description": "1 to 80 characters, unique.",
+                    "maxLength": 80,
+                    "minLength": 1,
                     "type": "string"
                   },
                   "page": {
+                    "default": false,
                     "description": "Page on call. Only when min_severity is critical. Default false.",
                     "type": "boolean"
                   },
                   "slack": {
+                    "default": true,
                     "description": "Send to Slack. Default true.",
                     "type": "boolean"
                   },
                   "slack_channel": {
                     "description": "A Slack channel such as #alerts-critical, or null for the default channels.",
+                    "maxLength": 80,
+                    "pattern": "^#\\w+(-\\w+)*$",
                     "type": [
                       "string",
                       "null"
@@ -7774,6 +8091,17 @@
                   "areas": {
                     "description": "Any of secrets, iam, kubernetes, images, dependencies, anomalies, drift, code, certificates. Empty means every area.",
                     "items": {
+                      "enum": [
+                        "secrets",
+                        "iam",
+                        "kubernetes",
+                        "images",
+                        "dependencies",
+                        "anomalies",
+                        "drift",
+                        "code",
+                        "certificates"
+                      ],
                       "type": "string"
                     },
                     "type": "array"
@@ -7789,16 +8117,33 @@
                   "events": {
                     "description": "Any of new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified. Default new_finding.",
                     "items": {
+                      "enum": [
+                        "new_finding",
+                        "sla_breached",
+                        "acceptance_expiring",
+                        "acceptance_expired",
+                        "fix_verified"
+                      ],
                       "type": "string"
                     },
+                    "minItems": 1,
                     "type": "array"
                   },
                   "min_severity": {
                     "description": "One of info, low, medium, high, critical. Default high.",
+                    "enum": [
+                      "info",
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
                     "type": "string"
                   },
                   "name": {
                     "description": "1 to 80 characters, unique.",
+                    "maxLength": 80,
+                    "minLength": 1,
                     "type": "string"
                   },
                   "page": {
@@ -7811,6 +8156,8 @@
                   },
                   "slack_channel": {
                     "description": "A Slack channel such as #alerts-critical, or null for the default channels.",
+                    "maxLength": 80,
+                    "pattern": "^#\\w+(-\\w+)*$",
                     "type": [
                       "string",
                       "null"
@@ -7885,6 +8232,8 @@
                 "properties": {
                   "critical_days": {
                     "description": "1 to 365 days, or null for no SLA.",
+                    "maximum": 365,
+                    "minimum": 1,
                     "type": [
                       "integer",
                       "null"
@@ -7892,6 +8241,8 @@
                   },
                   "high_days": {
                     "description": "1 to 365 days, or null for no SLA.",
+                    "maximum": 365,
+                    "minimum": 1,
                     "type": [
                       "integer",
                       "null"
@@ -7899,6 +8250,8 @@
                   },
                   "info_days": {
                     "description": "1 to 365 days, or null for no SLA.",
+                    "maximum": 365,
+                    "minimum": 1,
                     "type": [
                       "integer",
                       "null"
@@ -7906,6 +8259,8 @@
                   },
                   "low_days": {
                     "description": "1 to 365 days, or null for no SLA.",
+                    "maximum": 365,
+                    "minimum": 1,
                     "type": [
                       "integer",
                       "null"
@@ -7913,6 +8268,8 @@
                   },
                   "medium_days": {
                     "description": "1 to 365 days, or null for no SLA.",
+                    "maximum": 365,
+                    "minimum": 1,
                     "type": [
                       "integer",
                       "null"
@@ -10579,6 +10936,7 @@
       "terraform_names": {
         "provider": "provider_type"
       },
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "ai_provider",
       "update_fields": [
@@ -10621,6 +10979,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "ai_settings",
       "update_fields": [
@@ -10668,6 +11027,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "alert_mute",
       "update_fields": [],
@@ -10704,6 +11064,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "alert_route",
       "update_fields": [
@@ -10733,6 +11094,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
@@ -10788,6 +11150,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "certificate_monitor",
       "update_fields": [],
@@ -10818,6 +11181,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "change_notifications",
       "update_fields": [
@@ -10857,6 +11221,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [
@@ -10917,6 +11282,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
@@ -10956,6 +11322,7 @@
       ],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "connector",
       "update_fields": [
@@ -11009,6 +11376,7 @@
       ],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "data_source",
       "update_fields": [
@@ -11074,6 +11442,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "deploy_policy",
       "update_fields": [
@@ -11107,6 +11476,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
@@ -11169,6 +11539,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "github_settings",
       "update_fields": [
@@ -11234,6 +11605,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "image_target",
       "update_fields": [],
@@ -11263,6 +11635,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "notification_settings",
       "update_fields": [
@@ -11319,6 +11692,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [
         "social_joins_enabled",
         "restrict_domain_signups",
@@ -11409,6 +11783,7 @@
       ],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "outbound_config",
       "update_fields": [
@@ -11481,6 +11856,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "outbound_rule",
       "update_fields": [
@@ -11528,6 +11904,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "overseer_settings",
       "update_fields": [
@@ -11576,6 +11953,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "prompt_template",
       "update_fields": [
@@ -11643,6 +12021,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "repo_setting",
       "update_fields": [
@@ -11706,6 +12085,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "repository_defaults",
       "update_fields": [
@@ -11742,6 +12122,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [],
@@ -11781,8 +12162,9 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
-      "terraform_type": null,
+      "terraform_type": "secret_allow_rule",
       "update_fields": [],
       "upsert": false
     },
@@ -11806,8 +12188,9 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
-      "terraform_type": null,
+      "terraform_type": "security_code_classes",
       "update_fields": [
         "classes"
       ],
@@ -11844,8 +12227,11 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {
+        "slack_channel": ""
+      },
       "terraform_read_only": [],
-      "terraform_type": null,
+      "terraform_type": "security_digest_settings",
       "update_fields": [
         "cadence",
         "email",
@@ -11898,8 +12284,9 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
-      "terraform_type": null,
+      "terraform_type": "security_notification_rule",
       "update_fields": [
         "areas",
         "email",
@@ -11939,8 +12326,15 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {
+        "critical_days": 0,
+        "high_days": 0,
+        "info_days": 0,
+        "low_days": 0,
+        "medium_days": 0
+      },
       "terraform_read_only": [],
-      "terraform_type": null,
+      "terraform_type": "security_sla_policy",
       "update_fields": [
         "critical_days",
         "high_days",
@@ -11993,6 +12387,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "service_binding",
       "update_fields": [
@@ -12042,6 +12437,7 @@
       ],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "slack",
       "update_fields": [
@@ -12095,6 +12491,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "sli",
       "update_fields": [
@@ -12139,6 +12536,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "slo",
       "update_fields": [
@@ -12183,6 +12581,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "status_page_component",
       "update_fields": [
@@ -12243,6 +12642,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": null,
       "update_fields": [
@@ -12284,6 +12684,7 @@
       "secret_fields": [],
       "singleton": true,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "status_page_settings",
       "update_fields": [
@@ -12364,6 +12765,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "synthetic_check",
       "update_fields": [
@@ -12411,6 +12813,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "team_member",
       "update_fields": [],
@@ -12440,6 +12843,7 @@
       "secret_fields": [],
       "singleton": false,
       "terraform_names": {},
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "team",
       "update_fields": [
@@ -12486,6 +12890,7 @@
       "terraform_names": {
         "provider": "provider_type"
       },
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "ticket_import_rule",
       "update_fields": [
@@ -12555,6 +12960,7 @@
       "terraform_names": {
         "provider": "provider_type"
       },
+      "terraform_null_as": {},
       "terraform_read_only": [],
       "terraform_type": "ticket_integration",
       "update_fields": [

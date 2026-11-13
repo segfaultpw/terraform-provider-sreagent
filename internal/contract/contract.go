@@ -26,6 +26,10 @@ type Resource struct {
 	// NullMeans maps a Clearable field to the value the platform acts on
 	// when the field is null, which the spec's NullMeans must equal.
 	NullMeans map[string]any `json:"null_means"`
+	// TerraformNullAs maps a field whose null is a real setting (no SLA, no
+	// channel) to the value the provider reads the null as and sends null for,
+	// which the spec's NullAs must equal.
+	TerraformNullAs map[string]any `json:"terraform_null_as"`
 	// ListMax is the most rows a list answers at once, null for a list with no
 	// cap.
 	ListMax *int `json:"list_max"`

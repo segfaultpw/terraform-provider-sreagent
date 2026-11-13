@@ -139,6 +139,34 @@ func TestExportAdoptsCleanly(t *testing.T) {
 	f.SetDefaults(map[string]any{"fix_runner": "platform", "platform_fallback": true, "auto_dispatch": false, "draft_prs": true, "check_network": false, "allow_ci_config": false})
 	f.DefaultsSource("own", "", nil)
 	repo := seedOne(t, f.URL, "repo_settings", map[string]any{"repo": "acme/web", "fix_runner": "self_hosted"})
+	staging := seedOne(t, f.URL, "repo_settings", map[string]any{"repo": "acme/web", "branch": "staging"})
+
+	// The security settings and rules, as a fresh organization and the seed hold them: the SLA with no
+	// SLA for info (null), the digest with no channel (null), two marked classes, the seeded default
+	// rule and a rule that pages, an allow rule that ended long ago with its repository in lower case
+	// and the end time with microseconds, and one that never ends.
+	f.SetAcceptedClasses("other:ssrf", "other:xxe")
+	f.Mutate("security_code_classes", "security_code_classes", func(r map[string]any) {
+		r["classes"] = []any{"other:ssrf", "other:xxe"}
+		r["available_classes"] = []any{}
+	})
+	defaultRule := seedOne(t, f.URL, "security_notification_rules", map[string]any{
+		"name": "Critical and high findings", "areas": []string{}, "min_severity": "high",
+		"events": []string{"new_finding", "sla_breached", "acceptance_expired", "fix_verified"}, "slack": true, "email": true, "page": false,
+	})
+	pageRule := seedOne(t, f.URL, "security_notification_rules", map[string]any{
+		"name": "Page on critical", "areas": []string{"secrets", "iam"}, "min_severity": "critical",
+		"events": []string{"new_finding"}, "slack": true, "slack_channel": "#security-critical", "email": false, "page": true,
+	})
+	const endedRule, vendorRule = "00000000-0000-4000-8000-000000000013", "00000000-0000-4000-8000-000000000014"
+	f.Seed("secret_allow_rules", map[string]any{
+		"id": endedRule, "path_glob": "**/testdata/**", "reason": "Vendored test fixtures, not real keys",
+		"repository": "acme/web", "detector_type": "aws_access_key", "expires_at": "2020-01-01T00:00:00.000000Z", "created_at": "2019-01-01T00:00:00.000000Z",
+	})
+	f.Seed("secret_allow_rules", map[string]any{
+		"id": vendorRule, "path_glob": "vendor/**", "reason": "Third party code is scanned upstream",
+		"repository": nil, "detector_type": nil, "expires_at": nil, "created_at": "2019-01-01T00:00:00.000000Z",
+	})
 
 	// Written the way the export writes it: the AI provider's default
 	// max_tokens, temperature and timeout_ms left out (the provider reads
@@ -190,10 +218,18 @@ resource "sreagent_outbound_rule" "critical" {
   enabled            = true
 }
 `, config) + `
-resource "sreagent_repo_setting" "acme_web" {
-  repo            = "acme/web"
-  fix_runner      = "self_hosted"
-  follows_default = ["platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"]
+resource "sreagent_repo_setting" "acme_web_all" {
+  repo                = "acme/web"
+  writable_extensions = []
+  fix_runner          = "self_hosted"
+  follows_default     = ["platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"]
+}
+
+resource "sreagent_repo_setting" "acme_web_staging" {
+  repo                = "acme/web"
+  branch              = "staging"
+  writable_extensions = []
+  follows_default     = ["draft_prs", "check_network", "allow_ci_config"]
 }
 
 resource "sreagent_repository_defaults" "repository_defaults" {
@@ -203,6 +239,63 @@ resource "sreagent_repository_defaults" "repository_defaults" {
   draft_prs         = true
   check_network     = false
   allow_ci_config   = false
+}
+` + `
+resource "sreagent_security_sla_policy" "security_sla_policy" {
+  critical_days = 7
+  high_days     = 30
+  medium_days   = 90
+  low_days      = 180
+  info_days     = 0
+}
+
+resource "sreagent_security_digest_settings" "security_digest_settings" {
+  enabled       = false
+  cadence       = "weekly"
+  weekday       = 1
+  hour          = 9
+  slack_channel = ""
+  email         = false
+}
+
+resource "sreagent_security_code_classes" "security_code_classes" {
+  classes = ["other:ssrf", "other:xxe"]
+}
+
+resource "sreagent_security_notification_rule" "critical_and_high_findings" {
+  name         = "Critical and high findings"
+  enabled      = true
+  areas        = []
+  min_severity = "high"
+  events       = ["new_finding", "sla_breached", "acceptance_expired", "fix_verified"]
+  slack        = true
+  email        = true
+  page         = false
+}
+
+resource "sreagent_security_notification_rule" "page_on_critical" {
+  name          = "Page on critical"
+  enabled       = true
+  areas         = ["secrets", "iam"]
+  min_severity  = "critical"
+  events        = ["new_finding"]
+  slack         = true
+  slack_channel = "#security-critical"
+  email         = false
+  page          = true
+}
+
+resource "sreagent_secret_allow_rule" "acme_web_testdata" {
+  path_glob     = "**/testdata/**"
+  reason        = "Vendored test fixtures, not real keys"
+  repository    = "acme/web"
+  detector_type = "aws_access_key"
+  expires_at    = "2020-01-01T00:00:00.000000Z"
+}
+
+resource "sreagent_secret_allow_rule" "all_vendor" {
+  path_glob = "vendor/**"
+  reason    = "Third party code is scanned upstream"
 }
 `
 
@@ -228,7 +321,12 @@ import {
 }
 `, provider, config, rule) + fmt.Sprintf(`
 import {
-  to = sreagent_repo_setting.acme_web
+  to = sreagent_repo_setting.acme_web_all
+  id = %q
+}
+
+import {
+  to = sreagent_repo_setting.acme_web_staging
   id = %q
 }
 
@@ -236,7 +334,42 @@ import {
   to = sreagent_repository_defaults.repository_defaults
   id = "repository_defaults"
 }
-`, repo)
+`, repo, staging) + fmt.Sprintf(`
+import {
+  to = sreagent_security_sla_policy.security_sla_policy
+  id = "security_sla_policy"
+}
+
+import {
+  to = sreagent_security_digest_settings.security_digest_settings
+  id = "security_digest_settings"
+}
+
+import {
+  to = sreagent_security_code_classes.security_code_classes
+  id = "security_code_classes"
+}
+
+import {
+  to = sreagent_security_notification_rule.critical_and_high_findings
+  id = %q
+}
+
+import {
+  to = sreagent_security_notification_rule.page_on_critical
+  id = %q
+}
+
+import {
+  to = sreagent_secret_allow_rule.acme_web_testdata
+  id = %q
+}
+
+import {
+  to = sreagent_secret_allow_rule.all_vendor
+  id = %q
+}
+`, defaultRule, pageRule, endedRule, vendorRule)
 
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
@@ -252,7 +385,11 @@ import {
 			},
 		},
 	})
-	if puts := len(f.PutBodies("repository_defaults")) + len(f.PutBodies("repo_settings")); puts != 0 {
+	puts := 0
+	for _, key := range []string{"repository_defaults", "repo_settings", "security_sla_policy", "security_digest_settings", "security_code_classes", "security_notification_rules", "secret_allow_rules"} {
+		puts += len(f.PutBodies(key))
+	}
+	if puts != 0 {
 		t.Fatalf("adopting the export wrote %d times: it must import and change nothing", puts)
 	}
 }

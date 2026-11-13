@@ -2,7 +2,10 @@
 // into a Terraform resource and data source.
 package engine
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Kind is an attribute's value type.
 type Kind int
@@ -23,6 +26,10 @@ const (
 type Attr struct {
 	// Name is the API's field name.
 	Name string
+	// ReadDescription is what the data source and the list rows say of this
+	// attribute when the resource's own Description would be false of a read: a
+	// null the resource states as 0, a limit only a write meets.
+	ReadDescription string
 	// TFName is the Terraform attribute when Name cannot be one: provider is
 	// reserved in every resource and data source block.
 	TFName      string
@@ -55,7 +62,8 @@ type Attr struct {
 	NotRead bool
 	// Normalize: the server stores this form; values equal after it are equal.
 	Normalize func(string) string
-	OneOf     []string
+	// OneOf bounds a String to these values and, on a StringList, each item.
+	OneOf []string
 	// HiddenKeys: top-level keys of a JSON attribute the platform stores but
 	// never answers, because they can carry a credential. Terraform could only
 	// hold them in state, so configuration naming one is refused. The platform
@@ -111,6 +119,49 @@ type Attr struct {
 	// Local: Computed and kept by the provider alone. It is never sent, never read
 	// from the API, and carried through a refresh from the prior state.
 	Local bool
+	// NullAs is a JSON literal the resource reads a null answer as and sends null
+	// for: a null that is a real setting on a singleton (no SLA, no channel), whose
+	// attributes are Optional and Computed so that leaving one out leaves it as it
+	// is. The data source reads the null. The contract publishes the literal as
+	// terraform_null_as and the contract test pins it, and a value equal to it is
+	// accepted by Min, Max and Pattern even though it lies outside them.
+	NullAs string
+	// Min and Max are the published minimum and maximum of an Int, checked at plan.
+	Min, Max *int64
+	// MinLength and MaxLength are the published length bounds of a String, in code
+	// points (the platform counts code points; the framework's own validator counts
+	// bytes). Zero means none.
+	MinLength, MaxLength int
+	// Pattern is the published pattern of a String (RE2 syntax, matched anywhere
+	// the pattern is not anchored).
+	Pattern string
+	// MinItems is the published minItems of a StringList. Zero means none.
+	MinItems int
+	// Unordered: a StringList the platform stores sorted and deduplicated, so a
+	// list equal to the stored one as a set is equal: a reordered configuration
+	// plans nothing and a refresh keeps the order the configuration wrote.
+	Unordered bool
+	// Timestamp: an RFC 3339 time with a zone. The platform answers its own form
+	// (microseconds, UTC), so equal instants are equal whatever their spelling.
+	Timestamp bool
+	// Trim: the platform trims the value, so surrounding space is refused at plan
+	// instead of reading back changed.
+	Trim bool
+	// ChangeWarning is said at plan when the planned value differs from state: a
+	// change the platform applies to more than the setting itself.
+	ChangeWarning string
+	// RemovedWarning is said at plan, for a StringList, once for each entry state
+	// holds that the plan drops (%s is the entry): a removal with effects beyond
+	// the list.
+	RemovedWarning string
+	// ClearedWarning is said at plan when the plan removes a value state holds (a
+	// Clearable attribute going to null): a removal that widens what the row covers.
+	ClearedWarning string
+	// Default is a JSON literal: the platform's published create default. The
+	// attribute is Optional and Computed and takes it when the configuration
+	// leaves it out, on a create and on an update that removes a stated value,
+	// where every other attribute leaves the stored value as it is.
+	Default string
 }
 
 // Attribute is the Terraform attribute name.
@@ -136,16 +187,24 @@ const (
 // so a secret's write-only argument is read under the secret's own name.
 type Config interface {
 	String(name string) (string, Presence)
+	// Bool and Int read a boolean and an integer attribute.
+	Bool(name string) (bool, Presence)
+	Int(name string) (int64, Presence)
+	// Strings reads a list attribute: Present with its entries (an empty list is
+	// stated), Unknown when the list or any entry is not known yet. A JSON
+	// attribute that holds an array of strings reads the same way.
+	Strings(name string) ([]string, Presence)
 	// List reports whether a list attribute is stated; an empty list is stated.
 	List(name string) Presence
 }
 
 // Issue is one refusal a Check raises at plan, against the attribute named by
-// Attr (an API field name).
+// Attr (an API field name). A Warning is said and does not stop the plan.
 type Issue struct {
 	Attr    string
 	Summary string
 	Detail  string
+	Warning bool
 }
 
 // Shape is how a row is addressed.
@@ -167,9 +226,12 @@ type Spec struct {
 	TypeName    string
 	ListName    string
 	Description string
-	Shape       Shape
-	IDAttr      string
-	Lifecycle   bool
+	// ReadDescription is what the data source says of the resource when the
+	// resource's Description speaks of writing it.
+	ReadDescription string
+	Shape           Shape
+	IDAttr          string
+	Lifecycle       bool
 	// Upsert: the write tool describes the row's whole state, so an update
 	// sends every field rather than only the changed ones.
 	Upsert    bool
@@ -180,6 +242,26 @@ type Spec struct {
 	// judges only what the configuration states: an Unknown value is never
 	// refused, since it could still turn out right.
 	Checks []func(Config) []Issue
+	// PlanChecks run in ModifyPlan on every create and update, over the planned
+	// values (a value the plan carries from state is planned) and the prior state
+	// (nil on a create). They refuse what the platform refuses across attributes
+	// when the configuration leaves one of them to state, which a Check, reading
+	// the configuration alone, cannot see. An Unknown planned value is never
+	// judged.
+	PlanChecks []func(plan, prior Config) []Issue
+	// PlanFeature names the plan feature a 403 refers to ("the infrastructure
+	// suite"). A 403 that is the platform's plan refusal then fails the operation
+	// naming the feature and the ways out, never as a row deleted outside Terraform.
+	PlanFeature string
+	// PlanAdoption: a singleton whose create adopts the settings the organization
+	// already has. Terraform shows that as a plain create, so the plan reads the
+	// current row (a GET, never a write), judges the block against it as it would
+	// judge an update against state, and warns what the apply will change. A read
+	// that cannot be made is said, and the plan goes on.
+	PlanAdoption bool
+	// DestroyNote is added to the warning a destroy of a singleton says when it
+	// leaves the settings in place: what stays in force.
+	DestroyNote string
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
 	// StartsEmpty: a singleton an organization has no row of until its first
@@ -262,3 +344,24 @@ func LowerTrim(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
 
 // Lower is the platform's normalization of mute patterns.
 func Lower(v string) string { return strings.ToLower(v) }
+
+// RFC3339 is the platform's form of a time: the instant in UTC. A value that is
+// not RFC 3339 is returned as it is.
+func RFC3339(v string) string {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return v
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// normalizer is the form the platform stores a String in, if it normalizes it.
+func (a Attr) normalizer() func(string) string {
+	switch {
+	case a.Normalize != nil:
+		return a.Normalize
+	case a.Timestamp:
+		return RFC3339
+	}
+	return nil
+}

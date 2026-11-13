@@ -176,6 +176,34 @@ func fromJSON(k Kind, raw any) (attr.Value, error) {
 	return nil, fmt.Errorf("unsupported kind %d", k)
 }
 
+// nullAsValue is the value an attribute reads a null answer as (Attr.NullAs).
+// A literal that is not valid JSON of the attribute's kind is a bug in the spec.
+func (a Attr) nullAsValue() (attr.Value, bool) {
+	return a.literal(a.NullAs)
+}
+
+// defaultValue is the platform's create default (Attr.Default).
+func (a Attr) defaultValue() (attr.Value, bool) {
+	return a.literal(a.Default)
+}
+
+func (a Attr) literal(text string) (attr.Value, bool) {
+	if text == "" {
+		return nil, false
+	}
+	d := json.NewDecoder(strings.NewReader(text))
+	d.UseNumber()
+	var raw any
+	if err := d.Decode(&raw); err != nil {
+		panic(fmt.Sprintf("attribute %s: %q is not JSON: %v", a.Name, text, err))
+	}
+	v, err := fromJSON(a.Kind, raw)
+	if err != nil {
+		panic(fmt.Sprintf("attribute %s: %q is not a %d: %v", a.Name, text, a.Kind, err))
+	}
+	return v, true
+}
+
 // keep reports whether the configured value should stay in state although
 // the server answered a different spelling of the same value.
 func keep(a Attr, before, remote attr.Value) bool {
@@ -209,10 +237,13 @@ func keep(a Attr, before, remote attr.Value) bool {
 	}
 	switch a.Kind {
 	case String:
-		if a.Normalize == nil {
+		normalize := a.normalizer()
+		if normalize == nil {
 			return false
 		}
-		return a.Normalize(before.(types.String).ValueString()) == a.Normalize(remote.(types.String).ValueString())
+		return normalize(before.(types.String).ValueString()) == normalize(remote.(types.String).ValueString())
+	case StringList:
+		return a.Unordered && sameSet(before, remote)
 	case Float:
 		x, y := before.(types.Float64).ValueFloat64(), remote.(types.Float64).ValueFloat64()
 		return math.Abs(x-y) <= 1e-9*math.Max(1, math.Abs(x))
@@ -248,4 +279,38 @@ func isEmptyObject(v attr.Value) bool {
 	}
 	var obj map[string]any
 	return json.Unmarshal([]byte(n.ValueString()), &obj) == nil && obj != nil && len(obj) == 0
+}
+
+// sameSet reports that two known lists hold the same entries, in any order.
+func sameSet(x, y attr.Value) bool {
+	a, aok := x.(types.List)
+	b, bok := y.(types.List)
+	if !aok || !bok || a.IsNull() || a.IsUnknown() || b.IsNull() || b.IsUnknown() {
+		return false
+	}
+	have := map[string]bool{}
+	for _, e := range a.Elements() {
+		s, ok := e.(types.String)
+		if !ok || s.IsNull() || s.IsUnknown() {
+			return false
+		}
+		have[s.ValueString()] = true
+	}
+	other := map[string]bool{}
+	for _, e := range b.Elements() {
+		s, ok := e.(types.String)
+		if !ok || s.IsNull() || s.IsUnknown() {
+			return false
+		}
+		other[s.ValueString()] = true
+	}
+	if len(have) != len(other) {
+		return false
+	}
+	for k := range have {
+		if !other[k] {
+			return false
+		}
+	}
+	return true
 }

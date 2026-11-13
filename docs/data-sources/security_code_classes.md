@@ -2,12 +2,12 @@
 page_title: "sreagent_security_code_classes Data Source - sreagent"
 subcategory: ""
 description: |-
-  The accepted other: code aliases counted as security findings, beyond the built-in classes.
+  The accepted other: code aliases counted as security findings, beyond the built-in classes. This data source only reads; sreagent_security_code_classes manages it.
 ---
 
 # sreagent_security_code_classes (Data Source)
 
-The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes.
+The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes. This data source only reads; sreagent_security_code_classes manages it.
 
 ## Example Usage
 

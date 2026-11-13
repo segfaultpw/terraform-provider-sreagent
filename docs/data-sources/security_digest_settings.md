@@ -2,12 +2,12 @@
 page_title: "sreagent_security_digest_settings Data Source - sreagent"
 subcategory: ""
 description: |-
-  The security digest: how often it is sent and where.
+  The security digest: how often it is sent and where. This data source only reads; sreagent_security_digest_settings manages it.
 ---
 
 # sreagent_security_digest_settings (Data Source)
 
-The security digest: how often it is sent and where.
+The security digest: how often it is sent and where. This data source only reads; sreagent_security_digest_settings manages it.
 
 ## Example Usage
 

@@ -21,7 +21,13 @@ import (
 
 var _ provider.Provider = (*sreagentProvider)(nil)
 
-type sreagentProvider struct{ version string }
+type sreagentProvider struct {
+	version string
+	// specs is every resource and data source served. The released provider
+	// serves specs.All(); a test serves scratch specs to prove an engine
+	// capability before a real spec uses it.
+	specs []engine.Spec
+}
 
 type providerModel struct {
 	BaseURL      types.String `tfsdk:"base_url"`
@@ -32,7 +38,11 @@ type providerModel struct {
 
 // New returns the provider factory providerserver serves.
 func New(version string) func() provider.Provider {
-	return func() provider.Provider { return &sreagentProvider{version: version} }
+	return newWithSpecs(version, specs.All())
+}
+
+func newWithSpecs(version string, all []engine.Spec) func() provider.Provider {
+	return func() provider.Provider { return &sreagentProvider{version: version, specs: all} }
 }
 
 func (p *sreagentProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -103,9 +113,9 @@ func (p *sreagentProvider) Configure(ctx context.Context, req provider.Configure
 }
 
 func (p *sreagentProvider) Resources(context.Context) []func() resource.Resource {
-	return engine.Resources(specs.All())
+	return engine.Resources(p.specs)
 }
 
 func (p *sreagentProvider) DataSources(context.Context) []func() datasource.DataSource {
-	return engine.DataSources(specs.All())
+	return engine.DataSources(p.specs)
 }

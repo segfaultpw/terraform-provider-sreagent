@@ -2,12 +2,12 @@
 page_title: "sreagent_security_notification_rules Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every security_notification_rule row, read-only. The rules that decide which security findings notify whom. Read only here.
+  Every security_notification_rule row, read-only. The rules that decide which security findings notify whom. This data source only reads; sreagent_security_notification_rule manages it.
 ---
 
 # sreagent_security_notification_rules (Data Source)
 
-Every security_notification_rule row, read-only. The rules that decide which security findings notify whom. Read only here.
+Every security_notification_rule row, read-only. The rules that decide which security findings notify whom. This data source only reads; sreagent_security_notification_rule manages it.
 
 ## Example Usage
 

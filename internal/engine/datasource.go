@@ -100,7 +100,11 @@ func readable(attrs []Attr) map[string]Attr {
 		case a.Secret:
 			out[a.Attribute()+"_set"] = Attr{Name: a.Name + "_set", Kind: Bool, Description: fmt.Sprintf("Whether the platform holds a value for %s.", a.Attribute())}
 		default:
-			out[a.Attribute()] = Attr{Name: a.Name, Kind: a.Kind, Description: a.Description, IgnoredValues: a.IgnoredValues}
+			desc := a.Description
+			if a.ReadDescription != "" {
+				desc = a.ReadDescription
+			}
+			out[a.Attribute()] = Attr{Name: a.Name, Kind: a.Kind, Description: desc, IgnoredValues: a.IgnoredValues}
 		}
 	}
 	return out
@@ -115,7 +119,7 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 		if _, ok := fields["configured"]; !ok {
 			fields["configured"] = schema.BoolAttribute{Computed: true, Description: ConfiguredDescription(d.spec)}
 		}
-		resp.Schema = schema.Schema{Description: d.spec.Description, Attributes: fields}
+		resp.Schema = schema.Schema{Description: d.description(), Attributes: fields}
 		return
 	}
 	truncated := "True when the API returned as many rows as its cap and may hold more."
@@ -138,7 +142,15 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 	for _, x := range d.spec.ExtraAttrs {
 		attrs[x.Attribute()] = computedAttribute(x)
 	}
-	resp.Schema = schema.Schema{Description: "Every " + d.spec.TypeName + " row, read-only. " + d.spec.Description, Attributes: attrs}
+	resp.Schema = schema.Schema{Description: "Every " + d.spec.TypeName + " row, read-only. " + d.description(), Attributes: attrs}
+}
+
+// description is what the data source says of the resource.
+func (d *facadeDataSource) description() string {
+	if d.spec.ReadDescription != "" {
+		return d.spec.ReadDescription
+	}
+	return d.spec.Description
 }
 
 // query is the query string a list read sends: the arguments the configuration

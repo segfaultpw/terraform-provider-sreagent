@@ -6,8 +6,10 @@ import (
 	"maps"
 	"os"
 	"reflect"
+	"regexp"
 	"slices"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/specs"
@@ -100,6 +102,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 		// the one PUT.
 		post, put = enums, enums
 	}
+	listBounds := put.Properties
 	byName := map[string]engine.Attr{}
 	for _, a := range s.Attrs {
 		byName[a.Name] = a
@@ -149,25 +152,26 @@ func specProblems(d *Doc, s engine.Spec) []string {
 			if a.UpdateOnly != updateOnly {
 				add("field %s UpdateOnly %v, contract %v", f, a.UpdateOnly, updateOnly)
 			}
-			_, nullable := typeOf(put.Properties[f])
+			// A collection with no update door is written by its create alone, so
+			// that is the body whose nullability a Clearable field follows.
+			body, which := put.Properties, "update"
+			if len(res.UpdateFields) == 0 {
+				body, which = post.Properties, "create"
+			}
+			_, nullable := typeOf(body[f])
 			if a.Clearable != nullable {
-				add("field %s Clearable %v, update body nullable %v", f, a.Clearable, nullable)
+				add("field %s Clearable %v, %s body nullable %v", f, a.Clearable, which, nullable)
 			}
 		}
 		if !s.Lifecycle {
 			continue
 		}
-		if enum, ok := enums.Properties[f]["enum"].([]any); ok {
-			want := make([]string, 0, len(enum))
-			for _, e := range enum {
-				want = append(want, fmt.Sprint(e))
-			}
-			if !slices.Equal(a.OneOf, want) {
-				add("field %s OneOf %v, contract enum %v", f, a.OneOf, want)
-			}
-		} else if len(a.OneOf) > 0 {
-			add("field %s has OneOf but the contract declares no enum", f)
+		published := post.Properties
+		if _, ok := published[f]; !ok {
+			published = put.Properties
 		}
+		checkKeywords(s.Key, a, f, published[f], add)
+		checkNullAs(a, f, res, put.Properties[f], add)
 	}
 	for _, f := range res.SecretFields {
 		if a, ok := byName[f]; !ok || !a.Secret {
@@ -209,7 +213,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	checkIgnored(s, enums.Properties, add)
 	checkSecrets(d, s, res, add)
 	checkAddressing(s, res, add)
-	checkListBounds(s, put.Properties, add)
+	checkListBounds(s, listBounds, add)
 	checkReadOnlySingleton(s, res, add)
 	return p
 }
@@ -437,9 +441,10 @@ func checkFollows(s engine.Spec, res Resource, add func(string, ...any)) {
 }
 
 // checkListBounds holds each list's MaxItems to the maxItems the update body
-// publishes, so a bound the platform changes fails here rather than at apply.
+// publishes (a singleton's only body is its PUT), so a bound the platform
+// changes fails here rather than at apply.
 func checkListBounds(s engine.Spec, props map[string]map[string]any, add func(string, ...any)) {
-	if !s.Lifecycle || s.Shape == engine.Singleton {
+	if !s.Lifecycle {
 		return
 	}
 	for _, a := range s.Attrs {
@@ -452,6 +457,217 @@ func checkListBounds(s engine.Spec, props map[string]map[string]any, add func(st
 		}
 		if a.MaxItems != published {
 			add("field %s MaxItems %d, contract maxItems %d", a.Name, a.MaxItems, published)
+		}
+	}
+}
+
+// unmodelled are the keywords a write body published before the engine modelled
+// them, on resources the provider already released. Each is a plan-time
+// strengthening nobody asked for (a stricter validator on a resource whose
+// behaviour is frozen), so the keyword is named here instead of failing the
+// contract test; a spec that models one is compared like any other, and a
+// keyword the engine does not understand and this table does not name fails.
+// The three organization_settings limits that are not listed (api_key_max_days,
+// mfa_grace_days, session_idle_minutes) are read-only attributes, which the
+// keyword check skips.
+var unmodelled = map[string][]string{
+	"change_notifications.event_types":                    {"items.enum"},
+	"notification_settings.muted_events":                  {"items.enum"},
+	"organization_settings.inheritance_stopped":           {"items.enum"},
+	"organization_settings.alert_refire_cooldown_minutes": {"minimum", "maximum"},
+}
+
+// keywords is what a write body publishes about one property, in the forms the
+// engine's attributes take.
+type keywords struct {
+	enum, itemEnum       []string
+	min, max             *int64
+	minLength, maxLength int
+	minItems, maxItems   int
+	pattern, format      string
+	hasDefault           bool
+	def                  any
+	unknown              []string
+	hasEnum, hasItemEnum bool
+}
+
+func intOf(v any) int {
+	n, _ := v.(float64)
+	return int(n)
+}
+
+func stringsOf(v any) []string {
+	list, _ := v.([]any)
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		out = append(out, fmt.Sprint(e))
+	}
+	return out
+}
+
+func readKeywords(schema map[string]any) keywords {
+	var k keywords
+	for key, v := range schema {
+		switch key {
+		case "type", "description", "uniqueItems":
+		case "enum":
+			k.hasEnum, k.enum = true, stringsOf(v)
+		case "minimum":
+			n := int64(intOf(v))
+			k.min = &n
+		case "maximum":
+			n := int64(intOf(v))
+			k.max = &n
+		case "minLength":
+			k.minLength = intOf(v)
+		case "maxLength":
+			k.maxLength = intOf(v)
+		case "minItems":
+			k.minItems = intOf(v)
+		case "maxItems":
+			k.maxItems = intOf(v)
+		case "pattern":
+			k.pattern, _ = v.(string)
+		case "format":
+			k.format, _ = v.(string)
+		case "default":
+			k.hasDefault, k.def = true, v
+		case "items":
+			items, _ := v.(map[string]any)
+			for ik, iv := range items {
+				switch ik {
+				case "type", "description":
+				case "enum":
+					k.hasItemEnum, k.itemEnum = true, stringsOf(iv)
+				default:
+					k.unknown = append(k.unknown, "items."+ik)
+				}
+			}
+		default:
+			k.unknown = append(k.unknown, key)
+		}
+	}
+	return k
+}
+
+// checkKeywords holds one attribute to every keyword its write body publishes,
+// and every keyword the attribute models to a published one: limits, enums
+// (items.enum for a list), defaults and patterns are the platform's, copied
+// here and proved equal. A keyword the engine does not understand fails, so a
+// new one is never ignored in silence. A read-only attribute is held to its
+// enum alone, since nothing validates it.
+func checkKeywords(resource string, a engine.Attr, f string, schema map[string]any, add func(string, ...any)) {
+	// A JSON attribute is opaque text to the engine: whatever shape its schema
+	// publishes is not a limit the engine could check.
+	if a.Kind == engine.JSON {
+		return
+	}
+	kw := readKeywords(schema)
+	exempt := func(keyword string) bool {
+		return slices.Contains(unmodelled[resource+"."+f], keyword)
+	}
+	enum, hasEnum := kw.enum, kw.hasEnum
+	label := "enum"
+	if a.Kind == engine.StringList {
+		enum, hasEnum, label = kw.itemEnum, kw.hasItemEnum, "items.enum"
+	}
+	switch {
+	case hasEnum && !slices.Equal(a.OneOf, enum):
+		if len(a.OneOf) > 0 || !exempt(label) {
+			add("field %s OneOf %v, contract %s %v", f, a.OneOf, label, enum)
+		}
+	case !hasEnum && len(a.OneOf) > 0:
+		add("field %s has OneOf but the contract declares no %s", f, label)
+	}
+	if a.Computed || a.Secret {
+		return
+	}
+	for _, u := range kw.unknown {
+		add("field %s: the contract publishes %q, which the engine does not understand", f, u)
+	}
+	same := func(have, want *int64) bool {
+		return (have == nil) == (want == nil) && (have == nil || *have == *want)
+	}
+	show := func(n *int64) any {
+		if n == nil {
+			return "none"
+		}
+		return *n
+	}
+	if !same(a.Min, kw.min) && (a.Min != nil || !exempt("minimum")) {
+		add("field %s Min %v, contract minimum %v", f, show(a.Min), show(kw.min))
+	}
+	if !same(a.Max, kw.max) && (a.Max != nil || !exempt("maximum")) {
+		add("field %s Max %v, contract maximum %v", f, show(a.Max), show(kw.max))
+	}
+	if a.MinLength != kw.minLength {
+		add("field %s MinLength %d, contract minLength %d", f, a.MinLength, kw.minLength)
+	}
+	if a.MaxLength != kw.maxLength {
+		add("field %s MaxLength %d, contract maxLength %d", f, a.MaxLength, kw.maxLength)
+	}
+	if a.Pattern != kw.pattern {
+		add("field %s Pattern %q, contract pattern %q", f, a.Pattern, kw.pattern)
+	}
+	if a.MinItems != kw.minItems {
+		add("field %s MinItems %d, contract minItems %d", f, a.MinItems, kw.minItems)
+	}
+	switch {
+	case kw.hasDefault && a.Default == "":
+		add("field %s has no Default, contract default %v", f, kw.def)
+	case kw.hasDefault && !sameJSON(a.Default, kw.def):
+		add("field %s Default %s, contract default %v", f, a.Default, kw.def)
+	case !kw.hasDefault && a.Default != "":
+		add("field %s Default %s, contract publishes no default", f, a.Default)
+	}
+	switch kw.format {
+	case "", "password":
+		if a.Timestamp {
+			add("field %s is a Timestamp, but the contract publishes no date-time format", f)
+		}
+	case "date-time":
+		if !a.Timestamp {
+			add("field %s is published as a date-time but is not a Timestamp", f)
+		}
+	default:
+		add("field %s: the contract publishes format %q, which the engine does not understand", f, kw.format)
+	}
+}
+
+// checkNullAs holds a NullAs to the contract's terraform_null_as: both name the
+// field with the same value, the update body accepts the null it is sent as, and
+// the value lies where no real value can (outside the published bounds or off
+// the published pattern), so a real value is never mistaken for the null.
+func checkNullAs(a engine.Attr, f string, res Resource, body map[string]any, add func(string, ...any)) {
+	published, ok := res.TerraformNullAs[f]
+	switch {
+	case !ok && a.NullAs == "":
+		return
+	case !ok:
+		add("field %s has null as %q in the spec but none in the contract", f, a.NullAs)
+		return
+	case a.NullAs == "":
+		add("field %s has null as %v in the contract but none in the spec", f, published)
+		return
+	case !sameJSON(a.NullAs, published):
+		add("field %s null as %q in the spec, %v in the contract", f, a.NullAs, published)
+		return
+	}
+	if _, nullable := typeOf(body); !nullable {
+		add("field %s reads a null as %v, but its update body does not accept null", f, published)
+	}
+	kw := readKeywords(body)
+	switch v := published.(type) {
+	case float64:
+		inside := (kw.min == nil || v >= float64(*kw.min)) && (kw.max == nil || v <= float64(*kw.max))
+		if kw.min == nil && kw.max == nil || inside {
+			add("field %s: the null stand-in %v is a value the contract's bounds allow", f, v)
+		}
+	case string:
+		off := kw.pattern != "" && !regexp.MustCompile(kw.pattern).MatchString(v)
+		short := kw.minLength > 0 && utf8.RuneCountInString(v) < kw.minLength
+		if !off && !short {
+			add("field %s: the null stand-in %q is a value the contract's pattern allows", f, v)
 		}
 	}
 }
@@ -720,6 +936,98 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op.RequestBody.Content["application/json"].Schema.Properties["log_inline_fields"]["maxItems"] = float64(5)
 			d.Paths["/service_bindings/{id}"]["put"] = op
 		}},
+		{"an allow rule's repository stops being nullable on create", "secret_allow_rules", func(d *Doc) {
+			op := d.Paths["/secret_allow_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["repository"]["type"] = "string"
+			d.Paths["/secret_allow_rules"]["post"] = op
+		}},
+		{"an allow rule's expiry stops being a date-time", "secret_allow_rules", func(d *Doc) {
+			op := d.Paths["/secret_allow_rules"]["post"]
+			delete(op.RequestBody.Content["application/json"].Schema.Properties["expires_at"], "format")
+			d.Paths["/secret_allow_rules"]["post"] = op
+		}},
+		{"an allow rule's reason minimum moves", "secret_allow_rules", func(d *Doc) {
+			op := d.Paths["/secret_allow_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["reason"]["minLength"] = float64(5)
+			d.Paths["/secret_allow_rules"]["post"] = op
+		}},
+		{"the SLA days lose terraform_null_as", "security_sla_policy", func(d *Doc) {
+			r := d.Resources["security_sla_policy"]
+			r.TerraformNullAs = nil
+			d.Resources["security_sla_policy"] = r
+		}},
+		{"the SLA null stand-in changes", "security_sla_policy", func(d *Doc) {
+			r := d.Resources["security_sla_policy"]
+			r.TerraformNullAs = map[string]any{"critical_days": float64(500), "high_days": float64(0), "medium_days": float64(0), "low_days": float64(0), "info_days": float64(0)}
+			d.Resources["security_sla_policy"] = r
+		}},
+		{"the SLA minimum drops to the null stand-in", "security_sla_policy", func(d *Doc) {
+			op := d.Paths["/security_sla_policy"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["high_days"]["minimum"] = float64(0)
+			d.Paths["/security_sla_policy"]["put"] = op
+		}},
+		{"the SLA days stop being nullable", "security_sla_policy", func(d *Doc) {
+			op := d.Paths["/security_sla_policy"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["info_days"]["type"] = "integer"
+			d.Paths["/security_sla_policy"]["put"] = op
+		}},
+		{"a day's maximum moves", "security_sla_policy", func(d *Doc) {
+			op := d.Paths["/security_sla_policy"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["low_days"]["maximum"] = float64(366)
+			d.Paths["/security_sla_policy"]["put"] = op
+		}},
+		{"a rule name's maxLength moves", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["name"]["maxLength"] = float64(81)
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"min_severity gains a value", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			p := op.RequestBody.Content["application/json"].Schema.Properties["min_severity"]
+			p["enum"] = append(slices.Clone(p["enum"].([]any)), "fatal")
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"the areas' items gain a value", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["areas"]["items"].(map[string]any)
+			items["enum"] = append(slices.Clone(items["enum"].([]any)), "network")
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"a published rule default changes", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["min_severity"]["default"] = "low"
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"a published rule default disappears", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			delete(op.RequestBody.Content["application/json"].Schema.Properties["page"], "default")
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"events stop requiring one item", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["events"]["minItems"] = float64(0)
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"a keyword the engine does not understand appears", "security_notification_rules", func(d *Doc) {
+			op := d.Paths["/security_notification_rules"]["post"]
+			op.RequestBody.Content["application/json"].Schema.Properties["name"]["exclusiveMinimum"] = float64(0)
+			d.Paths["/security_notification_rules"]["post"] = op
+		}},
+		{"classes maxItems moves", "security_code_classes", func(d *Doc) {
+			op := d.Paths["/security_code_classes"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["classes"]["maxItems"] = float64(60)
+			d.Paths["/security_code_classes"]["put"] = op
+		}},
+		{"the channel pattern changes", "security_digest_settings", func(d *Doc) {
+			op := d.Paths["/security_digest_settings"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["slack_channel"]["pattern"] = "^#[a-z]+$"
+			d.Paths["/security_digest_settings"]["put"] = op
+		}},
+		{"the digest channel's null stand-in starts matching its pattern", "security_digest_settings", func(d *Doc) {
+			op := d.Paths["/security_digest_settings"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["slack_channel"]["pattern"] = "^.*$"
+			d.Paths["/security_digest_settings"]["put"] = op
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			d := doc(t)
@@ -765,5 +1073,20 @@ func TestPreviewSchemaIsHeldToTheWireShape(t *testing.T) {
 				t.Fatalf("problems = %v, want bad = %v", got, c.bad)
 			}
 		})
+	}
+}
+
+// Every published pattern the engine copies must compile in the engine's regular
+// expression syntax, or a schema would panic at the first plan.
+func TestEveryPatternTheEngineHoldsCompiles(t *testing.T) {
+	for _, s := range specs.All() {
+		for _, a := range s.Attrs {
+			if a.Pattern == "" {
+				continue
+			}
+			if _, err := regexp.Compile(a.Pattern); err != nil {
+				t.Errorf("%s.%s: pattern %q does not compile: %v", s.Key, a.Name, a.Pattern, err)
+			}
+		}
 	}
 }

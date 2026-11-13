@@ -33,7 +33,16 @@ Most of the provider works against any platform that serves the configuration AP
 | `sreagent_repository_defaults`, `data.sreagent_repository_defaults` | v0.477.0 |
 | `follows_default`, `set_here` and `following` on `sreagent_repo_setting` | v0.482.0 |
 | `data.sreagent_effective_repo_settings` | v0.477.0 |
-| The security, code detection and allow rule data sources | the release that first served each, named in the error an older platform answers |
+| `data.sreagent_code_detection_settings` | v0.475.0 |
+| `sreagent_security_sla_policy`, `data.sreagent_security_sla_policy` | v0.476.3 |
+| `sreagent_security_digest_settings`, `sreagent_security_notification_rule`, and their data sources | v0.476.4 |
+| `sreagent_security_code_classes`, `data.sreagent_security_code_classes` | v0.476.6 |
+| `sreagent_secret_allow_rule`, `data.sreagent_secret_allow_rules` | v0.477.0 |
+
+The security resources need nothing newer than the release that first served each (0.3.0 changes the provider and the
+platform's published API document, not what a platform serves). They also need the infrastructure suite in the
+organization's plan, besides the configuration API's advanced integrations: without it every read and write answers 403
+and the plan fails with the platform's sentence and the ways to stop managing the resource.
 
 On a platform from before a part, the provider says which release the part needs; nothing else is affected.
 
@@ -57,6 +66,8 @@ go generate ./...          # regenerates docs/
 terraform fmt -check -recursive examples
 ```
 
+The CI workflow runs the same checks on Terraform 1.12.2 (the supported floor) and the latest release.
+
 Acceptance tests run against a throwaway local stack, never production:
 
 ```shell
@@ -65,3 +76,30 @@ set -a; . /tmp/tf-acc.env; set +a
 TF_ACC=1 go test ./internal/provider/ -run TestAcc -timeout 60m
 docker compose -f acceptance/docker-compose.yml down -v
 ```
+
+`acceptance/IMAGE` holds the short commit SHA (one line, no tag prefix, for example `8f621a6`) of the sre-agent image the
+stack runs, pulled from `ghcr.io/segfaultpw/sre-agent`. Set it to the tag production serves when a release is cut, so the
+acceptance run exercises the platform the provider ships against.
+
+## Releasing
+
+A release is cut by pushing to `main`: the Release workflow runs after CI is green, computes the version from the
+conventional commit subjects since the last tag, tags it, signs the checksums and publishes. Nothing is tagged by hand.
+
+| Commits since the last tag | Before 1.0.0 | From 1.0.0 |
+| --- | --- | --- |
+| a breaking change (`!` before the colon, or a footer line that starts `BREAKING CHANGE:`) | minor | major |
+| a `feat` | minor | minor |
+| a `fix` | patch | patch |
+| only `docs`, `ci`, `test`, `chore` or `refactor` | no release | no release |
+
+Before 1.0.0 a feature bumps the minor version and a fix the patch version, so a release that adds a resource is 0.3.0,
+not 0.2.1. Everything not releasable accumulates into the next release that is.
+
+The rule lives in `scripts/release-version.sh`, which the workflow calls and `internal/release` tests against throwaway
+git histories (`go test ./internal/release`). `scripts/release-version.sh compute` prints the version the commits call
+for, or `none`; run it from the repository root to see what a push would release.
+
+The changelog is the gate: a releasable push whose computed version has no `## [x.y.z]` section in `CHANGELOG.md` fails
+the workflow instead of tagging (`scripts/release-version.sh require-changelog vX.Y.Z`). Write the section in the same
+push as the first releasable commit, listing every breaking change under `BREAKING CHANGES:` with its upgrade step.
