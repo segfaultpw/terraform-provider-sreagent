@@ -26,6 +26,10 @@ const (
 type Attr struct {
 	// Name is the API's field name.
 	Name string
+	// ReadDescription is what the data source and the list rows say of this
+	// attribute when the resource's own Description would be false of a read: a
+	// null the resource states as 0, a limit only a write meets.
+	ReadDescription string
 	// TFName is the Terraform attribute when Name cannot be one: provider is
 	// reserved in every resource and data source block.
 	TFName      string
@@ -218,9 +222,12 @@ type Spec struct {
 	TypeName    string
 	ListName    string
 	Description string
-	Shape       Shape
-	IDAttr      string
-	Lifecycle   bool
+	// ReadDescription is what the data source says of the resource when the
+	// resource's Description speaks of writing it.
+	ReadDescription string
+	Shape           Shape
+	IDAttr          string
+	Lifecycle       bool
 	// Upsert: the write tool describes the row's whole state, so an update
 	// sends every field rather than only the changed ones.
 	Upsert    bool

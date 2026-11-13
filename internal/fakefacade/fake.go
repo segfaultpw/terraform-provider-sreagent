@@ -53,6 +53,9 @@ func New(t *testing.T, specs []engine.Spec) *Fake {
 		// The platform answers defaults for most singletons before any write.
 		if s.Shape == engine.Singleton && !s.StartsEmpty {
 			f.rows[s.Key][s.Key] = blank(s)
+			if isSecurity(s.Key) {
+				securitySeed(s, f.rows[s.Key][s.Key])
+			}
 		}
 	}
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
@@ -433,6 +436,12 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 		fail(w, 422, "unprocessable_entity", msg)
 		return
 	}
+	if isSecurity(spec.Key) {
+		if status, msg := f.securityRefusal(spec, "", nil, body); status != 0 {
+			fail(w, status, map[int]string{409: "conflict", 422: "unprocessable_entity"}[status], msg)
+			return
+		}
+	}
 	for _, a := range spec.Attrs {
 		if a.WriteOnly || len(a.Complement) > 0 {
 			continue
@@ -480,6 +489,9 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 	}
 	if spec.Shape != engine.Generated {
 		row["id"] = id
+	}
+	if isSecurity(spec.Key) {
+		f.securityStore(spec, row, body, true)
 	}
 	if fn := f.onWrite[spec.Key]; fn != nil {
 		fn(row)
@@ -558,6 +570,12 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		fail(w, 422, "unprocessable_entity", msg)
 		return
 	}
+	if isSecurity(spec.Key) {
+		if status, msg := f.securityRefusal(spec, id, row, body); status != 0 {
+			fail(w, status, map[int]string{409: "conflict", 422: "unprocessable_entity"}[status], msg)
+			return
+		}
+	}
 	before := heldOf(row)
 	for k, v := range body {
 		a := byName[k]
@@ -587,6 +605,9 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		f.finishRepoUpdate(row, body, before)
 	}
 	carryIgnored(spec, row, previous)
+	if isSecurity(spec.Key) {
+		f.securityStore(spec, row, body, false)
+	}
 	if fn := f.onWrite[spec.Key]; fn != nil {
 		fn(row)
 	}

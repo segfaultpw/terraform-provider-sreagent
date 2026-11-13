@@ -2,12 +2,12 @@
 page_title: "sreagent_security_sla_policy Data Source - sreagent"
 subcategory: ""
 description: |-
-  The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA.
+  The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA. This data source only reads; sreagent_security_sla_policy manages it.
 ---
 
 # sreagent_security_sla_policy (Data Source)
 
-The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA.
+The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA. This data source only reads; sreagent_security_sla_policy manages it.
 
 ## Example Usage
 

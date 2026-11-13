@@ -1,6 +1,8 @@
 package specs
 
-import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
+import (
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
+)
 
 // The security and code detection settings are read here and written in the
 // app, over MCP or the configuration API; the provider reads them as data
@@ -45,33 +47,94 @@ func withAbsentWhen(s engine.Spec, absentWhen string) engine.Spec {
 	return s
 }
 
-// SecuritySLAPolicy is data.sreagent_security_sla_policy.
-var SecuritySLAPolicy = readSingleton("security_sla_policy",
-	"The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA.",
-	"v0.476.3 or later", infrastructureRefusal,
-	ro("critical_days", engine.Int, "Days for a critical finding, 1 to 365, or null for no SLA."),
-	ro("high_days", engine.Int, "Days for a high finding, or null."),
-	ro("medium_days", engine.Int, "Days for a medium finding, or null."),
-	ro("low_days", engine.Int, "Days for a low finding, or null."),
-	ro("info_days", engine.Int, "Days for an info finding, or null."),
-	ro("defaults", engine.Bool, "True while the organization has not saved a policy of its own and the platform's defaults apply."),
-	ro("updated_at", engine.String, "When the policy last changed."),
-)
+// The security settings and rules are managed here: the SLA policy, the digest and the code
+// classes are singletons (leaving an attribute out leaves it as it is), the notification
+// rules and the secret allow rules are collections. All five need the infrastructure suite,
+// which the platform answers with a 403 for every verb, a read included.
+const infrastructureSuite = "the infrastructure suite"
 
-// SecurityDigestSettings is data.sreagent_security_digest_settings.
-var SecurityDigestSettings = readSingleton("security_digest_settings",
-	"The security digest: how often it is sent and where.",
-	"v0.476.4 or later", infrastructureRefusal,
-	ro("enabled", engine.Bool, "Whether the digest is sent."),
-	ro("cadence", engine.String, "daily or weekly."),
-	ro("weekday", engine.Int, "For a weekly digest, 1 (Monday) to 7 (Sunday)."),
-	ro("hour", engine.Int, "The hour, 0 to 23, in the organization's time zone."),
-	ro("slack_channel", engine.String, "The Slack channel, such as #security, or null for none."),
-	ro("email", engine.Bool, "Whether the digest is emailed."),
-	ro("timezone", engine.String, "The time zone the hour is read in."),
-	ro("last_sent_at", engine.String, "When the last digest was sent."),
-	ro("last_sent_period", engine.String, "The period the last digest covered."),
-)
+// securityNote is what a managed security singleton says about its destroy.
+const securityNote = " As a resource it adopts the settings the organization has: an attribute left out is left as it is, " +
+	"and destroying the resource leaves the settings in place (the platform has no row to delete). " +
+	"Needs the infrastructure suite."
+
+func ptr(n int64) *int64 { return &n }
+
+// dataSourceNote is added to what the data source says of a managed security resource.
+func dataSourceNote(resourceType string) string {
+	return " This data source only reads; sreagent_" + resourceType + " manages it."
+}
+
+// channelPattern is the platform's Slack channel name: a hash and words joined by hyphens.
+const channelPattern = `^#\w+(-\w+)*$`
+
+// slaDay is one severity's days. 0 stands for no SLA, which the platform stores as null.
+func slaDay(name, article, severity, read string) engine.Attr {
+	return engine.Attr{Name: name, Kind: engine.Int, NullAs: "0", Min: ptr(1), Max: ptr(365),
+		ChangeWarning:   "Changing the SLA recomputes the due date of every active finding of this severity; a due date a person moved is kept.",
+		Description:     "Days " + article + " " + severity + " finding may stay active before it breaches, 1 to 365, or 0 for no SLA (the platform stores no SLA as null, which the data source reads as null).",
+		ReadDescription: read}
+}
+
+// SecuritySLAPolicy is data.sreagent_security_sla_policy and sreagent_security_sla_policy.
+var SecuritySLAPolicy = func() engine.Spec {
+	sp := readSingleton("security_sla_policy",
+		"The days a security finding may stay active before it breaches, per severity. The platform's defaults are 7 days for critical, 30 for high, 90 for medium, 180 for low and no SLA for info; a severity with no days has no SLA."+
+			securityNote+" Changing a day recomputes the due date of every active finding of that severity. To go back to the defaults, state them (7, 30, 90, 180 and 0), apply, then remove the block.",
+		"v0.476.3 or later", infrastructureRefusal,
+		slaDay("critical_days", "a", "critical", "Days for a critical finding, 1 to 365, or null for no SLA."),
+		slaDay("high_days", "a", "high", "Days for a high finding, or null."),
+		slaDay("medium_days", "a", "medium", "Days for a medium finding, or null."),
+		slaDay("low_days", "a", "low", "Days for a low finding, or null."),
+		slaDay("info_days", "an", "info", "Days for an info finding, or null."),
+		ro("defaults", engine.Bool, "True while the organization has not saved a policy of its own and the platform's defaults apply."),
+		ro("updated_at", engine.String, "When the policy last changed."),
+	)
+	sp.Lifecycle = true
+	sp.PlanFeature = infrastructureSuite
+	sp.ReadDescription = "The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA." + dataSourceNote("security_sla_policy")
+	return sp
+}()
+
+// digestDestination is the platform's rule that a digest which is on has somewhere to go.
+func digestDestination(plan, _ engine.Config) []engine.Issue {
+	enabled, on := plan.Bool("enabled")
+	channel, ch := plan.String("slack_channel")
+	email, em := plan.Bool("email")
+	if on != engine.Present || !enabled || ch == engine.Unknown || em == engine.Unknown {
+		return nil
+	}
+	if channel == "" && (em != engine.Present || !email) {
+		return []engine.Issue{{Attr: "enabled", Summary: "No destination for the digest",
+			Detail: "Choose a Slack channel or email for the digest. Set slack_channel or email = true, or enabled = false."}}
+	}
+	return nil
+}
+
+// SecurityDigestSettings is data.sreagent_security_digest_settings and sreagent_security_digest_settings.
+var SecurityDigestSettings = func() engine.Spec {
+	sp := readSingleton("security_digest_settings",
+		"The security digest: how often it is sent and where. It is off by default; switching it on needs a Slack channel or email."+
+			securityNote+" Destroying the resource does not switch the digest off: it keeps sending while enabled is true. To go back to the defaults, state them (enabled = false, cadence = \"weekly\", weekday = 1, hour = 9, slack_channel = \"\", email = false), apply, then remove the block.",
+		"v0.476.4 or later", infrastructureRefusal,
+		engine.Attr{Name: "enabled", Kind: engine.Bool, Description: "Whether the digest is sent. Needs a Slack channel or email.", ReadDescription: "Whether the digest is sent."},
+		engine.Attr{Name: "cadence", Kind: engine.String, OneOf: []string{"daily", "weekly"}, Description: "How often it is sent.", ReadDescription: "daily or weekly."},
+		engine.Attr{Name: "weekday", Kind: engine.Int, Min: ptr(1), Max: ptr(7), Description: "For a weekly digest, 1 (Monday) to 7 (Sunday)."},
+		engine.Attr{Name: "hour", Kind: engine.Int, Min: ptr(0), Max: ptr(23), Description: "The hour, 0 to 23, in the organization's time zone."},
+		engine.Attr{Name: "slack_channel", Kind: engine.String, NullAs: `""`, Pattern: channelPattern, MaxLength: 80,
+			Description:     "The Slack channel, such as #security, or an empty string for none (the platform stores no channel as null, which the data source reads as null). There is no default channel for a digest.",
+			ReadDescription: "The Slack channel, such as #security, or null for none."},
+		engine.Attr{Name: "email", Kind: engine.Bool, Description: "Whether the digest is emailed to the organization's notification list.", ReadDescription: "Whether the digest is emailed."},
+		ro("timezone", engine.String, "The time zone the hour is read in."),
+		ro("last_sent_at", engine.String, "When the last digest was sent."),
+		ro("last_sent_period", engine.String, "The period the last digest covered."),
+	)
+	sp.Lifecycle = true
+	sp.PlanFeature = infrastructureSuite
+	sp.PlanChecks = []func(plan, prior engine.Config) []engine.Issue{digestDestination}
+	sp.ReadDescription = "The security digest: how often it is sent and where." + dataSourceNote("security_digest_settings")
+	return sp
+}()
 
 // SecurityCodeClasses is data.sreagent_security_code_classes.
 var SecurityCodeClasses = readSingleton("security_code_classes",
