@@ -136,3 +136,51 @@ func TestAccSecurityCodeClasses(t *testing.T) {
 		},
 	})
 }
+
+// A rule that leaves an attribute out takes the platform's default, a cleared channel sends
+// null, paging needs a critical rule, and destroying the rule deletes it.
+func TestAccSecurityNotificationRule(t *testing.T) {
+	accPreCheck(t)
+	const addr = "sreagent_security_notification_rule.test"
+	cfg := func(body string) string {
+		return accProvider() + fmt.Sprintf("resource \"sreagent_security_notification_rule\" \"test\" {\n  name = \"acc-rule\"\n%s}\n", body)
+	}
+	var id string
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   accSkipBelow112,
+		Steps: []resource.TestStep{
+			{
+				Config:           cfg("  slack_channel = \"#acc-security\"\n  events = [\"new_finding\", \"sla_breached\"]\n"),
+				ConfigPlanChecks: accSecurityEmpty,
+				Check: func(s *terraform.State) error {
+					id = s.RootModule().Resources[addr].Primary.ID
+					return nil
+				},
+			},
+			{Config: cfg("  events = [\"new_finding\", \"sla_breached\"]\n"), ConfigPlanChecks: accSecurityEmpty, Check: resource.TestCheckNoResourceAttr(addr, "slack_channel")},
+			{
+				Config:           cfg("  min_severity = \"critical\"\n  page = true\n"),
+				ConfigPlanChecks: accSecurityEmpty,
+				Check:            resource.TestCheckResourceAttr(addr, "page", "true"),
+			},
+			{Config: cfg("  page = true\n"), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)Paging\s+needs\s+a\s+critical\s+rule`)},
+			{ResourceName: addr, ImportState: true, ImportStateVerify: true, Config: cfg("  min_severity = \"critical\"\n  page = true\n")},
+			{
+				// Back to the defaults: page goes with the severity.
+				Config:           cfg(""),
+				ConfigPlanChecks: accSecurityEmpty,
+				Check:            resource.TestCheckResourceAttr(addr, "page", "false"),
+			},
+			{
+				Config: accProvider(),
+				Check: func(*terraform.State) error {
+					if _, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodGet, Path: "security_notification_rules/" + id}); !client.IsNotFound(err) {
+						return fmt.Errorf("destroying a rule must delete it: %w", err)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}

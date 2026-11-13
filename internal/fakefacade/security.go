@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 )
@@ -17,13 +18,16 @@ import (
 
 const micro = "2006-01-02T15:04:05.000000Z07:00"
 
+const maxRules = 20
+
 var builtInClasses = []any{"hardcoded_secret", "unsafe_deserialization", "ci_unpinned_action", "ci_plain_secret"}
 
 // securityKeys are the five resources whose writes get the platform's own refusals.
 var securityKeys = map[string]bool{
-	"security_sla_policy":      true,
-	"security_digest_settings": true,
-	"security_code_classes":    true,
+	"security_sla_policy":         true,
+	"security_digest_settings":    true,
+	"security_code_classes":       true,
+	"security_notification_rules": true,
 }
 
 func isSecurity(key string) bool { return securityKeys[key] }
@@ -81,6 +85,11 @@ func number(v any) (int64, bool) {
 	return 0, false
 }
 
+func text(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
 // merged is the row a write would produce: the stored row with the body's fields.
 func merged(prior, body map[string]any) map[string]any {
 	out := map[string]any{}
@@ -101,7 +110,7 @@ func blankOrNil(v any) bool {
 // securityRefusal is the 422 or 409 the platform answers a write with, judged on
 // the row the write would produce; status 0 is no refusal. prior is nil on a
 // create.
-func (f *Fake) securityRefusal(spec engine.Spec, _ string, prior, body map[string]any) (int, string) {
+func (f *Fake) securityRefusal(spec engine.Spec, id string, prior, body map[string]any) (int, string) {
 	switch spec.Key {
 	case "security_sla_policy":
 		if len(body) == 0 {
@@ -149,14 +158,59 @@ func (f *Fake) securityRefusal(spec engine.Spec, _ string, prior, body map[strin
 				return 422, fmt.Sprintf("%v is not a class this organization accepted. Name a class from available_classes.", c)
 			}
 		}
+	case "security_notification_rules":
+		return f.ruleRefusal(spec, id, prior, body)
 	}
 	return 0, ""
+}
+
+func (f *Fake) ruleRefusal(spec engine.Spec, id string, prior, body map[string]any) (int, string) {
+	if name, ok := body["name"].(string); ok {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" || utf8.RuneCountInString(trimmed) > 80 {
+			return 422, "name must be 1 to 80 characters."
+		}
+		for other, row := range f.rows[spec.Key] {
+			if other != id && text(row["name"]) == trimmed {
+				return 409, "A notification rule with that name already exists."
+			}
+		}
+	}
+	if prior == nil && len(f.rows[spec.Key]) >= maxRules {
+		return 422, "An organization can have at most 20 notification rules."
+	}
+	row := merged(prior, body)
+	if prior == nil {
+		row = ruleDefaults(body)
+	}
+	if page, _ := row["page"].(bool); page && row["min_severity"] != "critical" {
+		return 422, "Paging is only allowed on a rule whose minimum severity is critical."
+	}
+	slack, _ := row["slack"].(bool)
+	email, _ := row["email"].(bool)
+	page, _ := row["page"].(bool)
+	if !slack && !email && !page {
+		return 422, "Choose at least one of Slack, email or paging."
+	}
+	if events, ok := row["events"].([]any); ok && len(events) == 0 {
+		return 422, "events must hold at least one event."
+	}
+	return 0, ""
+}
+
+// ruleDefaults is a created rule: what the body names, the platform's default for the rest.
+func ruleDefaults(body map[string]any) map[string]any {
+	row := map[string]any{"enabled": true, "areas": []any{}, "min_severity": "high", "events": []any{"new_finding"}, "slack": true, "slack_channel": nil, "email": true, "page": false}
+	for k, v := range body {
+		row[k] = v
+	}
+	return row
 }
 
 // securityStore is the platform's own normalization of a row it stored: sorted
 // classes, trimmed text, blanks as none, microsecond times, the defaults a rule
 // takes, the flag that says the SLA is still the platform's.
-func (f *Fake) securityStore(spec engine.Spec, row, _ map[string]any, _ bool) {
+func (f *Fake) securityStore(spec engine.Spec, row, body map[string]any, creating bool) {
 	now := time.Now().UTC().Format(micro)
 	switch spec.Key {
 	case "security_sla_policy":
@@ -185,6 +239,19 @@ func (f *Fake) securityStore(spec engine.Spec, row, _ map[string]any, _ bool) {
 		}
 		row["classes"] = sorted
 		f.refreshClasses(row)
+	case "security_notification_rules":
+		if creating {
+			for k, v := range ruleDefaults(body) {
+				if _, named := body[k]; !named {
+					row[k] = v
+				}
+			}
+		}
+		row["name"] = strings.TrimSpace(text(row["name"]))
+		if blankOrNil(row["slack_channel"]) {
+			row["slack_channel"] = nil
+		}
+		row["updated_at"] = now
 	}
 }
 

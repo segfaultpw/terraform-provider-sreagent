@@ -196,23 +196,71 @@ var SecurityCodeClasses = func() engine.Spec {
 	return sp
 }()
 
-// SecurityNotificationRules is data.sreagent_security_notification_rules.
+var (
+	ruleAreas      = []string{"secrets", "iam", "kubernetes", "images", "dependencies", "anomalies", "drift", "code", "certificates"}
+	ruleSeverities = []string{"info", "low", "medium", "high", "critical"}
+	ruleEvents     = []string{"new_finding", "sla_breached", "acceptance_expiring", "acceptance_expired", "fix_verified"}
+)
+
+// ruleIssues is the platform's two rules across a notification rule's attributes: paging only
+// on a critical rule, and somewhere to send. A value the configuration leaves out is the
+// platform's default, which is what the plan carries too.
+func ruleIssues(c engine.Config) []engine.Issue {
+	page, pg := c.Bool("page")
+	severity, sv := c.String("min_severity")
+	slack, sl := c.Bool("slack")
+	email, em := c.Bool("email")
+	if pg == engine.Absent {
+		page, pg = false, engine.Present
+	}
+	if sv == engine.Absent {
+		severity, sv = "high", engine.Present
+	}
+	if sl == engine.Absent {
+		slack, sl = true, engine.Present
+	}
+	if em == engine.Absent {
+		email, em = true, engine.Present
+	}
+	var out []engine.Issue
+	if pg == engine.Present && page && sv == engine.Present && severity != "critical" {
+		out = append(out, engine.Issue{Attr: "page", Summary: "Paging needs a critical rule",
+			Detail: "Paging is only allowed on a rule whose minimum severity is critical. Set min_severity = \"critical\", or page = false."})
+	}
+	if pg == engine.Present && sl == engine.Present && em == engine.Present && !page && !slack && !email {
+		out = append(out, engine.Issue{Attr: "slack", Summary: "No destination", Detail: "Choose at least one of Slack, email or paging."})
+	}
+	return out
+}
+
+// SecurityNotificationRules is data.sreagent_security_notification_rules and
+// sreagent_security_notification_rule.
 var SecurityNotificationRules = engine.Spec{
 	Key: "security_notification_rules", TypeName: "security_notification_rule", ListName: "security_notification_rules",
-	Description: "The rules that decide which security findings notify whom. Read only here.",
+	Description: "A rule that decides which security findings notify whom: its areas, the lowest severity, the events, and where it goes (Slack, email, paging). " +
+		"An attribute left out takes the platform's default (on, every area, minimum severity high, the new_finding event, Slack and email on, paging off), so removing page = true stops paging. " +
+		"An organization has at most 20 rules, each name unique; the platform refuses the 21st at apply. " +
+		"The organization's first rule, Critical and high findings, is created once by the platform: import it to manage it (its events are new_finding, sla_breached, acceptance_expired and fix_verified, so a block that leaves events out plans a change to new_finding). " +
+		"Destroying a rule deletes it; destroying every rule, the seeded one included, is permanent: the platform never creates it again, and an organization with no rule is sent no security notice. " +
+		"Needs the infrastructure suite.",
 	Shape:       engine.Generated,
+	Lifecycle:   true,
+	PlanFeature: infrastructureSuite,
 	Attrs: []engine.Attr{
-		ro("name", engine.String, "The rule's name, unique in the organization."),
-		ro("enabled", engine.Bool, "Whether the rule is on."),
-		ro("areas", engine.StringList, "The areas the rule covers; empty means every area."),
-		ro("min_severity", engine.String, "The lowest severity that matches."),
-		ro("events", engine.StringList, "The events that notify: new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified."),
-		ro("slack", engine.Bool, "Whether the rule posts to Slack."),
-		ro("slack_channel", engine.String, "The Slack channel, or null for the default channels."),
-		ro("email", engine.Bool, "Whether the rule emails."),
-		ro("page", engine.Bool, "Whether the rule pages on call (critical findings only)."),
+		{Name: "name", Kind: engine.String, Required: true, Trim: true, MinLength: 1, MaxLength: 80, Description: "The rule's name, 1 to 80 characters, unique in the organization.", ReadDescription: "The rule's name, unique in the organization."},
+		{Name: "enabled", Kind: engine.Bool, Default: "true", Description: "Whether the rule is on. Defaults to true.", ReadDescription: "Whether the rule is on."},
+		{Name: "areas", Kind: engine.StringList, OneOf: ruleAreas, Default: "[]", Description: "The areas the rule covers; empty means every area (the default).", ReadDescription: "The areas the rule covers; empty means every area."},
+		{Name: "min_severity", Kind: engine.String, OneOf: ruleSeverities, Default: `"high"`, Description: "The lowest severity that matches. Defaults to high.", ReadDescription: "The lowest severity that matches."},
+		{Name: "events", Kind: engine.StringList, OneOf: ruleEvents, MinItems: 1, Default: `["new_finding"]`, Description: "The events that notify, at least one. Defaults to new_finding.", ReadDescription: "The events that notify: new_finding, sla_breached, acceptance_expiring, acceptance_expired, fix_verified."},
+		{Name: "slack", Kind: engine.Bool, Default: "true", Description: "Whether the rule posts to Slack. Defaults to true.", ReadDescription: "Whether the rule posts to Slack."},
+		{Name: "slack_channel", Kind: engine.String, Clearable: true, Pattern: channelPattern, MaxLength: 80, Description: "The Slack channel, such as #security-alerts. Leave it out for the organization's default channels.", ReadDescription: "The Slack channel, or null for the default channels."},
+		{Name: "email", Kind: engine.Bool, Default: "true", Description: "Whether the rule emails. Defaults to true.", ReadDescription: "Whether the rule emails."},
+		{Name: "page", Kind: engine.Bool, Default: "false", Description: "Whether the rule pages on call. Only a rule whose min_severity is critical may page, and only new findings page. Defaults to false.", ReadDescription: "Whether the rule pages on call (critical findings only)."},
 		ro("updated_at", engine.String, "When the rule last changed."),
 	},
+	ReadDescription: "The rules that decide which security findings notify whom." + dataSourceNote("security_notification_rule"),
+	Checks:          []func(engine.Config) []engine.Issue{ruleIssues},
+	PlanChecks:      []func(plan, prior engine.Config) []engine.Issue{func(plan, _ engine.Config) []engine.Issue { return ruleIssues(plan) }},
 }
 
 // SecretAllowRules is data.sreagent_secret_allow_rules.
