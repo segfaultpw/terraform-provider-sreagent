@@ -113,7 +113,7 @@ func TestSecurityResourcesCreateRefusedForThePlanNamesTheFeature(t *testing.T) {
 				ProtoV6ProviderFactories: factories,
 				Steps: []resource.TestStep{{
 					Config:      r.config(f, r.create),
-					ExpectError: wrapped("Could not create sreagent_"+r.spec.TypeName, infrastructureRefusal, "needs the infrastructure suite"),
+					ExpectError: wrapped("Could not create sreagent_"+r.spec.TypeName, infrastructureRefusal, "needs the infrastructure suite", "Until the plan includes it, remove the block."),
 				}},
 			})
 			if f.Rows(r.spec.Key) != before {

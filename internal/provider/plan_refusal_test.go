@@ -76,7 +76,7 @@ func TestAPlanRefusalOfACreateNamesTheFeature(t *testing.T) {
 		ProtoV6ProviderFactories: factories,
 		Steps: []resource.TestStep{{
 			Config:      providerBlock(f.URL) + "resource \"sreagent_scratch_gated\" \"g\" {\n  days = 7\n}\n",
-			ExpectError: wrapped("Could not create sreagent_scratch_gated", infrastructureRefusal, "terraform state rm"),
+			ExpectError: wrapped("Could not create sreagent_scratch_gated", infrastructureRefusal, "Until the plan includes it, remove the block."),
 		}},
 	})
 }

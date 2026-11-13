@@ -154,6 +154,9 @@ type Attr struct {
 	// holds that the plan drops (%s is the entry): a removal with effects beyond
 	// the list.
 	RemovedWarning string
+	// ClearedWarning is said at plan when the plan removes a value state holds (a
+	// Clearable attribute going to null): a removal that widens what the row covers.
+	ClearedWarning string
 	// Default is a JSON literal: the platform's published create default. The
 	// attribute is Optional and Computed and takes it when the configuration
 	// leaves it out, on a create and on an update that removes a stated value,
@@ -250,6 +253,15 @@ type Spec struct {
 	// suite"). A 403 that is the platform's plan refusal then fails the operation
 	// naming the feature and the ways out, never as a row deleted outside Terraform.
 	PlanFeature string
+	// PlanAdoption: a singleton whose create adopts the settings the organization
+	// already has. Terraform shows that as a plain create, so the plan reads the
+	// current row (a GET, never a write), judges the block against it as it would
+	// judge an update against state, and warns what the apply will change. A read
+	// that cannot be made is said, and the plan goes on.
+	PlanAdoption bool
+	// DestroyNote is added to the warning a destroy of a singleton says when it
+	// leaves the settings in place: what stays in force.
+	DestroyNote string
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
 	// StartsEmpty: a singleton an organization has no row of until its first

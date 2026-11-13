@@ -320,3 +320,124 @@ func TestAReasonThatQuotesACredentialIsRefusedByThePlatformAndKeptNowhere(t *tes
 		t.Error("a refused rule must leave no row")
 	}
 }
+
+func allowFields(over map[string]tftypes.Value) map[string]tftypes.Value {
+	row := allowDirect("2020-01-01T00:00:00.000000Z")
+	for k, v := range over {
+		row[k] = v
+	}
+	return row
+}
+
+// A rule that ended and whose other field is edited is replaced, and the platform refuses a
+// rule that ends in the past: the old rule would be deleted first and the create would fail.
+// The plan says so, with the end date and the ways out.
+func TestAnEndedRuleThatIsEditedFailsThePlanNamingTheEndAndTheExits(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	d := newDirect(t, specs.SecretAllowRules, f)
+	ended := d.value(allowFields(nil))
+	for name, edit := range map[string]map[string]tftypes.Value{
+		"reason":        {"reason": str("Vendored fixtures, reworded")},
+		"path_glob":     {"path_glob": str("vendor/lib/**")},
+		"repository":    {"repository": str("acme/web")},
+		"detector_type": {"detector_type": str("aws_access_key")},
+	} {
+		plan := allowFields(edit)
+		plan["expires_at"] = str("2020-01-01T00:00:00Z")
+		resp := d.plan(ended, d.value(plan))
+		if !resp.Diagnostics.HasError() || !warnedOrErrored(resp.Diagnostics, "2020-01-01T00:00:00Z", "replaces the rule", name, "set a later expires_at", "remove the block") {
+			t.Errorf("editing %s of an ended rule must fail the plan with the end date and the exits: %v", name, resp.Diagnostics)
+		}
+	}
+	// The same rule in another spelling is not an edit: a case-only repository and the same
+	// instant in another zone are warned about, never refused.
+	state := d.value(allowFields(map[string]tftypes.Value{"repository": str("acme/web")}))
+	same := allowFields(map[string]tftypes.Value{"repository": str("Acme/Web")})
+	same["expires_at"] = str("2020-01-01T01:00:00+01:00")
+	if resp := d.plan(state, d.value(same)); resp.Diagnostics.HasError() || !warned(resp.Diagnostics, "This allow rule has ended") {
+		t.Errorf("a respelled rule is the same rule and only warns: %v", resp.Diagnostics)
+	}
+	// An edit that also moves the end into the future is a replacement the platform accepts.
+	fixed := allowFields(map[string]tftypes.Value{"reason": str("Vendored fixtures, reworded")})
+	fixed["expires_at"] = str("2099-01-01T00:00:00Z")
+	if resp := d.plan(ended, d.value(fixed)); resp.Diagnostics.HasError() {
+		t.Errorf("a later expires_at is the way out: %v", resp.Diagnostics)
+	}
+	// Dropping the end is the other.
+	never := allowFields(map[string]tftypes.Value{"reason": str("Vendored fixtures, reworded"), "expires_at": tftypes.NewValue(tftypes.String, nil)})
+	if resp := d.plan(ended, d.value(never)); resp.Diagnostics.HasError() {
+		t.Errorf("a rule that never ends is accepted: %v", resp.Diagnostics)
+	}
+}
+
+func TestAnImportedEndedRuleThatIsEditedFailsThePlan(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Seed("secret_allow_rules", map[string]any{
+		"id": "11111111-1111-1111-1111-111111111111", "path_glob": "**/testdata/**", "reason": "Vendored test fixtures, not real keys",
+		"repository": nil, "detector_type": nil, "expires_at": "2020-01-01T00:00:00.000000Z", "created_at": "2019-01-01T00:00:00.000000Z",
+	})
+	imp := "import {\n  to = sreagent_secret_allow_rule.a\n  id = \"11111111-1111-1111-1111-111111111111\"\n}\n"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: allowConfig(f, "  expires_at = \"2020-01-01T00:00:00Z\"\n") + imp, ConfigPlanChecks: resource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}},
+			{
+				Config:      providerBlock(f.URL) + "resource \"sreagent_secret_allow_rule\" \"a\" {\n  path_glob = \"**/testdata/**\"\n  reason = \"Vendored test fixtures, reworded\"\n  expires_at = \"2020-01-01T00:00:00Z\"\n}\n",
+				PlanOnly:    true,
+				ExpectError: wrapped("2020-01-01T00:00:00Z", "replaces the rule", "set a later expires_at", "remove the block"),
+			},
+			{
+				// The refused plan deleted nothing: the old rule is still the one the configuration describes.
+				Config: allowConfig(f, "  expires_at = \"2020-01-01T00:00:00Z\"\n"),
+				Check: func(*terraform.State) error {
+					if f.Rows("secret_allow_rules") != 1 || f.Calls("DELETE", "secret_allow_rules") != 0 {
+						return fmt.Errorf("a refused plan must leave the old rule where it was, rows %d, deletes %d", f.Rows("secret_allow_rules"), f.Calls("DELETE", "secret_allow_rules"))
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+// Removing a scope replaces the rule with a wider or longer lived one, and the plan says what widens.
+func TestRemovingAScopeFromAnAllowRuleWarnsWhatWidens(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	d := newDirect(t, specs.SecretAllowRules, f)
+	full := allowFields(map[string]tftypes.Value{"repository": str("acme/web"), "detector_type": str("aws_access_key"), "expires_at": str("2099-01-01T00:00:00.000000Z")})
+	state := d.value(full)
+	keep := func() map[string]tftypes.Value {
+		m := map[string]tftypes.Value{}
+		for k, v := range full {
+			m[k] = v
+		}
+		return m
+	}
+	if resp := d.plan(state, d.value(keep())); resp.Diagnostics.WarningsCount() != 0 {
+		t.Fatalf("keeping every scope says nothing: %v", resp.Diagnostics)
+	}
+	for attr, want := range map[string][]string{
+		"repository":    {"Removing repository", "every repository"},
+		"detector_type": {"Removing detector_type", "every kind"},
+		"expires_at":    {"Removing expires_at", "never ends"},
+	} {
+		plan := keep()
+		plan[attr] = tftypes.NewValue(tftypes.String, nil)
+		resp := d.plan(state, d.value(plan))
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("removing %s is allowed: %v", attr, resp.Diagnostics)
+		}
+		if !warned(resp.Diagnostics, want...) {
+			t.Errorf("removing %s must warn %v: %v", attr, want, resp.Diagnostics)
+		}
+		if n := resp.Diagnostics.WarningsCount(); n != 1 {
+			t.Errorf("removing %s says one thing, got %d warnings: %v", attr, n, resp.Diagnostics)
+		}
+	}
+	// Changing a scope to another value is not a removal.
+	plan := keep()
+	plan["repository"] = str("acme/api")
+	if resp := d.plan(state, d.value(plan)); resp.Diagnostics.WarningsCount() != 0 {
+		t.Errorf("another repository is not a wider rule: %v", resp.Diagnostics)
+	}
+}

@@ -816,16 +816,23 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		}
 		return
 	}
-	r.planChecks(ctx, req, resp)
+	var current *rowSource
+	if r.adopting(req) {
+		current = r.currentRow(ctx, resp)
+	}
+	r.planChecks(ctx, req, resp, current)
 	if r.spec.Previewed {
 		r.planPreview(ctx, req, resp)
 	}
 	r.planRepositoryWide(ctx, req, resp)
 	if req.State.Raw.IsNull() {
+		if current != nil {
+			r.planAdoptionWarnings(ctx, req.Plan, *current, &resp.Diagnostics)
+		}
 		return
 	}
 	r.settleEquivalentPlan(ctx, req, resp)
-	r.planWarnings(ctx, req, resp)
+	r.planWarnings(ctx, req.Plan, req.State, &resp.Diagnostics)
 	r.planResets(ctx, req, resp)
 	for _, a := range r.spec.Attrs {
 		if !a.Secret {
@@ -1114,6 +1121,10 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddError(r.title("create"), r.conflict(err))
 		return
 	}
+	if client.IsNotFound(err) && r.alwaysThere() {
+		resp.Diagnostics.AddError(r.title("create"), r.platformTooOld(err))
+		return
+	}
 	if err != nil {
 		summary, detail := r.failure("create", err)
 		resp.Diagnostics.AddError(summary, detail)
@@ -1214,6 +1225,10 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 	resp.Diagnostics.Append(r.setIdentity(ctx, resp.Identity, id.ValueString())...)
 	p, q := r.rowPath(id.ValueString())
 	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
+	if client.IsNotFound(err) && r.alwaysThere() && !r.spec.Previewed {
+		resp.Diagnostics.AddError(r.title("read"), r.platformTooOld(err))
+		return
+	}
 	if client.IsNotFound(err) {
 		if r.spec.Previewed && followsParent(err) {
 			resp.Diagnostics.AddWarning("Following the parent again", fmt.Sprintf("This organization now follows its parent's %s, so sreagent_%s no longer manages anything here. The next plan proposes to create it again, which gives the organization its own and says what moves.", r.spec.Key, r.spec.TypeName))
@@ -1302,7 +1317,7 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 	if r.spec.Shape == Singleton {
-		resp.Diagnostics.AddWarning("Settings left in place", fmt.Sprintf("sreagent_%s is one row per organization and cannot be deleted; Terraform stopped managing it and the platform keeps its current values.", r.spec.TypeName))
+		resp.Diagnostics.AddWarning("Settings left in place", fmt.Sprintf("sreagent_%s is one row per organization and cannot be deleted; Terraform stopped managing it and the platform keeps its current values.%s", r.spec.TypeName, r.destroyNote()))
 		return
 	}
 	var id types.String
@@ -1358,6 +1373,14 @@ func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 }
 
+// destroyNote is what the spec says stays in force when its destroy leaves the settings.
+func (r *facadeResource) destroyNote() string {
+	if r.spec.DestroyNote == "" {
+		return ""
+	}
+	return " " + r.spec.DestroyNote
+}
+
 // describe is an attribute's description, naming its allowed values.
 func describe(a Attr) string {
 	if len(a.OneOf) == 0 {
@@ -1403,46 +1426,57 @@ func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportSta
 }
 
 // planChecks runs the spec's PlanChecks over the planned values and, on an
-// update, the prior state.
-func (r *facadeResource) planChecks(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+// update, the prior state. On a create that adopts a singleton the prior is the
+// row the organization holds (current), and a value the block leaves out is the
+// one the apply leaves as it is.
+func (r *facadeResource) planChecks(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse, current *rowSource) {
 	if len(r.spec.PlanChecks) == 0 {
 		return
 	}
 	planned := configView{ctx: ctx, src: req.Plan, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
-	var prior Config
-	if !req.State.Raw.IsNull() {
+	var plan, prior Config = planned, nil
+	switch {
+	case !req.State.Raw.IsNull():
 		prior = configView{ctx: ctx, src: req.State, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+	case current != nil:
+		held := configView{ctx: ctx, src: *current, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+		left := configView{ctx: ctx, src: req.Config, attrs: r.spec.Attrs, diags: &resp.Diagnostics}
+		plan, prior = adoptedConfig{plan: planned, config: left, current: held}, held
 	}
 	for _, check := range r.spec.PlanChecks {
-		for _, issue := range check(planned, prior) {
+		for _, issue := range check(plan, prior) {
 			planned.report(&resp.Diagnostics, issue)
 		}
 	}
 }
 
 // planWarnings says what a change does beyond the setting itself: a ChangeWarning
-// when the planned value is not the one state holds, a RemovedWarning for each
-// entry of a list the plan drops.
-func (r *facadeResource) planWarnings(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+// when the planned value is not the one the prior holds, a RemovedWarning for each
+// entry of a list the plan drops, a ClearedWarning when the plan removes a value.
+// The prior is the state of an update, or the row an adopting create overwrites.
+func (r *facadeResource) planWarnings(ctx context.Context, plan, prior valueSource, diags *diag.Diagnostics) {
 	for _, a := range r.spec.Attrs {
-		if a.ChangeWarning == "" && a.RemovedWarning == "" {
+		if a.ChangeWarning == "" && a.RemovedWarning == "" && a.ClearedWarning == "" {
 			continue
 		}
-		planned, d := getValue(ctx, req.Plan, a)
-		resp.Diagnostics.Append(d...)
-		prior, d := getValue(ctx, req.State, a)
-		resp.Diagnostics.Append(d...)
-		if planned == nil || prior == nil || planned.IsUnknown() || prior.IsUnknown() {
+		planned, d := getValue(ctx, plan, a)
+		diags.Append(d...)
+		held, d := getValue(ctx, prior, a)
+		diags.Append(d...)
+		if planned == nil || held == nil || planned.IsUnknown() || held.IsUnknown() {
 			continue
 		}
 		p := path.Root(a.Attribute())
-		if a.ChangeWarning != "" && !planned.Equal(prior) && !keep(a, prior, planned) {
-			resp.Diagnostics.AddAttributeWarning(p, "A change with effects beyond this setting", a.ChangeWarning)
+		if a.ChangeWarning != "" && !planned.Equal(held) && !keep(a, held, planned) {
+			diags.AddAttributeWarning(p, "A change with effects beyond this setting", a.ChangeWarning)
+		}
+		if a.ClearedWarning != "" && planned.IsNull() && !held.IsNull() {
+			diags.AddAttributeWarning(p, "A scope is being removed", a.ClearedWarning)
 		}
 		if a.RemovedWarning == "" {
 			continue
 		}
-		before, ok1 := prior.(types.List)
+		before, ok1 := held.(types.List)
 		after, ok2 := planned.(types.List)
 		if !ok1 || !ok2 || before.IsNull() {
 			continue
@@ -1450,7 +1484,7 @@ func (r *facadeResource) planWarnings(ctx context.Context, req resource.ModifyPl
 		kept := stringsOf(after)
 		for _, entry := range stringsOf(before) {
 			if !slices.Contains(kept, entry) {
-				resp.Diagnostics.AddAttributeWarning(p, "An entry is being removed", fmt.Sprintf(a.RemovedWarning, entry))
+				diags.AddAttributeWarning(p, "An entry is being removed", fmt.Sprintf(a.RemovedWarning, entry))
 			}
 		}
 	}

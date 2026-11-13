@@ -52,10 +52,23 @@ func TestAPlanRefusalNamesTheFeatureTheSentenceAndTheExits(t *testing.T) {
 	}
 
 	// The plan without the configuration API gets its own text.
-	_, detail = gated.failure("create", &client.APIError{Status: 403, Code: "feature_not_available", Message: "The configuration API is not included in your plan."})
+	_, detail = gated.failure("update", &client.APIError{Status: 403, Code: "feature_not_available", Message: "The configuration API is not included in your plan."})
 	for _, want := range []string{`The configuration API is not included in your plan.`, "advanced integrations", "terraform state rm sreagent_security_sla_policy.<name>"} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("the detail must say %q, got:\n%s", want, detail)
+		}
+	}
+
+	// A create has nothing in state to forget, so it offers the one exit that exists.
+	for name, err := range map[string]error{"the plan": refused, "the configuration API": &client.APIError{Status: 403, Code: "feature_not_available", Message: "The configuration API is not included in your plan."}} {
+		_, detail = gated.failure("create", err)
+		if !strings.Contains(detail, "Until the plan includes it, remove the block.") {
+			t.Errorf("a create refused for %s must say to remove the block, got:\n%s", name, detail)
+		}
+		for _, bad := range []string{"state rm", "removed block"} {
+			if strings.Contains(detail, bad) {
+				t.Errorf("a create refused for %s has no state to forget, yet says %q:\n%s", name, bad, detail)
+			}
 		}
 	}
 }

@@ -68,13 +68,23 @@ the whole organization's security behavior (the digest stops, every marked class
 recomputed). To go back to the defaults, state them, apply, then remove the block. The security notification rules and
 the secret allow rules are rows, and destroying one deletes it.
 
+A block for one of the three singletons that is not imported adopts the settings the organization already has, and the
+apply overwrites what the block names. Terraform shows that as a plain create, so the plan reads the current settings
+(a read, never a write) and warns what the apply will change: each class it unmarks and that its findings close, each
+SLA day that moves and that due dates are recomputed, and each field of the digest it changes. A class the organization
+has not accepted, a built-in class, or a digest that would be on with nowhere to go fails the plan against those current
+values. When the plan cannot read the settings it says so in a warning. Import the settings first to review the change
+as an ordinary plan.
+
 ## Resources that need the infrastructure suite
 
 The security SLA policy, digest, code classes, notification rules and allow rules need the infrastructure suite in the
 organization's plan, on top of the advanced integrations every resource needs. When the plan does not include it the
 platform answers 403 to every read, and the plan fails with `Could not read sreagent_<type>`, the platform's sentence
 and the ways to stop managing the resource: `terraform state rm`, or a `removed` block whose `lifecycle` sets
-`destroy = false`. The provider never reads that answer as a deleted row, so a lapsed plan cannot plan a re-create.
+`destroy = false` (Terraform 1.12 or later, which this provider requires; on OpenTofu use `tofu state rm`, which works
+everywhere). A create refused this way has nothing in state yet, so it says to remove the block until the plan includes
+the suite. The provider never reads that answer as a deleted row, so a lapsed plan cannot plan a re-create.
 
 ## Changes the platform previews
 

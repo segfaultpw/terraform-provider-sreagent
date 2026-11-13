@@ -8,10 +8,10 @@ import (
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 )
 
-// The security and code detection settings are read here and written in the
-// app, over MCP or the configuration API; the provider reads them as data
-// sources only. Every attribute is Computed, so a spec with a writable field in
-// the contract still declares it as an answer.
+// The code detection settings are read here and written in the app, over MCP or the
+// configuration API; the provider reads them as a data source only, so every attribute is
+// Computed and a writable field in the contract is still declared as an answer. The other
+// security specs below are managed: see the comment before securityNote.
 
 // infrastructureRefusal is the plan gate of the security tools: the facade answers 403 with the
 // platform's sentence for an organization whose plan lacks the infrastructure suite.
@@ -60,6 +60,7 @@ const infrastructureSuite = "the infrastructure suite"
 // securityNote is what a managed security singleton says about its destroy.
 const securityNote = " As a resource it adopts the settings the organization has: an attribute left out is left as it is, " +
 	"and destroying the resource leaves the settings in place (the platform has no row to delete). " +
+	"A block that is not imported overwrites what it names: the plan reads the current settings and warns what the apply will change, so import first to review it as a plan. " +
 	"Needs the infrastructure suite."
 
 func ptr(n int64) *int64 { return &n }
@@ -96,6 +97,8 @@ var SecuritySLAPolicy = func() engine.Spec {
 	)
 	sp.Lifecycle = true
 	sp.PlanFeature = infrastructureSuite
+	sp.PlanAdoption = true
+	sp.DestroyNote = "Due dates keep the current policy."
 	sp.ReadDescription = "The days a security finding may stay active before it breaches, per severity. A severity with no days has no SLA." + dataSourceNote("security_sla_policy")
 	return sp
 }()
@@ -110,7 +113,7 @@ func digestDestination(plan, _ engine.Config) []engine.Issue {
 	}
 	if channel == "" && (em != engine.Present || !email) {
 		return []engine.Issue{{Attr: "enabled", Summary: "No destination for the digest",
-			Detail: "Choose a Slack channel or email for the digest. Set slack_channel or email = true, or enabled = false."}}
+			Detail: "Choose a Slack channel or email for the digest. Set slack_channel or email = true, or enabled = false. A value the block leaves out is the one state holds as of the last refresh."}}
 	}
 	return nil
 }
@@ -135,6 +138,8 @@ var SecurityDigestSettings = func() engine.Spec {
 	)
 	sp.Lifecycle = true
 	sp.PlanFeature = infrastructureSuite
+	sp.PlanAdoption = true
+	sp.DestroyNote = "The digest keeps sending while enabled is true."
 	sp.PlanChecks = []func(plan, prior engine.Config) []engine.Issue{digestDestination}
 	sp.ReadDescription = "The security digest: how often it is sent and where." + dataSourceNote("security_digest_settings")
 	return sp
@@ -170,7 +175,7 @@ func codeClassesCheck(plan, prior engine.Config) []engine.Issue {
 				named = strings.Join(available, ", ")
 			}
 			out = append(out, engine.Issue{Attr: "classes", Summary: "A class the organization has not accepted",
-				Detail: c + " is not a class this organization accepted. Name a class from available_classes: " + named + "."})
+				Detail: c + " is not a class this organization accepted (as of the last read). Name a class from available_classes: " + named + "."})
 		}
 	}
 	return out
@@ -192,6 +197,8 @@ var SecurityCodeClasses = func() engine.Spec {
 	)
 	sp.Lifecycle = true
 	sp.PlanFeature = infrastructureSuite
+	sp.PlanAdoption = true
+	sp.DestroyNote = "The classes stay marked."
 	sp.PlanChecks = []func(plan, prior engine.Config) []engine.Issue{codeClassesCheck}
 	sp.ReadDescription = "The accepted other:<kind> code aliases counted as security findings, beyond the built-in classes." + dataSourceNote("security_code_classes")
 	return sp
@@ -264,8 +271,44 @@ var SecurityNotificationRules = engine.Spec{
 	PlanChecks:      []func(plan, prior engine.Config) []engine.Issue{func(plan, _ engine.Config) []engine.Issue { return ruleIssues(plan) }},
 }
 
+// sameAllowValue reports that the plan and the prior state state one field the same way, as the
+// platform stores it: the repository in lower case, a time as an instant. A value the plan does
+// not know yet is a change, since the apply cannot keep the rule it would not have replaced.
+func sameAllowValue(name string, plan, prior engine.Config) bool {
+	p, pp := plan.String(name)
+	h, hp := prior.String(name)
+	switch {
+	case pp == engine.Unknown:
+		return false
+	case pp != hp:
+		return false
+	case pp == engine.Absent:
+		return true
+	}
+	switch name {
+	case "repository":
+		return strings.EqualFold(p, h)
+	case "expires_at":
+		return engine.RFC3339(p) == engine.RFC3339(h)
+	}
+	return p == h
+}
+
+// allowRuleChanges are the fields of a rule the plan changes: each one replaces the rule.
+func allowRuleChanges(plan, prior engine.Config) []string {
+	var changed []string
+	for _, name := range []string{"path_glob", "reason", "repository", "detector_type", "expires_at"} {
+		if !sameAllowValue(name, plan, prior) {
+			changed = append(changed, name)
+		}
+	}
+	return changed
+}
+
 // allowRuleEnd refuses a rule that ends before it starts, and says so of one that has ended:
-// a new or replaced rule must end in the future; one that already ended covers nothing.
+// a new or replaced rule must end in the future; one that already ended covers nothing. A rule
+// has no update door, so editing a rule that ended is a replacement, and the platform would
+// refuse the new rule after the old one was deleted: the plan refuses it first.
 func allowRuleEnd(plan, prior engine.Config) []engine.Issue {
 	planned, p := plan.String("expires_at")
 	if p != engine.Present {
@@ -275,19 +318,26 @@ func allowRuleEnd(plan, prior engine.Config) []engine.Issue {
 	if err != nil {
 		return nil
 	}
+	var changed []string
 	if prior != nil {
-		if held, h := prior.String("expires_at"); h == engine.Present && engine.RFC3339(held) == engine.RFC3339(planned) {
-			if end.Before(time.Now()) {
-				return []engine.Issue{{Attr: "expires_at", Warning: true, Summary: "This allow rule has ended",
-					Detail: "This allow rule ended at " + planned + " and covers nothing: the weekly scan files its matches again. Remove the block, or replace the rule with a later expires_at."}}
-			}
-			return nil
+		changed = allowRuleChanges(plan, prior)
+	}
+	if prior != nil && len(changed) == 0 {
+		if end.Before(time.Now()) {
+			return []engine.Issue{{Attr: "expires_at", Warning: true, Summary: "This allow rule has ended",
+				Detail: "This allow rule ended at " + planned + " and covers nothing: the weekly scan files its matches again. Remove the block, or replace the rule with a later expires_at."}}
 		}
+		return nil
 	}
-	if !end.After(time.Now()) {
-		return []engine.Issue{{Attr: "expires_at", Summary: "expires_at must be in the future", Detail: "expires_at must be in the future."}}
+	if end.After(time.Now()) {
+		return nil
 	}
-	return nil
+	if prior != nil && !slices.Contains(changed, "expires_at") {
+		return []engine.Issue{{Attr: "expires_at", Summary: "expires_at must be in the future",
+			Detail: "This allow rule ended at " + planned + ". Changing " + strings.Join(changed, ", ") + " replaces the rule, and the platform refuses a rule that ends in the past, " +
+				"so the apply would delete the old rule and then fail. To keep editing it, set a later expires_at; to drop it, remove the block."}}
+	}
+	return []engine.Issue{{Attr: "expires_at", Summary: "expires_at must be in the future", Detail: "expires_at must be in the future."}}
 }
 
 // SecretAllowRules is data.sreagent_secret_allow_rules and sreagent_secret_allow_rule.
@@ -295,7 +345,8 @@ var SecretAllowRules = engine.Spec{
 	Key: "secret_allow_rules", TypeName: "secret_allow_rule", ListName: "secret_allow_rules",
 	Description: "A rule that keeps the weekly repository scan from filing a credential match, by path, repository and detector. " +
 		"A rule cannot be edited: any change replaces it (the old rule is deleted first, so for a moment the weekly scan could file a match it covered; set lifecycle create_before_destroy to avoid that, up to the 100 rule limit). " +
-		"Removing repository, detector_type or expires_at replaces the rule with one that covers every repository, every kind, or never ends. " +
+		"Removing repository, detector_type or expires_at replaces the rule with one that covers every repository, every kind, or never ends, and the plan warns what widens. " +
+		"A rule whose end has passed cannot be edited: the plan fails, because the replacement would end in the past (set a later expires_at, or remove the block). " +
 		"A rule holds no credential and closes nothing already filed; mark those findings false positive in the app. An organization has at most 100 rules. " +
 		"Needs the infrastructure suite.",
 	Shape:       engine.Generated,
@@ -306,11 +357,11 @@ var SecretAllowRules = engine.Spec{
 			Description: "The paths the rule covers, at most 200 characters (** matches any run of characters including /, * any run without /, ? one character; case sensitive, from the repository root).", ReadDescription: "The paths the rule covers (** matches any run of characters including /, * any run without /, ? one character)."},
 		{Name: "reason", Kind: engine.String, Required: true, CreateOnly: true, Trim: true, MinLength: 10, MaxLength: 500,
 			Description: "Why the match is not a credential, 10 to 500 characters. It must not quote the credential: the platform refuses a reason that looks like one.", ReadDescription: "Why the match is not a credential."},
-		{Name: "repository", Kind: engine.String, CreateOnly: true, Clearable: true, Normalize: engine.Lower, Pattern: `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`, MaxLength: 255,
+		{Name: "repository", Kind: engine.String, CreateOnly: true, Clearable: true, Normalize: engine.Lower, ClearedWarning: "Removing repository replaces this rule with one that covers every repository.", Pattern: `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`, MaxLength: 255,
 			Description: "owner/name, stored in lower case. Leave it out for every repository.", ReadDescription: "owner/name, or null for every repository."},
-		{Name: "detector_type", Kind: engine.String, CreateOnly: true, Clearable: true, Pattern: `^[a-z0-9_]+$`, MaxLength: 50,
+		{Name: "detector_type", Kind: engine.String, CreateOnly: true, Clearable: true, ClearedWarning: "Removing detector_type replaces this rule with one that covers every kind of credential.", Pattern: `^[a-z0-9_]+$`, MaxLength: 50,
 			Description: "A detector type such as aws_access_key. Leave it out for every kind. The platform refuses a type it does not know, naming the ones it has.", ReadDescription: "A detector type, or null for every kind."},
-		{Name: "expires_at", Kind: engine.String, CreateOnly: true, Clearable: true, Timestamp: true,
+		{Name: "expires_at", Kind: engine.String, CreateOnly: true, Clearable: true, Timestamp: true, ClearedWarning: "Removing expires_at replaces this rule with one that never ends.",
 			Description: "When the rule ends, an RFC 3339 time with a zone in the future. Leave it out for never. The platform answers microseconds; the same instant written another way is no change.", ReadDescription: "When the rule ends, or null for never."},
 		ro("created_at", engine.String, "When the rule was added."),
 	},

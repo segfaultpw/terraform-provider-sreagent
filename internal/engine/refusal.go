@@ -19,16 +19,20 @@ func (r *facadeResource) failure(verb string, err error) (string, string) {
 		switch {
 		case client.IsPlanRefusal(err) && errors.As(err, &apiErr):
 			return r.title(verb), fmt.Sprintf("The platform answered 403: %q sreagent_%s needs %s in the organization's plan (and the configuration API needs a plan with advanced integrations). Nothing was changed. %s",
-				apiErr.Message, r.spec.TypeName, r.spec.PlanFeature, r.planExits())
+				apiErr.Message, r.spec.TypeName, r.spec.PlanFeature, r.planExits(verb))
 		case client.IsConfigAPIUnavailable(err) && errors.As(err, &apiErr):
 			return r.title(verb), fmt.Sprintf("The platform answered 403: %q sreagent_%s is managed through the configuration API, which needs a plan with advanced integrations. Nothing was changed. %s",
-				apiErr.Message, r.spec.TypeName, r.planExits())
+				apiErr.Message, r.spec.TypeName, r.planExits(verb))
 		}
 	}
 	return r.title(verb), err.Error()
 }
 
-// planExits are the ways to stop managing a resource the plan no longer allows.
-func (r *facadeResource) planExits() string {
+// planExits are the ways to stop managing a resource the plan no longer allows. A
+// create has nothing in state to forget, so the block is the only thing to remove.
+func (r *facadeResource) planExits(verb string) string {
+	if verb == "create" {
+		return "Until the plan includes it, remove the block."
+	}
 	return fmt.Sprintf("Until the plan includes it, stop managing it here with terraform state rm sreagent_%s.<name>, or with a removed block whose lifecycle sets destroy = false.", r.spec.TypeName)
 }

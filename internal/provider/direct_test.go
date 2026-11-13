@@ -58,12 +58,47 @@ func (d *direct) value(fields map[string]tftypes.Value) tftypes.Value {
 	return tftypes.NewValue(d.typ, all)
 }
 
+// created is the plan of a create: the fields named, and everything the
+// configuration left out unknown, as Terraform plans an Optional and Computed
+// attribute with no value in a block.
+func (d *direct) created(fields map[string]tftypes.Value) tftypes.Value {
+	all := map[string]tftypes.Value{}
+	for name, typ := range d.typ.AttributeTypes {
+		all[name] = tftypes.NewValue(typ, tftypes.UnknownValue)
+	}
+	for name, v := range fields {
+		if _, ok := d.typ.AttributeTypes[name]; !ok {
+			d.t.Fatalf("the schema has no attribute %s", name)
+		}
+		all[name] = v
+	}
+	return tftypes.NewValue(d.typ, all)
+}
+
+// none is the state of a resource that does not exist yet.
+func (d *direct) none() tftypes.Value { return tftypes.NewValue(d.typ, nil) }
+
 // plan runs the resource's ModifyPlan over a prior state and the plan Terraform
 // would propose.
 func (d *direct) plan(state, plan tftypes.Value) resource.ModifyPlanResponse {
 	d.t.Helper()
+	return d.planConfigured(state, plan, plan)
+}
+
+// adopt plans the create of a block that states the fields named: the
+// configuration holds them and nothing else, the plan holds them and leaves
+// every other attribute unknown.
+func (d *direct) adopt(fields map[string]tftypes.Value) resource.ModifyPlanResponse {
+	d.t.Helper()
+	return d.planConfigured(d.none(), d.value(fields), d.created(fields))
+}
+
+// planConfigured is plan with a configuration of its own, which is what tells a
+// value the block left out from one that is merely unknown.
+func (d *direct) planConfigured(state, config, plan tftypes.Value) resource.ModifyPlanResponse {
+	d.t.Helper()
 	req := resource.ModifyPlanRequest{
-		Config: tfsdk.Config{Schema: d.schema.Schema, Raw: plan},
+		Config: tfsdk.Config{Schema: d.schema.Schema, Raw: config},
 		Plan:   tfsdk.Plan{Schema: d.schema.Schema, Raw: plan},
 		State:  tfsdk.State{Schema: d.schema.Schema, Raw: state},
 	}
@@ -96,3 +131,18 @@ func warned(diags diag.Diagnostics, parts ...string) bool {
 
 func tfNum(n int64) tftypes.Value { return tftypes.NewValue(tftypes.Number, n) }
 func tfBool(b bool) tftypes.Value { return tftypes.NewValue(tftypes.Bool, b) }
+
+// warnedOrErrored is warned over every diagnostic, errors included.
+func warnedOrErrored(diags diag.Diagnostics, parts ...string) bool {
+	for _, w := range diags {
+		text := w.Summary() + " " + w.Detail()
+		ok := true
+		for _, p := range parts {
+			ok = ok && strings.Contains(text, p)
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
+}

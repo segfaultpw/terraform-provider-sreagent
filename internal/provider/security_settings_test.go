@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/fakefacade"
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/specs"
 )
@@ -231,16 +232,20 @@ func TestADigestOnWithoutADestinationFailsThePlan(t *testing.T) {
 	})
 }
 
-func TestADigestOnWithoutADestinationIsRefusedByThePlatformOnAnAdoptingCreate(t *testing.T) {
+func TestADigestOnWithoutADestinationFailsTheAdoptingPlan(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
 		Steps: []resource.TestStep{{
-			// A create has no prior row to read, so the platform answers: the apply fails with its sentence.
+			// A create adopts the row the organization has, which holds no destination: the plan reads it
+			// and refuses, before anything is written.
 			Config:      digestConfig(f, "  enabled = true\n"),
-			ExpectError: wrapped("Choose a Slack channel or email for the digest."),
+			ExpectError: wrapped("No destination for the digest", "Choose a Slack channel or email for the digest."),
 		}},
 	})
+	if f.Calls("PUT", "security_digest_settings") != 0 {
+		t.Error("a refused plan writes nothing")
+	}
 }
 
 func TestDigestBoundsAreRefusedAtPlan(t *testing.T) {
@@ -490,9 +495,9 @@ func TestFiftyOneClassesAreRefusedAtPlan(t *testing.T) {
 	})
 }
 
-// A create has no read of the accepted classes to judge against, so the platform's own
-// refusal is what the apply shows.
-func TestAnUnavailableClassOnCreateIsRefusedByThePlatform(t *testing.T) {
+// A create adopts the classes the organization holds, so the plan judges against them and the
+// refusal comes before anything is written.
+func TestAnUnavailableClassOnCreateFailsTheAdoptingPlan(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
@@ -501,4 +506,64 @@ func TestAnUnavailableClassOnCreateIsRefusedByThePlatform(t *testing.T) {
 			ExpectError: wrapped("other:ghost is not a class this organization accepted"),
 		}},
 	})
+	if f.Calls("PUT", "security_code_classes") != 0 {
+		t.Error("a refused plan writes nothing")
+	}
+}
+
+// A destroy leaves the settings in place; what that means is not the same for each, so the
+// warning says what stays in force.
+func TestDestroyingASecuritySingletonSaysWhatStaysInForce(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	for _, c := range []struct {
+		spec engine.Spec
+		want string
+	}{
+		{specs.SecuritySLAPolicy, "Due dates keep the current policy."},
+		{specs.SecurityDigestSettings, "The digest keeps sending while enabled is true."},
+		{specs.SecurityCodeClasses, "The classes stay marked."},
+	} {
+		d := newDirect(t, c.spec, f)
+		resp := d.destroy(d.value(map[string]tftypes.Value{"id": str(c.spec.Key)}))
+		if !warned(resp.Diagnostics, "Settings left in place", "the platform keeps its current values", c.want) {
+			t.Errorf("destroying sreagent_%s must say %q: %v", c.spec.TypeName, c.want, resp.Diagnostics)
+		}
+	}
+	// A released singleton keeps the plain sentence.
+	d := newDirect(t, specs.OrganizationSettings, f)
+	resp := d.destroy(d.value(map[string]tftypes.Value{"id": str("organization_settings")}))
+	if n := len(resp.Diagnostics.Warnings()); n != 1 || strings.Contains(resp.Diagnostics.Warnings()[0].Detail(), "keeps sending") {
+		t.Errorf("a released singleton says only that the settings stay: %v", resp.Diagnostics)
+	}
+}
+
+// A platform that predates a security singleton answers 404 for it. The resource says which
+// release serves it, as the data source does, and a refresh never reads the 404 as a deleted row.
+func TestAPlatformThatPredatesASecuritySingletonNamesTheRelease(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{Config: slaConfig(f, "  high_days = 14\n")},
+			{
+				PreConfig:   func() { f.Remove("security_sla_policy", "security_sla_policy") },
+				Config:      slaConfig(f, "  high_days = 14\n"),
+				PlanOnly:    true,
+				ExpectError: wrapped("Could not read sreagent_security_sla_policy", "sreagent_security_sla_policy needs platform v0.476.3 or later"),
+			},
+			{PreConfig: func() {
+				f.Seed("security_sla_policy", map[string]any{"id": "security_sla_policy", "critical_days": 7, "high_days": 14, "medium_days": 90, "low_days": 180, "info_days": nil, "defaults": false, "updated_at": nil})
+			}, Config: slaConfig(f, "  high_days = 14\n")},
+		},
+	})
+}
+
+func TestAdoptingOverAPlatformThatPredatesTheSingletonWarnsTheRelease(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Remove("security_digest_settings", "security_digest_settings")
+	d := newDirect(t, specs.SecurityDigestSettings, f)
+	resp := d.adopt(map[string]tftypes.Value{"enabled": tfBool(false)})
+	if resp.Diagnostics.HasError() || !warned(resp.Diagnostics, "sreagent_security_digest_settings needs platform v0.476.4 or later") {
+		t.Errorf("a 404 at plan names the release and does not fail the plan: %v", resp.Diagnostics)
+	}
 }

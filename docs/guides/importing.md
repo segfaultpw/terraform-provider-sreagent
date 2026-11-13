@@ -107,14 +107,19 @@ on, it fails until `confirm_on_destroy` holds the confirmation (set it, apply, t
 The security SLA policy, the digest, the code classes, the notification rules and the secret allow rules are managed by
 `sreagent_security_sla_policy`, `sreagent_security_digest_settings`, `sreagent_security_code_classes`,
 `sreagent_security_notification_rule` and `sreagent_secret_allow_rule`. They need the infrastructure suite in the plan.
-Their data sources are unchanged, and each id they answer is the id to import. The exported file writes all five.
+Their data sources are unchanged, and each id they answer is the id to import. Once the platform's export names provider
+0.3.0 as its floor, the exported file writes all five; until then it does not, and a platform that has not been updated
+keeps its older floor.
 
 - **Two nulls are values.** An SLA with no days for a severity, and a digest with no Slack channel, are stored as null
   on the platform. The resources write them as `0` (days) and `""` (channel) and send null for them; the data sources
   keep reading null. An imported singleton that holds one plans nothing once the configuration says `info_days = 0` or
   `slack_channel = ""`, and a configuration that leaves the attribute out leaves it as it is.
 - **A singleton attribute left out is left as it is.** This holds for the three settings, so importing one and stating
-  only the attributes you care about changes nothing else. Destroying one leaves the settings in place, with a warning.
+  only the attributes you care about changes nothing else. Destroying one leaves the settings in place, with a warning
+  that says what stays in force. A block you do not import adopts the settings the organization has: the plan reads them
+  and warns what the apply will change (classes unmarked, SLA days moved, digest fields), so import first to review the
+  change as a plan.
 - **A notification rule takes the platform's defaults for what it leaves out.** That includes `page` (false) and
   `events` (`new_finding`), so removing `page = true` stops paging. The rule the platform seeds, Critical and high
   findings, has four events (`new_finding`, `sla_breached`, `acceptance_expired`, `fix_verified`); state every field of it
@@ -122,8 +127,10 @@ Their data sources are unchanged, and each id they answer is the id to import. T
   again.
 - **The code classes are a set.** The order does not matter, the platform stores them sorted, and `[]` unmarks them all.
 - **An allow rule cannot be edited.** Any change replaces it. The repository is stored in lower case and the end time
-  with microseconds; neither is a change. A rule whose end has passed imports without a change, and the plan warns that it
-  covers nothing.
+  with microseconds; neither is a change. Removing `repository`, `detector_type` or `expires_at` replaces the rule with a
+  wider or longer lived one, and the plan warns what widens. A rule whose end has passed imports without a change, but
+  editing any other field of it fails the plan, because the replacement would end in the past: set a later `expires_at`
+  or remove the block. For a rule that has ended and is left as it is, the plan warns that it covers nothing.
 
 ```terraform
 import {

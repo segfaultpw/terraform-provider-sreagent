@@ -301,7 +301,7 @@ func TestAccSecurityResourcesRefusedForThePlan(t *testing.T) {
 				TerraformVersionChecks:   accSkipBelow112,
 				Steps: []resource.TestStep{{
 					Config:      provider + fmt.Sprintf("resource %q \"test\" {\n%s\n}\n", typeName, config),
-					ExpectError: wrapped("Could not create "+typeName, "The infrastructure suite is not included in your plan.", "needs the infrastructure suite in the organization's plan", "terraform state rm "+typeName),
+					ExpectError: wrapped("Could not create "+typeName, "The infrastructure suite is not included in your plan.", "needs the infrastructure suite in the organization's plan", "Until the plan includes it, remove the block."),
 				}},
 			})
 		})

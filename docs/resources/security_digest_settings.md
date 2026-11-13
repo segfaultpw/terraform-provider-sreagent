@@ -2,12 +2,12 @@
 page_title: "sreagent_security_digest_settings Resource - sreagent"
 subcategory: ""
 description: |-
-  The security digest: how often it is sent and where. It is off by default; switching it on needs a Slack channel or email. As a resource it adopts the settings the organization has: an attribute left out is left as it is, and destroying the resource leaves the settings in place (the platform has no row to delete). Needs the infrastructure suite. Destroying the resource does not switch the digest off: it keeps sending while enabled is true. To go back to the defaults, state them (enabled = false, cadence = "weekly", weekday = 1, hour = 9, slack_channel = "", email = false), apply, then remove the block.
+  The security digest: how often it is sent and where. It is off by default; switching it on needs a Slack channel or email. As a resource it adopts the settings the organization has: an attribute left out is left as it is, and destroying the resource leaves the settings in place (the platform has no row to delete). A block that is not imported overwrites what it names: the plan reads the current settings and warns what the apply will change, so import first to review it as a plan. Needs the infrastructure suite. Destroying the resource does not switch the digest off: it keeps sending while enabled is true. To go back to the defaults, state them (enabled = false, cadence = "weekly", weekday = 1, hour = 9, slack_channel = "", email = false), apply, then remove the block.
 ---
 
 # sreagent_security_digest_settings (Resource)
 
-The security digest: how often it is sent and where. It is off by default; switching it on needs a Slack channel or email. As a resource it adopts the settings the organization has: an attribute left out is left as it is, and destroying the resource leaves the settings in place (the platform has no row to delete). Needs the infrastructure suite. Destroying the resource does not switch the digest off: it keeps sending while enabled is true. To go back to the defaults, state them (enabled = false, cadence = "weekly", weekday = 1, hour = 9, slack_channel = "", email = false), apply, then remove the block.
+The security digest: how often it is sent and where. It is off by default; switching it on needs a Slack channel or email. As a resource it adopts the settings the organization has: an attribute left out is left as it is, and destroying the resource leaves the settings in place (the platform has no row to delete). A block that is not imported overwrites what it names: the plan reads the current settings and warns what the apply will change, so import first to review it as a plan. Needs the infrastructure suite. Destroying the resource does not switch the digest off: it keeps sending while enabled is true. To go back to the defaults, state them (enabled = false, cadence = "weekly", weekday = 1, hour = 9, slack_channel = "", email = false), apply, then remove the block.
 
 ## Example Usage
 
