@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -332,6 +333,7 @@ func TestQuickRowIsRefusedAtPlanWhenTheProviderCanSayWhy(t *testing.T) {
 		Steps: []resource.TestStep{
 			{Config: quickRowConfig(f.URL, thirteen...), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)reaction_quick_row.*(at most 12|12 elements)`)},
 			{Config: quickRowConfig(f.URL, long), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)Entry\s+too\s+long.*at\s+most\s+64\s+characters,\s+this\s+one\s+has\s+65`)},
+			{Config: quickRowConfig(f.URL, strings.Repeat("a", 17)), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)Entry\s+the\s+platform\s+stores\s+differently.*at\s+most\s+16\s+code\s+points\s+and\s+64\s+bytes`)},
 			{Config: quickRowConfig(f.URL, ":tada:"), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)Slack\s+name.*plan\s+a\s+change\s+on\s+every\s+run.*Write\s+the\s+emoji\s+itself`)},
 			{Config: quickRowConfig(f.URL, heart, heartQ), PlanOnly: true, ExpectError: regexp.MustCompile(`(?s)same\s+value\s+twice.*once\s+the\s+platform\s+normalizes`)},
 			{Config: quickRowConfig(f.URL, "\U0001F680", "\U0001F680"), PlanOnly: true, ExpectError: regexp.MustCompile(`duplicate values`)},

@@ -3,6 +3,7 @@ package specs
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
 )
@@ -56,6 +57,24 @@ func slackName(entry string) string {
 	return ""
 }
 
+// The most one reaction emoji may hold. SreData.Emoji.normalize/1 of the platform
+// refuses a value over max_code_points/0 (16) or max_bytes/0 (64, UTF-8), so a
+// longer entry can never be stored; the published items.maxLength of 64 is the
+// looser published bound and is checked separately.
+const (
+	emojiMaxCodePoints = 16
+	emojiMaxBytes      = 64
+)
+
+// quickRowEntry refuses an entry the platform would refuse (more than 16 code
+// points or 64 bytes) or store differently than written (a Slack name).
+func quickRowEntry(entry string) string {
+	if n := utf8.RuneCountInString(entry); n > emojiMaxCodePoints || len(entry) > emojiMaxBytes {
+		return fmt.Sprintf("An emoji holds at most %d code points and %d bytes, as the platform counts them; this entry has %d code points and %d bytes.", emojiMaxCodePoints, emojiMaxBytes, n, len(entry))
+	}
+	return slackName(entry)
+}
+
 // OrganizationSettings mirrors x-sreagent-resources.organization_settings.
 var OrganizationSettings = withDestroyNote(singleton("organization_settings", "The organization's own settings.",
 	i("alert_storm_threshold", "Alerts within the window that make a storm."),
@@ -92,7 +111,7 @@ var OrganizationSettings = withDestroyNote(singleton("organization_settings", "T
 		Description:   "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead."},
 	engine.Attr{Name: "language", Kind: engine.String, OneOf: []string{"en", "es"}, Description: "The language of the outcome lines SRE Agent writes into a card's Slack threads: how a fix, a change or a pull request ended, a card moved to Done or closed as won't do, and the label in front of a comment posted from the card. en (English, the default) or es (Spanish). Names, links, error messages and what people and the AI wrote are posted as they are. The card itself, its comments, the app's pages and emails stay in English. An organization admin's key (api:admin) may change it."},
 	engine.Attr{Name: "slack_thread_events_off", Kind: engine.StringList, Unordered: true, OneOf: threadEvents, Description: "The events NOT posted in a card's Slack threads, as the whole set: [] posts everything (the default), and a list posts everything else. The order does not matter. Failed, declined or cancelled fixes and changes, a failed local fix session, a change that could not be made on the pull request it was asked for and the assistant's answer to a question asked in Slack are always posted and have no name here. The card, the tracker and the notices to the card's people are not affected."},
-	engine.Attr{Name: "reaction_quick_row", Kind: engine.StringList, MaxItems: 12, ItemMaxLength: 64, Normalize: emojiForm, ItemCheck: slackName, Description: "The emoji shown first when someone adds a reaction, in order, as the whole list: up to 12, each one emoji written as the emoji itself, never repeated (the same emoji spelled with and without its presentation selector counts as a repeat). [] uses SRE Agent's twelve. The platform stores the fully qualified form of each emoji; an entry written without a selector (for example a heart or a thumbs up spelled as one code point) is accepted, kept as you wrote it in state and plans no change. A Slack name such as :tada: is accepted by the platform but stores the emoji it names, so it is refused here instead of planning a change on every run. An organization admin's key (api:admin) may change it."},
+	engine.Attr{Name: "reaction_quick_row", Kind: engine.StringList, MaxItems: 12, ItemMaxLength: 64, Normalize: emojiForm, ItemCheck: quickRowEntry, Description: "The emoji shown first when someone adds a reaction, in order, as the whole list: up to 12, each one emoji (the platform refuses an entry over 16 code points or 64 bytes) written as the emoji itself, never repeated (the same emoji spelled with and without its presentation selector counts as a repeat). [] uses SRE Agent's twelve. The platform stores the fully qualified form of each emoji; an entry written without a selector (for example a heart or a thumbs up spelled as one code point) is accepted, kept as you wrote it in state and plans no change. A Slack name such as :tada: is accepted by the platform but stores the emoji it names, so it is refused here instead of planning a change on every run. An organization admin's key (api:admin) may change it."},
 ), "The language, the Slack thread events and the quick reactions stay as they are; to put them back to their defaults, state en, [] and [], apply, then remove the block.")
 
 // NotificationSettings mirrors x-sreagent-resources.notification_settings.
