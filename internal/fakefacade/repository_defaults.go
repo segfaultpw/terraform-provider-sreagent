@@ -32,7 +32,7 @@ type defaultsModel struct {
 }
 
 var (
-	defaultsSettings = []string{"fix_runner", "platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"}
+	defaultsSettings = []string{"fix_runner", "platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config", "auto_merge"}
 	defaultsAllowed  = append(slices.Clone(defaultsSettings), "confirm", "follow_parent", "stop_following", "expected_fingerprint")
 )
 
@@ -259,6 +259,9 @@ func (f *Fake) analyzeDefaults(body map[string]any) (*defaultsAnalysis, string) 
 	if c, ok := changes["check_network"].(map[string]any); ok && c["to"] == true {
 		needs = append(needs, "check_network")
 	}
+	if c, ok := changes["auto_merge"].(map[string]any); ok && c["to"] == true {
+		needs = append(needs, "auto_merge")
+	}
 	refusals := []string{}
 	if f.dm.refusal != "" {
 		refusals = append(refusals, f.dm.refusal)
@@ -267,6 +270,20 @@ func (f *Fake) analyzeDefaults(body map[string]any) (*defaultsAnalysis, string) 
 	children := f.dm.children
 	if children == nil {
 		children = []map[string]any{}
+	}
+	// The branches no entry names start or stop reading auto_merge on with the
+	// default, for every repository that holds nothing for it.
+	autoMerge := map[string]any{"starting": []any{}, "stopping": []any{}, "drafts": []any{}}
+	if c, ok := changes["auto_merge"].(map[string]any); ok {
+		entries := []any{}
+		for _, repo := range moved {
+			entries = append(entries, map[string]any{"repository": repo, "branches": []any{"(other branches)"}})
+		}
+		if c["to"] == true {
+			autoMerge["starting"] = entries
+		} else {
+			autoMerge["stopping"] = entries
+		}
 	}
 	stable, _ := json.Marshal([]any{kind, sets, from, to, moved, children, leaves, f.dm.source})
 	sum := sha256.Sum256(stable)
@@ -279,7 +296,7 @@ func (f *Fake) analyzeDefaults(body map[string]any) (*defaultsAnalysis, string) 
 		preview: map[string]any{
 			"fingerprint": fingerprint, "changes": changes, "moved": moved, "kept": kept,
 			"differs_by_branch": []any{}, "children": children, "needs_confirm": needs,
-			"refusals": refusals, "leaves_parent": leaves, "applied": false,
+			"refusals": refusals, "leaves_parent": leaves, "applied": false, "auto_merge": autoMerge,
 		},
 	}, ""
 }
@@ -287,6 +304,7 @@ func (f *Fake) analyzeDefaults(body map[string]any) (*defaultsAnalysis, string) 
 var confirmSentences = map[string]string{
 	"ci_config":     "Turning on fix changes to CI configuration for every repository that follows the default needs confirmation: pass confirm ci_config.",
 	"check_network": "Turning on network access for checks in every repository that follows the default needs confirmation: pass confirm check_network.",
+	"auto_merge":    "Turning on auto-merge for every repository that follows the default needs confirmation: pass confirm auto_merge.",
 }
 
 func (f *Fake) serveDefaults(w http.ResponseWriter, r *http.Request, body map[string]any) {

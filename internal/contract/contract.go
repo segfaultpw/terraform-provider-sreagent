@@ -37,7 +37,10 @@ type Resource struct {
 
 // Parameter is one query parameter of an operation.
 type Parameter struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Schema struct {
+		Enum []string `json:"enum"`
+	} `json:"schema"`
 }
 
 // Doc is the part of the document the provider is held to.

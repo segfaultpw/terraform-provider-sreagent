@@ -32,3 +32,32 @@ func TestTypeNamesAreUnique(t *testing.T) {
 		}
 	}
 }
+
+func TestEmojiFormIgnoresThePresentationSelectorsAndNothingElse(t *testing.T) {
+	cases := map[string]string{
+		"❤️":                               "❤",
+		"❤":                                "❤",
+		"❤︎":                               "❤",
+		"\U0001F3F3️‍\U0001F308":           "\U0001F3F3‍\U0001F308",
+		"\U0001F44D\U0001F3FD":             "\U0001F44D\U0001F3FD",
+		"\U0001F468‍\U0001F469‍\U0001F467": "\U0001F468‍\U0001F469‍\U0001F467",
+	}
+	for in, want := range cases {
+		if got := emojiForm(in); got != want {
+			t.Errorf("emojiForm(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestASlackNameIsRefusedAndAnEmojiIsNot(t *testing.T) {
+	for _, name := range []string{":tada:", ":+1:", ":white_check_mark:"} {
+		if slackName(name) == "" {
+			t.Errorf("%q was accepted", name)
+		}
+	}
+	for _, ok := range []string{"\U0001F389", "❤", ":", "a:b", ":open", "close:"} {
+		if got := slackName(ok); got != "" {
+			t.Errorf("%q was refused: %s", ok, got)
+		}
+	}
+}

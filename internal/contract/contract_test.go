@@ -209,6 +209,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	}
 	checkFollows(s, res, add)
 	checkPaged(d, s, res, add)
+	checkListView(d, s, add)
 	checkPreviewed(d, s, res, add)
 	checkIgnored(s, enums.Properties, add)
 	checkSecrets(d, s, res, add)
@@ -281,6 +282,36 @@ func checkPaged(d *Doc, s engine.Spec, res Resource, add func(string, ...any)) {
 	for name := range res.ComputedFields {
 		if !read[name] {
 			add("computed field %s is published by the contract but has no attribute", name)
+		}
+	}
+}
+
+// checkListView holds an unpaged list data source to its GET: every query
+// argument is a parameter whose published enum is the argument's OneOf, and every
+// extra is a key of the 200 answer beside the rows. A paged list is held to the
+// same by checkPaged.
+func checkListView(d *Doc, s engine.Spec, add func(string, ...any)) {
+	if s.Cursor != "" || s.Shape == engine.Singleton || (len(s.QueryAttrs) == 0 && len(s.ExtraAttrs) == 0) {
+		return
+	}
+	get := d.Paths["/"+s.Key]["get"]
+	params := map[string]Parameter{}
+	for _, p := range get.Parameters {
+		params[p.Name] = p
+	}
+	for _, q := range s.QueryAttrs {
+		p, ok := params[q.Name]
+		switch {
+		case !ok:
+			add("query argument %s is not a parameter of GET /%s", q.Name, s.Key)
+		case !slices.Equal(q.OneOf, p.Schema.Enum):
+			add("query argument %s OneOf %v, parameter enum %v", q.Name, q.OneOf, p.Schema.Enum)
+		}
+	}
+	answer := get.Responses["200"].Content["application/json"].Schema.Properties
+	for _, x := range s.ExtraAttrs {
+		if _, ok := answer[x.Name]; !ok {
+			add("extra %s is not a key of the 200 answer of GET /%s", x.Name, s.Key)
 		}
 	}
 }
@@ -481,6 +512,7 @@ var unmodelled = map[string][]string{
 // engine's attributes take.
 type keywords struct {
 	enum, itemEnum       []string
+	itemMaxLength        int
 	min, max             *int64
 	minLength, maxLength int
 	minItems, maxItems   int
@@ -539,6 +571,8 @@ func readKeywords(schema map[string]any) keywords {
 				case "type", "description":
 				case "enum":
 					k.hasItemEnum, k.itemEnum = true, stringsOf(iv)
+				case "maxLength":
+					k.itemMaxLength = intOf(iv)
 				default:
 					k.unknown = append(k.unknown, "items."+ik)
 				}
@@ -608,6 +642,9 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 	}
 	if a.Pattern != kw.pattern {
 		add("field %s Pattern %q, contract pattern %q", f, a.Pattern, kw.pattern)
+	}
+	if a.ItemMaxLength != kw.itemMaxLength {
+		add("field %s ItemMaxLength %d, contract items.maxLength %d", f, a.ItemMaxLength, kw.itemMaxLength)
 	}
 	if a.MinItems != kw.minItems {
 		add("field %s MinItems %d, contract minItems %d", f, a.MinItems, kw.minItems)
@@ -768,7 +805,7 @@ func checkAddressing(s engine.Spec, res Resource, add func(string, ...any)) {
 	case engine.Generated:
 		want = []string{"id"}
 		// A paged view is not stored configuration: it has no row to address.
-		if s.Cursor != "" {
+		if s.Cursor != "" || s.View {
 			want = []string{}
 		}
 	case engine.NaturalKey:
@@ -886,6 +923,40 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op := d.Paths["/repo_settings/{id}"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["path_prefixes"]["maxItems"] = float64(50)
 			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"the quick row's entry length changes", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["reaction_quick_row"]["items"].(map[string]any)
+			items["maxLength"] = float64(32)
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the thread events gain an event", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["slack_thread_events_off"]["items"].(map[string]any)
+			items["enum"] = append(slices.Clone(items["enum"].([]any)), "card_archived")
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"repo_settings confirm gains a confirmation", "repo_settings", func(d *Doc) {
+			op := d.Paths["/repo_settings/{id}"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["confirm"]["items"].(map[string]any)
+			items["enum"] = append(slices.Clone(items["enum"].([]any)), "ci_config")
+			d.Paths["/repo_settings/{id}"]["put"] = op
+		}},
+		{"the informative kinds status filter gains a value", "alert_informative_kinds", func(d *Doc) {
+			op := d.Paths["/alert_informative_kinds"]["get"]
+			params := slices.Clone(op.Parameters)
+			for i := range params {
+				if params[i].Name == "status" {
+					params[i].Schema.Enum = append(slices.Clone(params[i].Schema.Enum), "archived")
+				}
+			}
+			op.Parameters = params
+			d.Paths["/alert_informative_kinds"]["get"] = op
+		}},
+		{"the informative kinds answer loses its counts", "alert_informative_kinds", func(d *Doc) {
+			op := d.Paths["/alert_informative_kinds"]["get"]
+			delete(op.Responses["200"].Content["application/json"].Schema.Properties, "counts")
+			d.Paths["/alert_informative_kinds"]["get"] = op
 		}},
 		{"follows_default leaves action_args", "repo_settings", func(d *Doc) {
 			r := d.Resources["repo_settings"]

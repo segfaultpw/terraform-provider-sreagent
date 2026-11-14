@@ -248,7 +248,7 @@ func TestFollowsDefaultPutsASetSettingBackOnTheDefault(t *testing.T) {
 					resource.TestCheckResourceAttr(repoSetting, "check_network", "true"),
 					resource.TestCheckResourceAttr(repoSetting, "set_here.#", "1"),
 					resource.TestCheckResourceAttr(repoSetting, "set_here.0", "check_network"),
-					resource.TestCheckResourceAttr(repoSetting, "following.#", "5"),
+					resource.TestCheckResourceAttr(repoSetting, "following.#", "6"),
 				),
 			},
 			{
@@ -261,7 +261,7 @@ func TestFollowsDefaultPutsASetSettingBackOnTheDefault(t *testing.T) {
 					putBodyIs(f, map[string]any{"follows_default": []any{"check_network"}}),
 					resource.TestCheckResourceAttr(repoSetting, "check_network", "false"),
 					resource.TestCheckResourceAttr(repoSetting, "set_here.#", "0"),
-					resource.TestCheckResourceAttr(repoSetting, "following.#", "6"),
+					resource.TestCheckResourceAttr(repoSetting, "following.#", "7"),
 					resource.TestCheckNoResourceAttr(repoSetting, "follows_default"),
 				),
 			},
@@ -282,7 +282,7 @@ func TestFollowsDefaultOnAFollowingRowPlansNothing(t *testing.T) {
 			{Config: repoSettingConfig(f.URL, all), Check: resource.ComposeTestCheckFunc(
 				noPut(f),
 				resource.TestCheckResourceAttr(repoSetting, "set_here.#", "0"),
-				resource.TestCheckResourceAttr(repoSetting, "following.#", "6"),
+				resource.TestCheckResourceAttr(repoSetting, "following.#", "7"),
 				resource.TestCheckResourceAttr(repoSetting, "fix_runner", "platform"),
 			)},
 			{Config: repoSettingConfig(f.URL, all+"\n  service = \"api\""), Check: func(*terraform.State) error {
@@ -375,7 +375,7 @@ func TestAStatedValueEqualToWhatTheRowFollowsIsNotPinned(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					noPut(f),
 					resource.TestCheckResourceAttr(repoSetting, "set_here.#", "0"),
-					resource.TestCheckResourceAttr(repoSetting, "following.#", "6"),
+					resource.TestCheckResourceAttr(repoSetting, "following.#", "7"),
 				),
 				ConfigPlanChecks: emptyPlan,
 			},
@@ -410,7 +410,7 @@ func TestRepoSettingFollowingDraftPRsUnderADefaultPlansClean(t *testing.T) {
 		Steps: []resource.TestStep{
 			{Config: repoSettingConfig(f.URL, "  service = \"api\""), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckNoResourceAttr(repoSetting, "draft_prs"),
-				resource.TestCheckResourceAttr(repoSetting, "following.#", "6"),
+				resource.TestCheckResourceAttr(repoSetting, "following.#", "7"),
 				func(*terraform.State) error {
 					if got := f.Row("repo_settings", "00000000-0000-0000-0000-000000000001")["draft_prs"]; got != nil {
 						return fmt.Errorf("the row holds draft_prs %v", got)
@@ -469,7 +469,7 @@ resource "sreagent_repo_setting" "api" {
 				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{importsOnly{}}},
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckNoResourceAttr("sreagent_repo_setting.api", "draft_prs"),
-					resource.TestCheckResourceAttr("sreagent_repo_setting.api", "following.#", "6"),
+					resource.TestCheckResourceAttr("sreagent_repo_setting.api", "following.#", "7"),
 					noPut(f),
 				),
 			},

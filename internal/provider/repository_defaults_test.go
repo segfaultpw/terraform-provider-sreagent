@@ -536,7 +536,7 @@ func TestAPlanNamesWhatMovesAndLeavingTheParentInTheWarning(t *testing.T) {
 		t.Fatalf("the plan failed: %v", d)
 	}
 	text := warningText(d)
-	for _, want := range []string{"auto_dispatch from true to false", "2 repositories will read a different value: acme/api, acme/web", "Child organization Acme EU", "gives it its own for all six settings", "destroy this resource to follow the parent again"} {
+	for _, want := range []string{"auto_dispatch from true to false", "2 repositories will read a different value: acme/api, acme/web", "Child organization Acme EU", "gives it its own for every setting", "destroy this resource to follow the parent again"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the warning lacks %q:\n%s", want, text)
 		}

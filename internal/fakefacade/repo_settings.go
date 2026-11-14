@@ -6,18 +6,18 @@ import (
 	"strings"
 )
 
-// The six repository settings that can follow the organization default, in
+// The seven repository settings that can follow the organization default, in
 // the order the platform lists them. The first three belong to the whole
 // repository.
 var (
-	followable = []string{"fix_runner", "platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"}
+	followable = []string{"fix_runner", "platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config", "auto_merge"}
 	repoWide   = []string{"fix_runner", "platform_fallback", "auto_dispatch"}
 )
 
 func builtInDefaults() map[string]any {
 	return map[string]any{
 		"fix_runner": "platform", "platform_fallback": true, "auto_dispatch": true,
-		"draft_prs": nil, "check_network": false, "allow_ci_config": false,
+		"draft_prs": nil, "check_network": false, "allow_ci_config": false, "auto_merge": false,
 	}
 }
 
@@ -218,6 +218,44 @@ func followsRefusal(body map[string]any) string {
 		if v, sent := body[n]; sent && v != nil {
 			return n + " is both set and reset to follow the default; send one."
 		}
+	}
+	return ""
+}
+
+// autoMergeConfirmSentence is the platform's refusal of a write that turns
+// auto-merge on without confirm naming it.
+func autoMergeConfirmSentence(repo string) string {
+	return "Turning on auto-merge for " + repo + " needs confirmation: pass confirm auto_merge."
+}
+
+// autoMergeConfirmRefusal judges a row write the way the platform does: it turns
+// auto-merge on when it sets true on a row that does not hold true, or resets the
+// setting onto a default that says on. before is the row as stored, nil for a
+// create. An empty answer means the write may go ahead.
+func (f *Fake) autoMergeConfirmRefusal(repo string, before, body map[string]any) string {
+	given, _ := body["confirm"].([]any)
+	if slices.Contains(given, any("auto_merge")) {
+		return ""
+	}
+	if v, sent := body["auto_merge"]; sent && v == true && (before == nil || !slices.Contains(heldOf(before), "auto_merge") || before["auto_merge"] != true) {
+		return autoMergeConfirmSentence(repo)
+	}
+	resets, _ := body["follows_default"].([]any)
+	if slices.Contains(resets, any("auto_merge")) && f.defaults["auto_merge"] == true {
+		return autoMergeConfirmSentence(repo)
+	}
+	return ""
+}
+
+// deleteRefusal is the platform's refusal of removing an all-branches entry that
+// says off while the organization default says on: the branches no entry names
+// would start merging by themselves.
+func (f *Fake) deleteRefusal(spec string, row map[string]any) string {
+	if spec != "repo_settings" || !f.following(spec) || !isAllBranches(row) {
+		return ""
+	}
+	if slices.Contains(heldOf(row), "auto_merge") && row["auto_merge"] == false && f.defaults["auto_merge"] == true {
+		return "Removing this entry would make fix pull requests on the other branches of " + fmt.Sprint(row["repo"]) + " merge by themselves, because the organization default says on and this entry says off. Turn the organization default off first, or keep this entry."
 	}
 	return ""
 }

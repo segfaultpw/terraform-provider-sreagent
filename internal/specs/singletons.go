@@ -1,11 +1,22 @@
 package specs
 
-import "github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/segfaultpw/terraform-provider-sreagent/internal/engine"
+)
 
 // singleton builds a one-row-per-organization spec: create adopts the
 // current row, destroy leaves it in place.
 func singleton(key, desc string, attrs ...engine.Attr) engine.Spec {
 	return engine.Spec{Key: key, TypeName: key, ListName: key, Description: desc + " One row per organization: creating it adopts the current settings, destroying it leaves them in place.", Shape: engine.Singleton, Lifecycle: true, Attrs: attrs}
+}
+
+// withDestroyNote says what stays in force when the spec's destroy leaves the settings.
+func withDestroyNote(sp engine.Spec, note string) engine.Spec {
+	sp.DestroyNote = note
+	return sp
 }
 
 func b(name, desc string) engine.Attr {
@@ -22,8 +33,31 @@ func l(name, desc string) engine.Attr {
 }
 func computed(a engine.Attr) engine.Attr { a.Computed = true; return a }
 
+// threadEvents are the events a card's Slack threads can be told not to post,
+// in the order the platform lists them. A failed, declined or cancelled fix or
+// change is always posted and has no name here.
+var threadEvents = []string{"column_moves", "card_done", "card_wont_do", "pull_request_opened", "pull_request_merged", "pull_request_closed", "pull_request_reopened", "change_pushed", "assistant_replies", "comments"}
+
+// emojiForm is the form in which two spellings of one emoji are one value: the
+// platform removes the text and emoji presentation selectors (U+FE0E, U+FE0F),
+// looks the bare form up and stores the fully qualified one, so a configuration
+// that omits or adds a selector is the stored emoji.
+func emojiForm(v string) string {
+	return strings.NewReplacer("\ufe0e", "", "\ufe0f", "").Replace(v)
+}
+
+// slackName refuses an entry written as a Slack name in colons: the platform
+// accepts it and stores the emoji it names, which Terraform could not tell from a
+// different value, so the entry would plan a change on every run.
+func slackName(entry string) string {
+	if len(entry) > 1 && strings.HasPrefix(entry, ":") && strings.HasSuffix(entry, ":") {
+		return fmt.Sprintf("%q is a Slack name. The platform accepts it and stores the emoji it names, so it would read back as a different value and plan a change on every run. Write the emoji itself.", entry)
+	}
+	return ""
+}
+
 // OrganizationSettings mirrors x-sreagent-resources.organization_settings.
-var OrganizationSettings = singleton("organization_settings", "The organization's own settings.",
+var OrganizationSettings = withDestroyNote(singleton("organization_settings", "The organization's own settings.",
 	i("alert_storm_threshold", "Alerts within the window that make a storm."),
 	i("alert_storm_window_seconds", "The storm window."),
 	b("alert_grouping_ai_enabled", "Group related alerts with AI."),
@@ -56,7 +90,10 @@ var OrganizationSettings = singleton("organization_settings", "The organization'
 		IgnoredValues: []string{"repository_defaults"},
 		IgnoredWhy:    "A child gives itself its own repository defaults with sreagent_repository_defaults (destroy it to follow the parent again), or stops following its parent's in the app (it then reads the built-in values); this list never changes either.",
 		Description:   "The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead."},
-)
+	engine.Attr{Name: "language", Kind: engine.String, OneOf: []string{"en", "es"}, Description: "The language of the outcome lines SRE Agent writes into a card's Slack threads: how a fix, a change or a pull request ended, a card moved to Done or closed as won't do, and the label in front of a comment posted from the card. en (English, the default) or es (Spanish). Names, links, error messages and what people and the AI wrote are posted as they are. The card itself, its comments, the app's pages and emails stay in English. An organization admin's key (api:admin) may change it."},
+	engine.Attr{Name: "slack_thread_events_off", Kind: engine.StringList, Unordered: true, OneOf: threadEvents, Description: "The events NOT posted in a card's Slack threads, as the whole set: [] posts everything (the default), and a list posts everything else. The order does not matter. Failed, declined or cancelled fixes and changes, a failed local fix session, a change that could not be made on the pull request it was asked for and the assistant's answer to a question asked in Slack are always posted and have no name here. The card, the tracker and the notices to the card's people are not affected."},
+	engine.Attr{Name: "reaction_quick_row", Kind: engine.StringList, MaxItems: 12, ItemMaxLength: 64, Normalize: emojiForm, ItemCheck: slackName, Description: "The emoji shown first when someone adds a reaction, in order, as the whole list: up to 12, each one emoji written as the emoji itself, never repeated (the same emoji spelled with and without its presentation selector counts as a repeat). [] uses SRE Agent's twelve. The platform stores the fully qualified form of each emoji; an entry written without a selector (for example a heart or a thumbs up spelled as one code point) is accepted, kept as you wrote it in state and plans no change. A Slack name such as :tada: is accepted by the platform but stores the emoji it names, so it is refused here instead of planning a change on every run. An organization admin's key (api:admin) may change it."},
+), "The language, the Slack thread events and the quick reactions stay as they are; to put them back to their defaults, state en, [] and [], apply, then remove the block.")
 
 // NotificationSettings mirrors x-sreagent-resources.notification_settings.
 var NotificationSettings = singleton("notification_settings", "Email notification settings.",
@@ -135,6 +172,7 @@ var GitHubSettings = singleton("github_settings", "The GitHub App installation's
 	b("draft_prs", "Open PRs as drafts."),
 	b("review_enabled", "Review pull requests."),
 	b("link_comments_enabled", "Comment links on linked issues."),
+	b("auto_merge_requires_verification", "Auto-merge only what SRE Agent verified. Off by default: a fix SRE Agent's own checks did not run for can still merge by itself once the checks its branch requires pass (where a repository's auto_merge says so), and a change pushed onto a pull request afterwards merges on those checks alone. An organization admin takes that risk by leaving it off. On: only a fix whose exact commit those checks ran on and passed merges by itself. In both positions a fix whose checks failed, or ran and could not judge it, or has an open self-review blocker, never merges by itself."),
 	engine.Attr{Name: "review_severity_floor", Kind: engine.String, OneOf: []string{"critical", "high", "medium", "low"}, Description: "The lowest severity a review comments on."},
 	s("context_repo", "A repository whose files give reviews context."),
 	computed(b("connected", "Whether an installation is connected.")),

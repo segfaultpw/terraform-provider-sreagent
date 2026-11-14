@@ -54,6 +54,9 @@ func New(t *testing.T, specs []engine.Spec) *Fake {
 		// The platform answers defaults for most singletons before any write.
 		if s.Shape == engine.Singleton && !s.StartsEmpty {
 			f.rows[s.Key][s.Key] = blank(s)
+			if isOrganization(s.Key) {
+				organizationSeed(f.rows[s.Key][s.Key])
+			}
 			if isSecurity(s.Key) {
 				securitySeed(s, f.rows[s.Key][s.Key])
 			}
@@ -383,6 +386,10 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		f.serveEffective(w, r)
 		return
 	}
+	if spec.Key == "alert_informative_kinds" && r.Method == http.MethodGet {
+		f.serveInformativeKinds(w, r)
+		return
+	}
 
 	switch {
 	case r.Method == http.MethodGet && (id == "" && spec.Shape != engine.Singleton):
@@ -417,6 +424,10 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 			reply(w, 412, map[string]any{"organization": wrap(nil)["organization"], "data": row, "error": "precondition_failed", "message": "The row changed after the version If-Match names; nothing was written."}, f.tag(spec, row))
 			return
 		}
+		if msg := f.deleteRefusal(spec.Key, row); msg != "" {
+			fail(w, 422, "unprocessable_entity", msg)
+			return
+		}
 		delete(f.rows[spec.Key], id)
 		reply(w, 200, wrap("Deleted."), "")
 	}
@@ -443,6 +454,18 @@ func (f *Fake) create(w http.ResponseWriter, spec engine.Spec, body map[string]a
 	if msg := f.followsRefusal(spec.Key, body); msg != "" {
 		fail(w, 422, "unprocessable_entity", msg)
 		return
+	}
+	if f.following(spec.Key) {
+		if msg := f.autoMergeConfirmRefusal(fmt.Sprint(body["repo"]), nil, body); msg != "" {
+			fail(w, 422, "unprocessable_entity", msg)
+			return
+		}
+	}
+	if isOrganization(spec.Key) {
+		if status, msg := organizationRefusal(body); status != 0 {
+			fail(w, status, "unprocessable_entity", msg)
+			return
+		}
 	}
 	if isSecurity(spec.Key) {
 		if status, msg := f.securityRefusal(spec, "", nil, body); status != 0 {
@@ -578,6 +601,18 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		fail(w, 422, "unprocessable_entity", msg)
 		return
 	}
+	if f.following(spec.Key) {
+		if msg := f.autoMergeConfirmRefusal(fmt.Sprint(row["repo"]), row, body); msg != "" {
+			fail(w, 422, "unprocessable_entity", msg)
+			return
+		}
+	}
+	if isOrganization(spec.Key) {
+		if status, msg := organizationRefusal(body); status != 0 {
+			fail(w, status, "unprocessable_entity", msg)
+			return
+		}
+	}
 	if isSecurity(spec.Key) {
 		if status, msg := f.securityRefusal(spec, id, row, body); status != 0 {
 			fail(w, status, map[int]string{409: "conflict", 422: "unprocessable_entity"}[status], msg)
@@ -613,6 +648,9 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 		f.finishRepoUpdate(row, body, before)
 	}
 	carryIgnored(spec, row, previous)
+	if isOrganization(spec.Key) {
+		organizationStore(row, body)
+	}
 	if isSecurity(spec.Key) {
 		f.securityStore(spec, row, body, false)
 	}

@@ -168,6 +168,160 @@
         ],
         "type": "object"
       },
+      "alert_follow_up_settings_row": {
+        "properties": {
+          "ages": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "defaults": {
+            "type": "boolean"
+          },
+          "demoted": {
+            "type": "array"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "informative_expire_hours": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "informative_kinds": {
+            "type": "array"
+          },
+          "resolve_modes": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "still_active_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "week": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "enabled",
+          "still_active_enabled",
+          "informative_expire_hours",
+          "resolve_modes",
+          "ages",
+          "defaults",
+          "demoted",
+          "informative_kinds",
+          "updated_at",
+          "week"
+        ],
+        "type": "object"
+      },
+      "alert_informative_kinds_row": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decided_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expire_after_allowed": {
+            "type": "boolean"
+          },
+          "expire_after_hours": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind_key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "matchers": {
+            "type": "object"
+          },
+          "open_alerts": {
+            "type": "integer"
+          },
+          "proposed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retired_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "decided_at",
+          "decided_by",
+          "expire_after_allowed",
+          "expire_after_hours",
+          "id",
+          "kind_key",
+          "label",
+          "matchers",
+          "open_alerts",
+          "proposed_at",
+          "proposed_by",
+          "retired_reason",
+          "source",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
       "alert_mutes_row": {
         "properties": {
           "created_by_user_id": {
@@ -822,6 +976,12 @@
               "null"
             ]
           },
+          "auto_merge_requires_verification": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "auto_pr_enabled": {
             "type": [
               "boolean",
@@ -925,6 +1085,7 @@
           "draft_prs",
           "review_enabled",
           "link_comments_enabled",
+          "auto_merge_requires_verification",
           "review_severity_floor",
           "context_repo",
           "account",
@@ -1205,6 +1366,16 @@
               "null"
             ]
           },
+          "language": {
+            "enum": [
+              "en",
+              "es"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "mfa_effective": {
             "type": "object"
           },
@@ -1226,6 +1397,16 @@
               "null"
             ]
           },
+          "reaction_quick_row": {
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "restrict_domain_signups": {
             "type": [
               "boolean",
@@ -1241,6 +1422,27 @@
           "session_idle_minutes": {
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "slack_thread_events_off": {
+            "items": {
+              "enum": [
+                "column_moves",
+                "card_done",
+                "card_wont_do",
+                "pull_request_opened",
+                "pull_request_merged",
+                "pull_request_closed",
+                "pull_request_reopened",
+                "change_pushed",
+                "assistant_replies",
+                "comments"
+              ],
+              "type": "string"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -1282,6 +1484,9 @@
           "mfa_grace_days",
           "session_idle_minutes",
           "api_key_max_days",
+          "language",
+          "slack_thread_events_off",
+          "reaction_quick_row",
           "mfa_effective",
           "session_idle_effective",
           "updated_at"
@@ -1640,6 +1845,12 @@
               "null"
             ]
           },
+          "auto_merge": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "branch": {
             "type": [
               "string",
@@ -1744,6 +1955,7 @@
           "platform_fallback",
           "draft_prs",
           "check_network",
+          "auto_merge",
           "branches",
           "following",
           "id",
@@ -1760,6 +1972,12 @@
             ]
           },
           "auto_dispatch": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_merge": {
             "type": [
               "boolean",
               "null"
@@ -1821,6 +2039,7 @@
           "draft_prs",
           "check_network",
           "allow_ci_config",
+          "auto_merge",
           "inherited_from",
           "parent_name",
           "source",
@@ -3539,6 +3758,422 @@
         "summary": "Update the ai_settings"
       }
     },
+    "/alert_follow_up_settings": {
+      "get": {
+        "description": "The alert follow-up setting, as the Settings card shows it: whether SRE Agent checks alerts that stay open (enabled, off until an organization admin switches it on), what it does with one its source says has cleared (resolve_modes by severity: auto resolves it, suggest only offers Resolve, off does nothing), the minutes after which an open alert is first checked and the nudge, card and escalate ages (ages by severity), whether the values are the platform's defaults, the kinds of alert that are only being suggested for now (demoted, each with the two alerts behind it), the informative kinds that are proposed or approved (informative_kinds, as list_alert_informative_kinds answers them) and what the follow-up did in the last 7 days (week, with the nudges, cards and escalations). still_active_enabled switches the reminders for an alert that stays open with nobody on it: after the nudge, card and escalate ages SRE Agent reminds the person on call in the alert's Slack thread and on its page, opens a card, and can PAGE the person on call (or the next step of your escalation chain) for a critical or high alert its source still reports as firing. It never pages without that evidence (anything else gets a Slack message to the person on call during working hours), does nothing once someone has acknowledged the alert, started an investigation or taken a card, and nothing for a muted alert. It is off until an organization admin switches it on, and needs enabled to do anything. informative_expire_hours is the age a newly approved informative kind closes its alerts after. It closes only what the source itself says has cleared. A Prometheus alert is closed only when the Prometheus that sent it can be told by a distinguishing external label such as cluster; managed services that do not serve their configuration are never closed. CloudWatch and Grafana alerts keep closing through the two-minute check. Available on every plan.",
+        "operationId": "get_alert_follow_up_settings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/alert_follow_up_settings_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the alert_follow_up_settings"
+      },
+      "put": {
+        "description": "Change the alert follow-up setting; only what you name changes, so naming one severity keeps the others. enabled switches the follow-up on or off (it is off until an organization admin switches it on; an automatic close also resolves the pager incident, and a Reopen does not bring that incident back). still_active_enabled switches the reminders for an alert that stays open with nobody on it: after the nudge, card and escalate ages SRE Agent reminds the person on call in the alert's Slack thread and on its page, opens a card, and can PAGE the person on call (or the next step of your escalation chain) for a critical or high alert its source still reports as firing. It never pages without that evidence (anything else gets a Slack message to the person on call during working hours), does nothing once someone has acknowledged the alert, started an investigation or taken a card, and nothing for a muted alert. It is off until an organization admin switches it on, and needs enabled to do anything. informative_expire_hours (1 to 720) is the age a newly approved informative kind closes its alerts after; each kind keeps the age it was approved with. resolve_modes names severities (critical, high, warning, medium, low, info) with auto, suggest or off. ages names severities with check (minutes 15 to 43200, when an open alert is first checked, never null), nudge and card (minutes, or null for none) and escalate (at most two minutes); within a severity the ages must not decrease from check to nudge to card to escalate. Organization admin floor; a key needs mcp:admin. Answers the setting as get_alert_follow_up_settings does.",
+        "operationId": "update_alert_follow_up_settings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "ages": {
+                    "additionalProperties": false,
+                    "description": "Minutes from the start of the current firing, by severity.",
+                    "properties": {
+                      "critical": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "card": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "check": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": "integer"
+                          },
+                          "escalate": {
+                            "items": {
+                              "maximum": 43200,
+                              "minimum": 15,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "nudge": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "high": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "card": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "check": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": "integer"
+                          },
+                          "escalate": {
+                            "items": {
+                              "maximum": 43200,
+                              "minimum": 15,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "nudge": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "info": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "card": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "check": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": "integer"
+                          },
+                          "escalate": {
+                            "items": {
+                              "maximum": 43200,
+                              "minimum": 15,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "nudge": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "low": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "card": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "check": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": "integer"
+                          },
+                          "escalate": {
+                            "items": {
+                              "maximum": 43200,
+                              "minimum": 15,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "nudge": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "medium": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "card": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "check": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": "integer"
+                          },
+                          "escalate": {
+                            "items": {
+                              "maximum": 43200,
+                              "minimum": 15,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "nudge": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "warning": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "card": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "check": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": "integer"
+                          },
+                          "escalate": {
+                            "items": {
+                              "maximum": 43200,
+                              "minimum": 15,
+                              "type": "integer"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "nudge": {
+                            "maximum": 43200,
+                            "minimum": 15,
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "enabled": {
+                    "description": "Follow up alerts that stay open.",
+                    "type": "boolean"
+                  },
+                  "informative_expire_hours": {
+                    "description": "Hours after which a newly approved informative kind closes its alerts.",
+                    "maximum": 720,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "resolve_modes": {
+                    "additionalProperties": false,
+                    "description": "What to do with an alert whose source says it has cleared, by severity: auto resolves it, suggest offers Resolve, off does nothing.",
+                    "properties": {
+                      "critical": {
+                        "enum": [
+                          "auto",
+                          "suggest",
+                          "off"
+                        ],
+                        "type": "string"
+                      },
+                      "high": {
+                        "enum": [
+                          "auto",
+                          "suggest",
+                          "off"
+                        ],
+                        "type": "string"
+                      },
+                      "info": {
+                        "enum": [
+                          "auto",
+                          "suggest",
+                          "off"
+                        ],
+                        "type": "string"
+                      },
+                      "low": {
+                        "enum": [
+                          "auto",
+                          "suggest",
+                          "off"
+                        ],
+                        "type": "string"
+                      },
+                      "medium": {
+                        "enum": [
+                          "auto",
+                          "suggest",
+                          "off"
+                        ],
+                        "type": "string"
+                      },
+                      "warning": {
+                        "enum": [
+                          "auto",
+                          "suggest",
+                          "off"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "still_active_enabled": {
+                    "description": "Remind and escalate when an alert stays open with nobody on it. Can page the person on call for a critical or high alert its source still reports firing. Off until switched on.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "Updated."
+          },
+          "201": {
+            "description": "Created (an upsert resource's PUT on a missing row)."
+          },
+          "404": {
+            "description": "No such resource."
+          },
+          "412": {
+            "description": "If-Match named a version of the row that is no longer current."
+          },
+          "422": {
+            "description": "The tool refused the request's shape or content."
+          }
+        },
+        "summary": "Update the alert_follow_up_settings"
+      }
+    },
+    "/alert_informative_kinds": {
+      "get": {
+        "description": "The informative kinds of alert (kinds marked expected): by default the proposals and the approved kinds, or one status (proposed, approved, declined, retired) or all, newest first, at most 220, answered as kinds (the rows), counts (the organization's proposed and approved kinds) and limits (how many it may hold). Each row has id, label, kind_key, source, matchers (service, environment and one of cluster, namespace or data source), status, action (resolve_when_cleared or expire_after), expire_after_hours, who proposed and decided it and when (a former member reads as such), retired_reason, version (pass it back to decide_alert_informative_kind as based_on), expire_after_allowed (false for a kind of Grafana or CloudWatch alarms, which close when their source clears and never by age) and open_alerts: how many open alerts a proposed or approved kind would cover now (0 for a declined or retired kind). Available on every plan.",
+        "operationId": "list_alert_informative_kinds",
+        "parameters": [
+          {
+            "description": "One status, or all. Default: proposed and approved.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "proposed",
+                "approved",
+                "declined",
+                "retired",
+                "all"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "counts": {
+                      "type": "object"
+                    },
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/alert_informative_kinds_row"
+                      },
+                      "type": "array"
+                    },
+                    "limits": {
+                      "type": "object"
+                    },
+                    "organization": {
+                      "type": "object"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The organization's rows."
+          }
+        },
+        "summary": "List alert_informative_kinds"
+      }
+    },
     "/alert_mutes": {
       "get": {
         "description": "Every alert mute this organization has, in force or expired: what each one suppresses, why, when it expires, where it came from, and whether it is currently in force (active). ends_at null means the mute lasts until it is removed; a non-null ends_at in the past means it has already expired, and is kept, and answered here, as history rather than pruned (a REST facade's GET/DELETE can still address an expired row directly, so this listing does too). What an IN-FORCE mute stops is the paging and the automatic investigation, not the recording: a matching alert is still stored, with status muted, which is a status get_active_alerts does not answer, so it is on the alerts page rather than anywhere on this surface.",
@@ -5087,7 +5722,7 @@
     },
     "/effective_repo_settings": {
       "get": {
-        "description": "What every repository of this organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the six settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config) as value plus `following` (true when the value is the organization default, false when the repository's own settings set it), the write fence kind (none, detected, person), whether it has settings saved, whether the App still reaches it, and the settings where a branch differs. Archived repositories are left out unless include_archived is true. Paged: send next_cursor back as cursor; limit defaults to 100, at most 500. `defaults` is the organization's defaults and where they come from, `runner_registered` says whether this organization has a fix runner registered, and `counts` totals the whole filtered list. Differs from list_repo_settings, which lists saved rows with their ids to edit.",
+        "description": "What every repository of this organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the seven settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config, auto_merge) as value plus `following` (true when the value is the organization default, false when the repository's own settings set it), the write fence kind (none, detected, person), whether it has settings saved, whether the App still reaches it, and the settings where a branch differs. Archived repositories are left out unless include_archived is true. Paged: send next_cursor back as cursor; limit defaults to 100, at most 500. `defaults` is the organization's defaults and where they come from, `runner_registered` says whether this organization has a fix runner registered, and `counts` totals the whole filtered list. Differs from list_repo_settings, which lists saved rows with their ids to edit.",
         "operationId": "list_effective_repo_settings",
         "parameters": [
           {
@@ -5122,6 +5757,9 @@
                   "type": "boolean"
                 },
                 "auto_dispatch": {
+                  "type": "boolean"
+                },
+                "auto_merge": {
                   "type": "boolean"
                 },
                 "check_network": {
@@ -5302,6 +5940,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "auto_merge_requires_verification": {
+                    "description": "Auto-merge only what SRE Agent verified. Off by default: a fix SRE Agent's own checks did not run for can still merge by itself once the checks its branch requires pass, and a change pushed onto a pull request afterwards merges on those checks alone. An organization admin takes that risk by leaving it off. On: only a fix whose exact commit those checks ran on and passed merges by itself. In both positions a fix whose checks failed, or ran and could not judge it, or has an open self-review blocker, never merges by itself.",
+                    "type": "boolean"
+                  },
                   "auto_pr_enabled": {
                     "description": "Whether an investigation may open a pull request with its fix without being asked. Off by default.",
                     "type": "boolean"
@@ -5622,7 +6264,7 @@
     },
     "/organization_settings": {
       "get": {
-        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), and the connections of its parent organization it does not use (inheritance_stopped).",
+        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), the connections of its parent organization it does not use (inheritance_stopped), the language of the outcome lines written into a card's Slack threads (language, en or es) and the events switched off in those threads (slack_thread_events_off), and the organization's quick reactions (reaction_quick_row, empty for SRE Agent's twelve).",
         "operationId": "get_organization_settings",
         "parameters": [],
         "responses": {
@@ -5651,7 +6293,7 @@
         "summary": "Read the organization_settings"
       },
       "put": {
-        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too.",
+        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too. language (en or es) is the language SRE Agent writes the outcome lines of a card's Slack threads in; an org admin's token or an API key with mcp:admin may change it. slack_thread_events_off is the list of events NOT posted in a card's Slack threads, as the whole set (an empty list posts everything, which is the default): column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies and comments. A fix or change that failed or was declined, a request an approval cancelled, a local fix session that failed and a change that could not be made on the pull request it was asked for (with the new pull request opened instead, or a pull request opened after a failure was posted) are always posted and have no name here. The same callers may change it. reaction_quick_row is the list of up to 12 emoji shown first when someone adds a reaction (an empty list uses SRE Agent's twelve); the same callers may change it.",
         "operationId": "update_organization_settings",
         "parameters": [],
         "requestBody": {
@@ -5732,6 +6374,14 @@
                   "investigation_paused": {
                     "type": "boolean"
                   },
+                  "language": {
+                    "description": "The language of the outcome lines SRE Agent writes into a card's Slack threads: how a fix, a change or a pull request ended, a card moved to Done or closed as won't do, and the label in front of a comment posted from the card. en (English, the default) or es (Spanish). Names, links, error messages and what people and the AI wrote are posted as they are. The card itself, its comments, the app's pages and emails stay in English.",
+                    "enum": [
+                      "en",
+                      "es"
+                    ],
+                    "type": "string"
+                  },
                   "mfa_grace_days": {
                     "description": "Days from switching the requirement on that a member without a factor can still enter the organization (0 holds them at once, default 7). Changing it needs a user token of an org admin of this organization.",
                     "maximum": 30,
@@ -5749,6 +6399,16 @@
                       "null"
                     ]
                   },
+                  "reaction_quick_row": {
+                    "description": "The emoji shown first when someone adds a reaction, in order, as the whole list: each one emoji character or its Slack name in colons (such as :tada:). An empty list uses SRE Agent's twelve. An org admin's token or an API key with mcp:admin may change it.",
+                    "items": {
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    "maxItems": 12,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
                   "restrict_domain_signups": {
                     "type": "boolean"
                   },
@@ -5760,6 +6420,26 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "slack_thread_events_off": {
+                    "description": "The events NOT posted in a card's Slack threads, as the whole set; an empty list posts everything (the default). Failed, declined or cancelled fixes and changes a failed local fix session and a change that could not be made on the pull request it was asked for are always posted, and so is the assistant's answer to a question asked in Slack. The card, the tracker and the notices to the card's people are not affected.",
+                    "items": {
+                      "enum": [
+                        "column_moves",
+                        "card_done",
+                        "card_wont_do",
+                        "pull_request_opened",
+                        "pull_request_merged",
+                        "pull_request_closed",
+                        "pull_request_reopened",
+                        "change_pushed",
+                        "assistant_replies",
+                        "comments"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
                   },
                   "social_joins_enabled": {
                     "type": "boolean"
@@ -6734,7 +7414,7 @@
     },
     "/repo_settings": {
       "get": {
-        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (directories and writable extensions, and allow_ci_config, which says whether fixes may change CI configuration inside those directories). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, or \"self_hosted\", your own machine. Each repository also reports `following`, per setting true when the value is the organization default (get_repository_defaults) and false when the repository's own settings set it. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that a runner is registered for your organization before saving \"self_hosted\". A repository with no settings is not listed (list_effective_repo_settings lists every repository): it is still targetable by a fix request, with an auto-detected fence and the organization default runner, built-in platform when none is set. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; platform_fallback true (the organization default, built-in true) means a request the repository's own runner could not finish may run on SRE Agent's own runner; false keeps the code on your machines and the request fails instead. Each branch row also reports check_network, whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified; off unless an admin turned it on (for the repository or as the organization default). It also reports draft_prs, the value in force for that row: whether a fix pull request opens as a draft (true), ready for review (false), or by the installation's setting (null), taken from the row's own choice, else the organization default. `following` says whether the row's own settings set it, so an update that sends the value back makes it the row's own. Each branch row also reports `set_here`, the settings that row holds a value for (the rest follow the default), and update_repo_settings with follows_default puts a setting back on it. ci_fallback_to_platform is stored and has no effect today: nothing reads it.",
+        "description": "List this organization's per-repository fix settings: each row's id, the branch it applies to (null means all branches), the service alias, the environment, and the write fence (directories and writable extensions, and allow_ci_config, which says whether fixes may change CI configuration inside those directories). Each repository also reports `fix_runner`, which says who executes its fix requests: \"platform\", SRE Agent's own agent, or \"self_hosted\", your own machine. Each repository also reports `following`, per setting true when the value is the organization default (get_repository_defaults) and false when the repository's own settings set it. The id is what update_repo_settings and delete_repo_settings address a row by; the runner is set with those tools or by an admin under Integrations, and both check that a runner is registered for your organization before saving \"self_hosted\". A repository with no settings is not listed (list_effective_repo_settings lists every repository): it is still targetable by a fix request, with an auto-detected fence and the organization default runner, built-in platform when none is set. alerting_sns_topic_arn, when set, is the SNS topic an \"Alarm on this\" pull request for the repository reuses instead of creating one. auto_dispatch false means the repository waits for a person to press Send on a fix request (on its card, or in the Control Tower) before it is sent; platform_fallback true (the organization default, built-in true) means a request the repository's own runner could not finish may run on SRE Agent's own runner; false keeps the code on your machines and the request fails instead. Each branch row also reports check_network, whether the repository's commands after setup (checks, tests, analysis) may reach GitHub and the package registries while a fix is checked or verified; off unless an admin turned it on (for the repository or as the organization default). It also reports draft_prs, the value in force for that row: whether a fix pull request opens as a draft (true), ready for review (false), or by the installation's setting (null), taken from the row's own choice, else the organization default. `following` says whether the row's own settings set it, so an update that sends the value back makes it the row's own. Each branch row also reports auto_merge, whether a fix pull request for that branch may merge by itself (off by default, and an organization admin's choice): SRE Agent asks GitHub to merge it once the checks its branch requires pass, or merges it itself when they had already passed. Each branch row also reports `set_here`, the settings that row holds a value for (the rest follow the default), and update_repo_settings with follows_default puts a setting back on it. ci_fallback_to_platform is stored and has no effect today: nothing reads it.",
         "operationId": "list_repo_settings",
         "parameters": [],
         "responses": {
@@ -6786,6 +7466,10 @@
                     "description": "true (the organization default, built-in true) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository; name it in follows_default to put the whole repository back on the organization default.",
                     "type": "boolean"
                   },
+                  "auto_merge": {
+                    "description": "Whether a fix pull request for this row's branch is set to merge by itself once the checks the branch requires pass: true, false, or the organization default when it is named in follows_default. Off by default. SRE Agent asks GitHub to merge a fix pull request by itself when its required checks are still running, merges it itself when they have already passed, and only where the repository allows auto-merge and the base branch requires at least one status check. A draft, a change SRE Agent's own checks ran on and could not judge, a change to CI files, IAM or Kubernetes manifests, and a self-healing pull request whose area is below full autonomy never merge this way. Turning it on needs confirm auto_merge, and so does anything that makes a branch read it on (an all-branches entry that branch entries follow, a follow of a default that says on). Applies to the row it is sent for. Your organization's admins take the risk of a merge nobody reviewed. By default it merges what the branch's required checks let through, whether SRE Agent's own checks ran or not; auto_merge_requires_verification on update_github_settings (\"Auto-merge only what SRE Agent verified\") limits it to what those checks passed. To stop one pull request: comment /hold on it, request changes in a review, convert it to a draft, or turn auto-merge off on GitHub.",
+                    "type": "boolean"
+                  },
                   "branch": {
                     "description": "The branch this row applies to. Leave it out (or send null) for the all-branches row, which is what a repository with one fence wants.",
                     "type": "string"
@@ -6797,6 +7481,16 @@
                   "ci_fallback_to_platform": {
                     "description": "Stored and unused: this setting has no effect today, and no fix request reads it. false is the default. Applies to the whole repository.",
                     "type": "boolean"
+                  },
+                  "confirm": {
+                    "description": "The confirmation a write needs: auto_merge when it turns auto-merge on for any branch, which the refusal says.",
+                    "items": {
+                      "enum": [
+                        "auto_merge"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "draft_prs": {
                     "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the organization default, else the installation's draft_prs setting) as it says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. Answers report the value in force (the row's own choice, else the organization default); `following` says whether the row sets it, and sending a value makes it the row's own. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for. Name it in follows_default (or send null) to put the entry back on the default.",
@@ -6814,7 +7508,7 @@
                     "type": "string"
                   },
                   "follows_default": {
-                    "description": "Settings that follow the organization default (get_repository_defaults) from this write on. allow_ci_config, check_network and draft_prs are cleared on this row; fix_runner, platform_fallback and auto_dispatch belong to the whole repository and are cleared on every row of it. A setting named here is not also sent with a value. A setting in neither is left as it is, and a create leaves every setting it is not given following already. A reset is refused where setting the value it would follow is: your own runner with none registered, network where it is not offered, and CI configuration off while the directories list a CI path.",
+                    "description": "Settings that follow the organization default (get_repository_defaults) from this write on. allow_ci_config, check_network, auto_merge and draft_prs are cleared on this row; fix_runner, platform_fallback and auto_dispatch belong to the whole repository and are cleared on every row of it. A setting named here is not also sent with a value. A setting in neither is left as it is, and a create leaves every setting it is not given following already. A reset is refused where setting the value it would follow is: your own runner with none registered, network where it is not offered, and CI configuration off while the directories list a CI path.",
                     "items": {
                       "enum": [
                         "fix_runner",
@@ -6822,7 +7516,8 @@
                         "auto_dispatch",
                         "draft_prs",
                         "check_network",
-                        "allow_ci_config"
+                        "allow_ci_config",
+                        "auto_merge"
                       ],
                       "type": "string"
                     },
@@ -6952,7 +7647,7 @@
         "summary": "Read one repo_setting"
       },
       "put": {
-        "description": "Change one repository's settings, named by the id list_repo_settings reports. Only the fields you send change, so sending fix_runner on its own is legal; a field sent as null is cleared (a null branch makes the row the all-branches row, a null service removes the alias). To put a setting back on the organization default (get_repository_defaults) name it in follows_default: allow_ci_config, check_network and draft_prs are cleared on this row, fix_runner, platform_fallback and auto_dispatch on every row of the repository, and a reset is refused where setting the value it would follow is. A null fix_runner, platform_fallback or auto_dispatch alone is ignored. The repository itself cannot be changed here: a row for another repository is a create. A write that makes a row the all-branches row (a null branch, or a rename into a repository) or takes it out of that position (a branch, or another repository) moves no branch row: each keeps what it was reading, and the answer carries pinned_branches (how many, only when above zero). Answers the repository in the shape list_repo_settings answers.",
+        "description": "Change one repository's settings, named by the id list_repo_settings reports. Only the fields you send change, so sending fix_runner on its own is legal; a field sent as null is cleared (a null branch makes the row the all-branches row, a null service removes the alias). To put a setting back on the organization default (get_repository_defaults) name it in follows_default: allow_ci_config, check_network, auto_merge and draft_prs are cleared on this row, fix_runner, platform_fallback and auto_dispatch on every row of the repository, and a reset is refused where setting the value it would follow is. A null fix_runner, platform_fallback or auto_dispatch alone is ignored. The repository itself cannot be changed here: a row for another repository is a create. A write that makes a row the all-branches row (a null branch, or a rename into a repository) or takes it out of that position (a branch, or another repository) moves no branch row: each keeps what it was reading, and the answer carries pinned_branches (how many, only when above zero). Answers the repository in the shape list_repo_settings answers.",
         "operationId": "update_repo_settings",
         "parameters": [
           {
@@ -6982,6 +7677,10 @@
                     "description": "true (the organization default, built-in true) sends this repository's fix requests to its runner as soon as they are made. false waits for a person: every request, from any source (the webhook included), is created and its card says it is waiting, but nothing is sent until someone presses Send on the card (or, for a request with no card, in its Control Tower drawer). Send follows the organization's fix_request_floor: when it is member, members can send a held request too, so the wait is for anyone who may request fixes, not an org admin's review. Applies to the whole repository; name it in follows_default to put the whole repository back on the organization default.",
                     "type": "boolean"
                   },
+                  "auto_merge": {
+                    "description": "Whether a fix pull request for this row's branch is set to merge by itself once the checks the branch requires pass: true, false, or the organization default when it is named in follows_default. Off by default. SRE Agent asks GitHub to merge a fix pull request by itself when its required checks are still running, merges it itself when they have already passed, and only where the repository allows auto-merge and the base branch requires at least one status check. A draft, a change SRE Agent's own checks ran on and could not judge, a change to CI files, IAM or Kubernetes manifests, and a self-healing pull request whose area is below full autonomy never merge this way. Turning it on needs confirm auto_merge, and so does anything that makes a branch read it on (an all-branches entry that branch entries follow, a follow of a default that says on). Applies to the row it is sent for. Your organization's admins take the risk of a merge nobody reviewed. By default it merges what the branch's required checks let through, whether SRE Agent's own checks ran or not; auto_merge_requires_verification on update_github_settings (\"Auto-merge only what SRE Agent verified\") limits it to what those checks passed. To stop one pull request: comment /hold on it, request changes in a review, convert it to a draft, or turn auto-merge off on GitHub.",
+                    "type": "boolean"
+                  },
                   "branch": {
                     "description": "The branch this row applies to. Leave it out (or send null) for the all-branches row, which is what a repository with one fence wants.",
                     "type": "string"
@@ -6993,6 +7692,16 @@
                   "ci_fallback_to_platform": {
                     "description": "Stored and unused: this setting has no effect today, and no fix request reads it. false is the default. Applies to the whole repository.",
                     "type": "boolean"
+                  },
+                  "confirm": {
+                    "description": "The confirmation a write needs: auto_merge when it turns auto-merge on for any branch, which the refusal says.",
+                    "items": {
+                      "enum": [
+                        "auto_merge"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "draft_prs": {
                     "description": "Whether a fix pull request for this repository opens as a draft: true always as a draft, false ready for review, null (the organization default, else the installation's draft_prs setting) as it says. A branch entry that holds null follows the repository's all-branches entry when that one has a choice. Answers report the value in force (the row's own choice, else the organization default); `following` says whether the row sets it, and sending a value makes it the row's own. When the setting is ready for review, a change the sandbox saw fail, an open self-review blocker or CI configuration files still open as a draft and the pull request says why, and a change the checks could not judge opens ready with a \"Not verified\" line saying why. Applies to the entry it is sent for. Name it in follows_default (or send null) to put the entry back on the default.",
@@ -7010,7 +7719,7 @@
                     "type": "string"
                   },
                   "follows_default": {
-                    "description": "Settings that follow the organization default (get_repository_defaults) from this write on. allow_ci_config, check_network and draft_prs are cleared on this row; fix_runner, platform_fallback and auto_dispatch belong to the whole repository and are cleared on every row of it. A setting named here is not also sent with a value. A setting in neither is left as it is, and a create leaves every setting it is not given following already. A reset is refused where setting the value it would follow is: your own runner with none registered, network where it is not offered, and CI configuration off while the directories list a CI path.",
+                    "description": "Settings that follow the organization default (get_repository_defaults) from this write on. allow_ci_config, check_network, auto_merge and draft_prs are cleared on this row; fix_runner, platform_fallback and auto_dispatch belong to the whole repository and are cleared on every row of it. A setting named here is not also sent with a value. A setting in neither is left as it is, and a create leaves every setting it is not given following already. A reset is refused where setting the value it would follow is: your own runner with none registered, network where it is not offered, and CI configuration off while the directories list a CI path.",
                     "items": {
                       "enum": [
                         "fix_runner",
@@ -7018,7 +7727,8 @@
                         "auto_dispatch",
                         "draft_prs",
                         "check_network",
-                        "allow_ci_config"
+                        "allow_ci_config",
+                        "auto_merge"
                       ],
                       "type": "string"
                     },
@@ -7082,7 +7792,7 @@
     },
     "/repository_defaults": {
       "get": {
-        "description": "The organization's repository defaults: the six settings every repository without its own value follows (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config), as one flat object. `source` says where they come from: \"own\" (this organization set them), \"parent\" (a child organization follows its parent's), or \"built_in\" (none set: platform runner, fallback on, automatic dispatch, no network for checks, no CI configuration changes, pull requests by the installation's setting). `inherited_from` is the parent organization's id when the values are the parent's, `parent_name` the parent's name when there is one, and `stopped` is true when a child chose to stop following its parent. Change them with update_repository_defaults; list_effective_repo_settings shows what each repository ends up with. On the configuration API reading stays open when the plan no longer includes GitHub; the MCP endpoint itself still needs the plan.",
+        "description": "The organization's repository defaults: the seven settings every repository without its own value follows (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config, auto_merge), as one flat object. `source` says where they come from: \"own\" (this organization set them), \"parent\" (a child organization follows its parent's), or \"built_in\" (none set: platform runner, fallback on, automatic dispatch, no network for checks, no CI configuration changes, pull requests by the installation's setting, no auto-merge). `inherited_from` is the parent organization's id when the values are the parent's, `parent_name` the parent's name when there is one, and `stopped` is true when a child chose to stop following its parent. Change them with update_repository_defaults; list_effective_repo_settings shows what each repository ends up with. On the configuration API reading stays open when the plan no longer includes GitHub; the MCP endpoint itself still needs the plan.",
         "operationId": "get_repository_defaults",
         "parameters": [],
         "responses": {
@@ -7111,7 +7821,7 @@
         "summary": "Read the repository_defaults"
       },
       "put": {
-        "description": "Change the organization's repository defaults: the settings a repository follows until it has its own value. An organization admin's tool, the same as the Organization defaults for repositories panel under Integrations. Send the settings to change, or follow_parent true (a child organization goes back to its parent's defaults and drops its own), or stop_following true (a child stops following its parent and uses the built-in values); send only one of those three kinds. The preview lists the change, the repositories that would move, how many keep a value of their own, a count per following child organization, the confirmations needed (needs_confirm) and anything that refuses it, with a fingerprint. Over this API a write takes two requests. Send the change: the answer is 428 with the preview in preview and its fingerprint at preview.data.fingerprint, and nothing is written. Send the same body with expected_fingerprint set to that fingerprint to apply it (200). If what would move changed since the preview, nothing is written and the answer is 409 with a fresh preview. Turning allow_ci_config or check_network on needs confirm [\"ci_config\"] or [\"check_network\"] when applying. A child organization that follows its parent and sends only some of the six settings starts its own defaults from the parent's current values for the rest and stops following the parent for all six; the preview says so with leaves_parent true, and follow_parent undoes it. An API key with mcp:admin (api:admin on the configuration API) may use every part of it, follow_parent and stop_following included. When the plan no longer includes GitHub, the configuration API still accepts follow_parent alone unless it would turn something on (the preview lists that in refusals); every other call is refused with the plan sentence. An applied change leaves one repository_defaults.changed audit entry. This changes what repositories follow; update_repo_settings writes a repository's own value (or puts it back on the default with follows_default), update_repo_settings_bulk does the same for several repositories at once, and set_platform_fallback_for_all sets the runner fallback default and makes every repository follow it.",
+        "description": "Change the organization's repository defaults: the settings a repository follows until it has its own value. An organization admin's tool, the same as the Organization defaults for repositories panel under Integrations. Send the settings to change, or follow_parent true (a child organization goes back to its parent's defaults and drops its own), or stop_following true (a child stops following its parent and uses the built-in values); send only one of those three kinds. The preview lists the change, the repositories that would move, how many keep a value of their own, a count per following child organization, the confirmations needed (needs_confirm) and anything that refuses it, with a fingerprint. Over this API a write takes two requests. Send the change: the answer is 428 with the preview in preview and its fingerprint at preview.data.fingerprint, and nothing is written. Send the same body with expected_fingerprint set to that fingerprint to apply it (200). If what would move changed since the preview, nothing is written and the answer is 409 with a fresh preview. Turning allow_ci_config, check_network or auto_merge on needs confirm [\"ci_config\"], [\"check_network\"] or [\"auto_merge\"] when applying. The preview lists, under auto_merge, the repositories and branches that would start and stop merging by themselves and the repositories among them that open drafts, which never do. Your organization's admins take the risk of a merge nobody reviewed. By default it merges what the branch's required checks let through, whether SRE Agent's own checks ran or not; auto_merge_requires_verification on update_github_settings (\"Auto-merge only what SRE Agent verified\") limits it to what those checks passed. To stop one pull request: comment /hold on it, request changes in a review, convert it to a draft, or turn auto-merge off on GitHub. A child organization that follows its parent and sends only some of the seven settings starts its own defaults from the parent's current values for the rest and stops following the parent for all seven; the preview says so with leaves_parent true, and follow_parent undoes it. An API key with mcp:admin (api:admin on the configuration API) may use every part of it, follow_parent and stop_following included. When the plan no longer includes GitHub, the configuration API still accepts follow_parent alone unless it would turn something on (the preview lists that in refusals); every other call is refused with the plan sentence. An applied change leaves one repository_defaults.changed audit entry. This changes what repositories follow; update_repo_settings writes a repository's own value (or puts it back on the default with follows_default), update_repo_settings_bulk does the same for several repositories at once, and set_platform_fallback_for_all sets the runner fallback default and makes every repository follow it.",
         "operationId": "update_repository_defaults",
         "parameters": [],
         "requestBody": {
@@ -7127,16 +7837,21 @@
                     "description": "true sends a following repository's fix requests as soon as they are made. false holds each until a person presses Send.",
                     "type": "boolean"
                   },
+                  "auto_merge": {
+                    "description": "Whether the fix pull requests of following repositories merge by themselves once the checks their branch requires pass. Off by default. Turning it on needs confirm auto_merge. SRE Agent asks GitHub to merge a fix pull request by itself when its required checks are still running, merges it itself when they have already passed, and only where the repository allows auto-merge and the base branch requires at least one status check. A draft, a change SRE Agent's own checks ran on and could not judge, a change to CI files, IAM or Kubernetes manifests, and a self-healing pull request whose area is below full autonomy never merge this way. Your organization's admins take the risk of a merge nobody reviewed. By default it merges what the branch's required checks let through, whether SRE Agent's own checks ran or not; auto_merge_requires_verification on update_github_settings (\"Auto-merge only what SRE Agent verified\") limits it to what those checks passed. To stop one pull request: comment /hold on it, request changes in a review, convert it to a draft, or turn auto-merge off on GitHub.",
+                    "type": "boolean"
+                  },
                   "check_network": {
                     "description": "Whether the commands after setup (checks, tests, analysis) of following repositories may reach GitHub and the package registries while a fix is checked. Turning it on needs confirm check_network and is accepted only where the Integrations page offers it.",
                     "type": "boolean"
                   },
                   "confirm": {
-                    "description": "The confirmations the change needs, from needs_confirm in the preview: ci_config for allow_ci_config true, check_network for check_network true.",
+                    "description": "The confirmations the change needs, from needs_confirm in the preview: ci_config for allow_ci_config true, check_network for check_network true, auto_merge for auto_merge true.",
                     "items": {
                       "enum": [
                         "ci_config",
-                        "check_network"
+                        "check_network",
+                        "auto_merge"
                       ],
                       "type": "string"
                     },
@@ -7205,6 +7920,30 @@
                             "applied": {
                               "type": "boolean"
                             },
+                            "auto_merge": {
+                              "description": "The repositories and branches that would start (starting) and stop (stopping) reading auto_merge as on, each with its branches (other branches names the ones no entry names), and the repositories among those that start that open their pull requests as drafts, which never merge by themselves. Empty lists when the change does not name auto_merge.",
+                              "properties": {
+                                "drafts": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "starting": {
+                                  "items": {
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "stopping": {
+                                  "items": {
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "type": "object"
+                            },
                             "changes": {
                               "additionalProperties": {
                                 "properties": {
@@ -7278,7 +8017,7 @@
                               "type": "array"
                             },
                             "needs_confirm": {
-                              "description": "The confirmations (ci_config, check_network) the apply must carry in confirm.",
+                              "description": "The confirmations (ci_config, check_network, auto_merge) the apply must carry in confirm.",
                               "items": {
                                 "type": "string"
                               },
@@ -7346,6 +8085,30 @@
                             "applied": {
                               "type": "boolean"
                             },
+                            "auto_merge": {
+                              "description": "The repositories and branches that would start (starting) and stop (stopping) reading auto_merge as on, each with its branches (other branches names the ones no entry names), and the repositories among those that start that open their pull requests as drafts, which never merge by themselves. Empty lists when the change does not name auto_merge.",
+                              "properties": {
+                                "drafts": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "starting": {
+                                  "items": {
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "stopping": {
+                                  "items": {
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "type": "object"
+                            },
                             "changes": {
                               "additionalProperties": {
                                 "properties": {
@@ -7419,7 +8182,7 @@
                               "type": "array"
                             },
                             "needs_confirm": {
-                              "description": "The confirmations (ci_config, check_network) the apply must carry in confirm.",
+                              "description": "The confirmations (ci_config, check_network, auto_merge) the apply must carry in confirm.",
                               "items": {
                                 "type": "string"
                               },
@@ -10990,6 +11753,102 @@
       ],
       "upsert": false
     },
+    "alert_follow_up_settings": {
+      "action_args": [],
+      "computed_fields": {
+        "defaults": "boolean",
+        "demoted": "array",
+        "informative_kinds": "array",
+        "updated_at": [
+          "string",
+          "null"
+        ],
+        "week": "object"
+      },
+      "create_fields": [],
+      "fields": [
+        "enabled",
+        "still_active_enabled",
+        "informative_expire_hours",
+        "resolve_modes",
+        "ages"
+      ],
+      "id_args": [],
+      "import_key": "alert_follow_up_settings",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_null_as": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [
+        "ages",
+        "enabled",
+        "informative_expire_hours",
+        "resolve_modes",
+        "still_active_enabled"
+      ],
+      "upsert": false
+    },
+    "alert_informative_kinds": {
+      "action_args": [],
+      "computed_fields": {
+        "action": "string",
+        "decided_at": [
+          "string",
+          "null"
+        ],
+        "decided_by": [
+          "string",
+          "null"
+        ],
+        "expire_after_allowed": "boolean",
+        "expire_after_hours": "integer",
+        "id": "string",
+        "kind_key": "string",
+        "label": "string",
+        "matchers": "object",
+        "open_alerts": "integer",
+        "proposed_at": [
+          "string",
+          "null"
+        ],
+        "proposed_by": [
+          "string",
+          "null"
+        ],
+        "retired_reason": [
+          "string",
+          "null"
+        ],
+        "source": "string",
+        "status": "string",
+        "version": [
+          "string",
+          "null"
+        ]
+      },
+      "create_fields": [],
+      "fields": [],
+      "id_args": [],
+      "import_key": "id",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": false,
+      "terraform_names": {},
+      "terraform_null_as": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [],
+      "upsert": false
+    },
     "alert_mutes": {
       "action_args": [
         "duration_minutes"
@@ -11527,6 +12386,7 @@
         "draft_prs",
         "review_enabled",
         "link_comments_enabled",
+        "auto_merge_requires_verification",
         "review_severity_floor",
         "context_repo"
       ],
@@ -11543,6 +12403,7 @@
       "terraform_read_only": [],
       "terraform_type": "github_settings",
       "update_fields": [
+        "auto_merge_requires_verification",
         "auto_pr_enabled",
         "auto_revise_on_review",
         "context_repo",
@@ -11681,7 +12542,10 @@
         "mfa_required",
         "mfa_grace_days",
         "session_idle_minutes",
-        "api_key_max_days"
+        "api_key_max_days",
+        "language",
+        "slack_thread_events_off",
+        "reaction_quick_row"
       ],
       "id_args": [],
       "import_key": "organization_settings",
@@ -11718,11 +12582,14 @@
         "inheritance_stopped",
         "investigation_cooldown_minutes",
         "investigation_paused",
+        "language",
         "mfa_grace_days",
         "mfa_required",
         "monthly_ai_budget_usd",
+        "reaction_quick_row",
         "restrict_domain_signups",
         "session_idle_minutes",
+        "slack_thread_events_off",
         "social_joins_enabled",
         "timezone"
       ],
@@ -11967,7 +12834,8 @@
     },
     "repo_settings": {
       "action_args": [
-        "follows_default"
+        "follows_default",
+        "confirm"
       ],
       "computed_fields": {
         "branches": "array",
@@ -11979,9 +12847,11 @@
         "alerting_sns_topic_arn",
         "allow_ci_config",
         "auto_dispatch",
+        "auto_merge",
         "branch",
         "check_network",
         "ci_fallback_to_platform",
+        "confirm",
         "draft_prs",
         "environment",
         "fix_runner",
@@ -12008,7 +12878,8 @@
         "ci_fallback_to_platform",
         "platform_fallback",
         "draft_prs",
-        "check_network"
+        "check_network",
+        "auto_merge"
       ],
       "id_args": [
         "id"
@@ -12028,9 +12899,11 @@
         "alerting_sns_topic_arn",
         "allow_ci_config",
         "auto_dispatch",
+        "auto_merge",
         "branch",
         "check_network",
         "ci_fallback_to_platform",
+        "confirm",
         "draft_prs",
         "environment",
         "fix_runner",
@@ -12074,7 +12947,8 @@
         "auto_dispatch",
         "draft_prs",
         "check_network",
-        "allow_ci_config"
+        "allow_ci_config",
+        "auto_merge"
       ],
       "id_args": [],
       "import_key": "repository_defaults",
@@ -12091,6 +12965,7 @@
       "update_fields": [
         "allow_ci_config",
         "auto_dispatch",
+        "auto_merge",
         "check_network",
         "confirm",
         "draft_prs",

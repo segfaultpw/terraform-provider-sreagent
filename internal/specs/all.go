@@ -47,5 +47,7 @@ func All() []engine.Spec {
 		SecurityCodeClasses,
 		SecurityNotificationRules,
 		SecretAllowRules,
+		AlertFollowUpSettings,
+		AlertInformativeKinds,
 	}
 }
