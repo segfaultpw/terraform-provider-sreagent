@@ -243,7 +243,10 @@ func keep(a Attr, before, remote attr.Value) bool {
 		}
 		return normalize(before.(types.String).ValueString()) == normalize(remote.(types.String).ValueString())
 	case StringList:
-		return a.Unordered && sameSet(before, remote)
+		if a.Unordered && sameSet(before, remote) {
+			return true
+		}
+		return sameAfter(a.Normalize, before, remote)
 	case Float:
 		x, y := before.(types.Float64).ValueFloat64(), remote.(types.Float64).ValueFloat64()
 		return math.Abs(x-y) <= 1e-9*math.Max(1, math.Abs(x))
@@ -309,6 +312,28 @@ func sameSet(x, y attr.Value) bool {
 	}
 	for k := range have {
 		if !other[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// sameAfter reports that two known lists hold the same entries, in the same
+// order, once normalize has been applied to each. A nil normalize is no
+// equivalence.
+func sameAfter(normalize func(string) string, x, y attr.Value) bool {
+	if normalize == nil {
+		return false
+	}
+	a, aok := x.(types.List)
+	b, bok := y.(types.List)
+	if !aok || !bok || a.IsNull() || a.IsUnknown() || b.IsNull() || b.IsUnknown() || len(a.Elements()) != len(b.Elements()) {
+		return false
+	}
+	for i, e := range a.Elements() {
+		s, ok1 := e.(types.String)
+		t, ok2 := b.Elements()[i].(types.String)
+		if !ok1 || !ok2 || s.IsNull() || s.IsUnknown() || t.IsNull() || t.IsUnknown() || normalize(s.ValueString()) != normalize(t.ValueString()) {
 			return false
 		}
 	}

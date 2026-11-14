@@ -57,3 +57,26 @@ func (sameInstantAsState) PlanModifyString(_ context.Context, req planmodifier.S
 		resp.PlanValue = req.StateValue
 	}
 }
+
+// sameNormalizedAsState plans the list state holds when the configuration names
+// the same entries in the same order, spelled as the platform's normalization
+// reads them equal (an emoji with or without its presentation selector). The
+// platform answers its own spelling, and Terraform accepts a plan that returns
+// the prior value for a configuration it is equivalent to.
+type sameNormalizedAsState struct{ normalize func(string) string }
+
+var _ planmodifier.List = sameNormalizedAsState{}
+
+func (sameNormalizedAsState) Description(context.Context) string {
+	return "A list whose entries equal the stored ones after the platform's normalization is no change."
+}
+
+func (m sameNormalizedAsState) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m sameNormalizedAsState) PlanModifyList(_ context.Context, req planmodifier.ListRequest, resp *planmodifier.ListResponse) {
+	if sameAfter(m.normalize, req.PlanValue, req.StateValue) {
+		resp.PlanValue = req.StateValue
+	}
+}

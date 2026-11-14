@@ -10,10 +10,12 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/segfaultpw/terraform-provider-sreagent/internal/client"
@@ -136,7 +138,12 @@ func (d *facadeDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 		case Bool:
 			attrs[q.Attribute()] = schema.BoolAttribute{Optional: true, Description: q.Description}
 		default:
-			attrs[q.Attribute()] = schema.StringAttribute{Optional: true, Description: q.Description}
+			sa := schema.StringAttribute{Optional: true, Description: q.Description}
+			if len(q.OneOf) > 0 {
+				sa.Description = describe(q)
+				sa.Validators = []validator.String{stringvalidator.OneOf(q.OneOf...)}
+			}
+			attrs[q.Attribute()] = sa
 		}
 	}
 	for _, x := range d.spec.ExtraAttrs {

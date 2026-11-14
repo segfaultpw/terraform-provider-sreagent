@@ -498,6 +498,9 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		if a.Unordered {
 			mods = append([]planmodifier.List{sameSetAsState{}}, mods...)
 		}
+		if a.Normalize != nil {
+			mods = append([]planmodifier.List{sameNormalizedAsState{normalize: a.Normalize}}, mods...)
+		}
 		// The platform trims and deduplicates list entries (field names aside,
 		// which it keeps as written), so a padded or repeated one would read
 		// back changed; refuse it at plan instead.
@@ -509,6 +512,15 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		}
 		if len(a.OneOf) > 0 {
 			validators = append(validators, listvalidator.ValueStringsAre(stringvalidator.OneOf(a.OneOf...)))
+		}
+		if a.ItemMaxLength > 0 {
+			validators = append(validators, listvalidator.ValueStringsAre(itemLength{max: a.ItemMaxLength}))
+		}
+		if a.ItemCheck != nil {
+			validators = append(validators, listvalidator.ValueStringsAre(itemRefused{check: a.ItemCheck}))
+		}
+		if a.Normalize != nil {
+			validators = append(validators, uniqueAfter{normalize: a.Normalize})
 		}
 		if a.MaxItems > 0 {
 			validators = append(validators, listvalidator.SizeAtMost(a.MaxItems))
@@ -823,6 +835,8 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	r.planChecks(ctx, req, resp, current)
 	if r.spec.Previewed {
 		r.planPreview(ctx, req, resp)
+	} else {
+		r.planConfirmations(ctx, req, resp)
 	}
 	r.planRepositoryWide(ctx, req, resp)
 	if req.State.Raw.IsNull() {
@@ -1105,6 +1119,10 @@ func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest,
 		r.createPreviewed(ctx, req, resp, body)
 		return
 	}
+	resp.Diagnostics.Append(r.addConfirm(ctx, req.Config, body)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	var out *client.Response
 	var err error
 	if r.spec.Shape == Singleton {
@@ -1180,6 +1198,11 @@ func (r *facadeResource) followUp(ctx context.Context, plan, config valueSource,
 	// platform that does not know the argument is never sent it.
 	if names, d := r.resets(ctx, config, answered{row: row}); !d.HasError() && len(names) > 0 {
 		body[r.spec.FollowsDefault] = names
+		// A reset can turn a setting on (it follows a default that says on), and
+		// the platform wants the confirmation for that write too.
+		if d := r.addConfirm(ctx, config, body); d.HasError() {
+			return nil, fmt.Errorf("reading the confirmation: %s", d.Errors()[0].Detail())
+		}
 	}
 	if len(body) == 0 {
 		return created, nil
@@ -1259,6 +1282,12 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	p, q := r.rowPath(id.ValueString())
+	if len(body) > 0 && !r.spec.Previewed {
+		resp.Diagnostics.Append(r.addConfirm(ctx, req.Config, body)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	request := client.Request{Method: http.MethodPut, Path: p, Query: q, Body: body, IfMatch: etag, Secrets: secrets}
 	if len(body) == 0 {
 		// Nothing to write: read the row for state instead.
@@ -1534,4 +1563,42 @@ func (r *facadeResource) settleEquivalentPlan(ctx context.Context, req resource.
 		}
 		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
 	}
+}
+
+// addConfirm sends the configuration's confirmations with a write of a spec
+// that is not Previewed (a Previewed one sends them with its preview). The
+// write-only list is read from the configuration and never held in plan or
+// state, and a confirmation the write does not need is harmless: the platform
+// asks for it only when a write turns the setting on.
+func (r *facadeResource) addConfirm(ctx context.Context, config valueSource, body map[string]any) diag.Diagnostics {
+	if r.spec.Previewed || len(r.spec.Confirmations) == 0 {
+		return nil
+	}
+	names, known, diags := r.configuredConfirm(ctx, config)
+	if diags.HasError() || !known || len(names) == 0 {
+		return diags
+	}
+	body[confirmAttr] = names
+	return diags
+}
+
+// planConfirmations fails the plan of a write that turns on a setting the
+// platform wants confirmed, when the configuration does not confirm it: the
+// platform would refuse the apply with the same sentence. It judges what the
+// plan can see, a setting stated on that state does not already read on; a
+// reset onto a default that says on is left to the platform's refusal.
+func (r *facadeResource) planConfirmations(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if len(r.spec.Confirmations) == 0 {
+		return
+	}
+	confirm, known, d := r.configuredConfirm(ctx, req.Config)
+	resp.Diagnostics.Append(d...)
+	if !known || d.HasError() {
+		return
+	}
+	var prior valueSource
+	if !req.State.Raw.IsNull() {
+		prior = req.State
+	}
+	r.addProblems(&resp.Diagnostics, r.confirmedFromState(ctx, req.Plan, prior, confirm))
 }

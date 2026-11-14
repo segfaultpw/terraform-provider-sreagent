@@ -61,7 +61,17 @@ type Attr struct {
 	// It is Optional without Computed and replaces the row when it changes.
 	NotRead bool
 	// Normalize: the server stores this form; values equal after it are equal.
+	// On a StringList it is applied to each entry, in order: a list whose
+	// entries equal the stored ones after it is the stored list, so the
+	// configuration's spelling stays and plans no change.
 	Normalize func(string) string
+	// ItemMaxLength is the published items.maxLength of a StringList, in code
+	// points. Zero means none.
+	ItemMaxLength int
+	// ItemCheck refuses a StringList entry the platform would store as a
+	// different value than written (it returns the sentence), so the
+	// configuration is refused at plan instead of planning a change on every run.
+	ItemCheck func(entry string) string
 	// OneOf bounds a String to these values and, on a StringList, each item.
 	OneOf []string
 	// HiddenKeys: top-level keys of a JSON attribute the platform stores but
@@ -314,6 +324,9 @@ type Spec struct {
 	DestroyWhen string
 	// DestroyWarning is said when the destroy took effect.
 	DestroyWarning string
+	// View: a list the API answers with no door for one row (no id_args), which a
+	// data source reads whole. A paged list is a view too.
+	View bool
 	// Cursor names the key of the answer that holds the next page's cursor; a spec
 	// that sets it is a paged list, read until that key is null. PageSize is the
 	// limit asked for each page (the API's list_max) and MaxPages the pages read

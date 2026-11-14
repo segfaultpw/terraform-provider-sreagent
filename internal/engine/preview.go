@@ -54,6 +54,17 @@ type preview struct {
 	NeedsConfirm []string
 	Refusals     []string
 	LeavesParent bool
+	// AutoMerge is what the platform says of auto-merge, when the change names
+	// it: the branches that start and stop reading it on, and the repositories
+	// among those that start whose pull requests open as drafts and never merge by
+	// themselves. A platform from before auto-merge sends none, and a shape this
+	// version does not read is left out: the warning then says less, never wrong.
+	AutoMerge autoMergePreview
+}
+
+type autoMergePreview struct {
+	Starting, Stopping []string
+	Drafts             []string
 }
 
 // previewKeys are the keys of preview.data the provider reads, with the JSON
@@ -186,7 +197,32 @@ func parsePreview(m map[string]any) (preview, error) {
 	p.NeedsConfirm = stringList(m["needs_confirm"])
 	p.Refusals = stringList(m["refusals"])
 	p.LeavesParent, _ = m["leaves_parent"].(bool)
+	if am, ok := m["auto_merge"].(map[string]any); ok {
+		p.AutoMerge = autoMergePreview{Starting: reposWithBranches(am["starting"]), Stopping: reposWithBranches(am["stopping"]), Drafts: stringList(am["drafts"])}
+	}
 	return p, nil
+}
+
+// reposWithBranches reads the entries of auto_merge.starting and .stopping,
+// each {repository, branches}, as "acme/web (main, release)".
+func reposWithBranches(v any) []string {
+	items, _ := v.([]any)
+	out := make([]string, 0, len(items))
+	for _, raw := range items {
+		e, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		repo, _ := e["repository"].(string)
+		if repo == "" {
+			continue
+		}
+		if branches := stringList(e["branches"]); len(branches) > 0 {
+			repo += " (" + strings.Join(branches, ", ") + ")"
+		}
+		out = append(out, repo)
+	}
+	return out
 }
 
 func stringList(v any) []string {
@@ -205,6 +241,14 @@ func show(v any) string {
 		return "unset"
 	}
 	return fmt.Sprint(v)
+}
+
+// namedList is the first namedRepositories entries of a list, and a count of the rest.
+func namedList(items []string) string {
+	if len(items) <= namedRepositories {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(items[:namedRepositories], ", "), len(items)-namedRepositories)
 }
 
 func repositories(n int) string {
@@ -247,6 +291,15 @@ func (p preview) warning() string {
 	if len(p.Differs) > 0 {
 		fmt.Fprintf(&b, " Branches differ from the repository's own value for: %s.", strings.Join(p.Differs, ", "))
 	}
+	if len(p.AutoMerge.Starting) > 0 {
+		fmt.Fprintf(&b, " Fix pull requests will start to merge by themselves once the checks their branch requires pass, on: %s.", namedList(p.AutoMerge.Starting))
+		if len(p.AutoMerge.Drafts) > 0 {
+			fmt.Fprintf(&b, " Of those, %s open as drafts and never merge by themselves.", namedList(p.AutoMerge.Drafts))
+		}
+	}
+	if len(p.AutoMerge.Stopping) > 0 {
+		fmt.Fprintf(&b, " Fix pull requests will stop merging by themselves on: %s.", namedList(p.AutoMerge.Stopping))
+	}
 	for _, c := range p.Children {
 		fmt.Fprintf(&b, " Child organization %s follows these defaults: %s will read a different value", c.Name, repositories(c.Moved))
 		if c.CIPinned > 0 {
@@ -258,7 +311,7 @@ func (p preview) warning() string {
 		b.WriteString(".")
 	}
 	if p.LeavesParent {
-		b.WriteString(" This organization follows its parent's repository defaults. This apply gives it its own for all six settings, and later changes of the parent's defaults no longer reach it; destroy this resource to follow the parent again.")
+		b.WriteString(" This organization follows its parent's repository defaults. This apply gives it its own for every setting, and later changes of the parent's defaults no longer reach it; destroy this resource to follow the parent again.")
 	}
 	return b.String()
 }

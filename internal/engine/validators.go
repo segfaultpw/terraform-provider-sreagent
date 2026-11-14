@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // refuseKeys refuses a JSON object that names any of keys at its top level.
@@ -239,4 +240,77 @@ func (v rfc3339) ValidateString(ctx context.Context, req validator.StringRequest
 func isInstant(v string) bool {
 	_, err := time.Parse(time.RFC3339, v)
 	return err == nil
+}
+
+// itemLength refuses a list entry over the published items.maxLength, counted in
+// code points: the platform counts characters, and one emoji is several code
+// points.
+type itemLength struct{ max int }
+
+var _ validator.String = itemLength{}
+
+func (v itemLength) Description(context.Context) string {
+	return fmt.Sprintf("must be at most %d characters", v.max)
+}
+
+func (v itemLength) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v itemLength) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if n := utf8.RuneCountInString(req.ConfigValue.ValueString()); n > v.max {
+		resp.Diagnostics.AddAttributeError(req.Path, "Entry too long", fmt.Sprintf("An entry %s, this one has %d.", v.Description(ctx), n))
+	}
+}
+
+// itemRefused refuses an entry the spec's ItemCheck gives a sentence for.
+type itemRefused struct{ check func(string) string }
+
+var _ validator.String = itemRefused{}
+
+func (itemRefused) Description(context.Context) string {
+	return "must be written the way the platform stores it"
+}
+
+func (v itemRefused) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v itemRefused) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if sentence := v.check(req.ConfigValue.ValueString()); sentence != "" {
+		resp.Diagnostics.AddAttributeError(req.Path, "Entry the platform stores differently", sentence)
+	}
+}
+
+// uniqueAfter refuses two entries that are one after the platform's
+// normalization, which the platform refuses as a repeat.
+type uniqueAfter struct{ normalize func(string) string }
+
+var _ validator.List = uniqueAfter{}
+
+func (uniqueAfter) Description(context.Context) string {
+	return "must not name the same value twice, in any spelling"
+}
+
+func (v uniqueAfter) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v uniqueAfter) ValidateList(_ context.Context, req validator.ListRequest, resp *validator.ListResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	seen := map[string]string{}
+	for _, e := range req.ConfigValue.Elements() {
+		s, ok := e.(types.String)
+		if !ok || s.IsNull() || s.IsUnknown() {
+			continue
+		}
+		key := v.normalize(s.ValueString())
+		if first, dup := seen[key]; dup && first != s.ValueString() {
+			resp.Diagnostics.AddAttributeError(req.Path, "The same value twice", fmt.Sprintf("%q and %q are the same value once the platform normalizes them; the platform refuses a repeat.", first, s.ValueString()))
+			return
+		}
+		seen[key] = s.ValueString()
+	}
 }
