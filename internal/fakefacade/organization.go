@@ -27,24 +27,24 @@ var threadEvents = []string{"column_moves", "card_done", "card_wont_do", "pull_r
 var emojiTable = func() map[string]string {
 	out := map[string]string{}
 	for _, full := range []string{
-		"❤️",                   // red heart: unqualified when sent as U+2764
+		"❤\ufe0f",              // red heart: unqualified when sent as U+2764
 		"\U0001F44D",           // thumbs up
 		"\U0001F44D\U0001F3FD", // thumbs up, medium skin tone
 		"\U0001F389",           // party popper
-		"\U0001F468‍\U0001F469‍\U0001F467‍\U0001F466", // family: man, woman, girl, boy (ZWJ)
-		"\U0001F3F3️‍\U0001F308",                      // rainbow flag (ZWJ, selector in the middle)
-		"\U0001F469\U0001F3FE‍\U0001F4BB",             // woman technologist, medium-dark skin tone
-		"☺️",                                          // smiling face
-		"\U0001F680",                                  // rocket
-		"\U0001F440",                                  // eyes
-		"\U0001F64F",                                  // folded hands
-		"\U0001F525",                                  // fire
-		"\U0001F60A",                                  // smiling face with smiling eyes
-		"\U0001F622",                                  // crying face
-		"✅",                                           // check mark button
-		"\U0001F4AF",                                  // hundred points
+		"\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466", // family: man, woman, girl, boy (ZWJ)
+		"\U0001F3F3\ufe0f\u200d\U0001F308",                           // rainbow flag (ZWJ, selector in the middle)
+		"\U0001F469\U0001F3FE\u200d\U0001F4BB",                       // woman technologist, medium-dark skin tone
+		"☺\ufe0f",                                                    // smiling face
+		"\U0001F680",                                                 // rocket
+		"\U0001F440",                                                 // eyes
+		"\U0001F64F",                                                 // folded hands
+		"\U0001F525",                                                 // fire
+		"\U0001F60A",                                                 // smiling face with smiling eyes
+		"\U0001F622",                                                 // crying face
+		"✅",                                                          // check mark button
+		"\U0001F4AF",                                                 // hundred points
 	} {
-		out[strings.NewReplacer("︎", "", "️", "").Replace(full)] = full
+		out[strings.NewReplacer("\ufe0e", "", "\ufe0f", "").Replace(full)] = full
 	}
 	return out
 }()
@@ -55,7 +55,7 @@ func normalizeEmoji(v string) (string, bool) {
 	if full, ok := slackNames[v]; ok {
 		return full, true
 	}
-	full, ok := emojiTable[strings.NewReplacer("︎", "", "️", "").Replace(v)]
+	full, ok := emojiTable[strings.NewReplacer("\ufe0e", "", "\ufe0f", "").Replace(v)]
 	return full, ok
 }
 

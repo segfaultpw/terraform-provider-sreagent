@@ -35,12 +35,12 @@ func TestTypeNamesAreUnique(t *testing.T) {
 
 func TestEmojiFormIgnoresThePresentationSelectorsAndNothingElse(t *testing.T) {
 	cases := map[string]string{
-		"❤️":                               "❤",
+		"❤\ufe0f":                          "❤",
 		"❤":                                "❤",
-		"❤︎":                               "❤",
-		"\U0001F3F3️‍\U0001F308":           "\U0001F3F3‍\U0001F308",
+		"❤\ufe0e":                          "❤",
+		"\U0001F3F3\ufe0f\u200d\U0001F308": "\U0001F3F3\u200d\U0001F308",
 		"\U0001F44D\U0001F3FD":             "\U0001F44D\U0001F3FD",
-		"\U0001F468‍\U0001F469‍\U0001F467": "\U0001F468‍\U0001F469‍\U0001F467",
+		"\U0001F468\u200d\U0001F469\u200d\U0001F467": "\U0001F468\u200d\U0001F469\u200d\U0001F467",
 	}
 	for in, want := range cases {
 		if got := emojiForm(in); got != want {
