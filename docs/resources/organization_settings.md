@@ -15,6 +15,17 @@ The organization's own settings. One row per organization: creating it adopts th
 resource "sreagent_organization_settings" "this" {
   alert_storm_threshold = 25
   timezone              = "America/Sao_Paulo"
+
+  # The outcome lines SRE Agent writes into a card's Slack threads: en or es.
+  language = "es"
+
+  # The events NOT posted in those threads, as the whole set ([] posts
+  # everything). A failed or declined fix or change is always posted.
+  slack_thread_events_off = ["column_moves", "comments"]
+
+  # The emoji shown first when someone adds a reaction, in order, written as the
+  # emoji itself (never a :name:). [] uses SRE Agent's twelve.
+  reaction_quick_row = ["\u2705", "\U0001F44D", "\U0001F680", "\U0001F440"]
 }
 ```
 
@@ -35,7 +46,10 @@ resource "sreagent_organization_settings" "this" {
 - `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.
 - `investigation_paused` (Boolean) Pause automatic investigations.
+- `language` (String) The language of the outcome lines SRE Agent writes into a card's Slack threads: how a fix, a change or a pull request ended, a card moved to Done or closed as won't do, and the label in front of a comment posted from the card. en (English, the default) or es (Spanish). Names, links, error messages and what people and the AI wrote are posted as they are. The card itself, its comments, the app's pages and emails stay in English. An organization admin's key (api:admin) may change it. One of: en, es.
 - `monthly_ai_budget_usd` (Number) The monthly AI budget.
+- `reaction_quick_row` (List of String) The emoji shown first when someone adds a reaction, in order, as the whole list: up to 12, each one emoji written as the emoji itself, never repeated (the same emoji spelled with and without its presentation selector counts as a repeat). [] uses SRE Agent's twelve. The platform stores the fully qualified form of each emoji; an entry written without a selector (for example a heart or a thumbs up spelled as one code point) is accepted, kept as you wrote it in state and plans no change. A Slack name such as :tada: is accepted by the platform but stores the emoji it names, so it is refused here instead of planning a change on every run. An organization admin's key (api:admin) may change it.
+- `slack_thread_events_off` (List of String) The events NOT posted in a card's Slack threads, as the whole set: [] posts everything (the default), and a list posts everything else. The order does not matter. Failed, declined or cancelled fixes and changes, a failed local fix session, a change that could not be made on the pull request it was asked for and the assistant's answer to a question asked in Slack are always posted and have no name here. The card, the tracker and the notices to the card's people are not affected. One of: column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies, comments.
 - `timezone` (String) An IANA time zone.
 
 ### Read-Only

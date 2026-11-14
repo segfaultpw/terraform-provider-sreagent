@@ -18,5 +18,17 @@ resource "sreagent_repo_setting" "api_staging" {
   repo   = "acme/api"
   branch = "staging"
 
-  follows_default = ["check_network", "allow_ci_config", "draft_prs"]
+  follows_default = ["check_network", "allow_ci_config", "draft_prs", "auto_merge"]
+}
+
+# Fix pull requests that merge by themselves once the checks the branch
+# requires pass. Off unless set. Turning it on needs confirm for the apply that
+# turns it on: remove confirm afterwards, because a confirmation left in the
+# configuration also confirms every later apply that turns it on again.
+resource "sreagent_repo_setting" "api_release" {
+  repo   = "acme/api"
+  branch = "release"
+
+  auto_merge = true
+  confirm    = ["auto_merge"]
 }

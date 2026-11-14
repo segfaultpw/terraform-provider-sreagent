@@ -2,12 +2,12 @@
 page_title: "sreagent_effective_repo_settings Data Source - sreagent"
 subcategory: ""
 description: |-
-  Every effective_repo_setting row, read-only. What every repository of the organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the six settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config) as a value plus whether it follows the organization's repository defaults. Every page is read.
+  Every effective_repo_setting row, read-only. What every repository of the organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the seven settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config, auto_merge) as a value plus whether it follows the organization's repository defaults. Every page is read.
 ---
 
 # sreagent_effective_repo_settings (Data Source)
 
-Every effective_repo_setting row, read-only. What every repository of the organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the six settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config) as a value plus whether it follows the organization's repository defaults. Every page is read.
+Every effective_repo_setting row, read-only. What every repository of the organization actually runs with, and where each value comes from: for each repository the GitHub App reaches, or that has settings saved, the seven settings (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config, auto_merge) as a value plus whether it follows the organization's repository defaults. Every page is read.
 
 ## Example Usage
 
@@ -41,7 +41,7 @@ output "defaults" {
 
 - `archived_known` (Boolean) False when GitHub's archived flags could not be read fresh, so the archived filter may be stale.
 - `counts` (String) Totals over the whole filtered list: total, unreachable, without_row, with_fence and archived_hidden.
-- `defaults` (String) The organization's repository defaults: values (the six settings), source (own, parent or built_in) and inherited_from.
+- `defaults` (String) The organization's repository defaults: values (the seven settings), source (own, parent or built_in) and inherited_from.
 - `id` (String) The resource key the list was read from.
 - `items` (Attributes List) The rows. (see [below for nested schema](#nestedatt--items))
 - `runner_registered` (Boolean) Whether the organization has a fix runner registered.
@@ -59,4 +59,4 @@ Read-Only:
 - `id` (String) The row's identifier on the platform.
 - `reachable` (Boolean) Whether the organization's GitHub App still reaches the repository.
 - `repo` (String) owner/name.
-- `settings` (String) An object with one key per setting (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config), each holding value (what the repository runs with) and following (true when that is the organization default, false when the repository's own settings set it).
+- `settings` (String) An object with one key per setting (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config, auto_merge), each holding value (what the repository runs with) and following (true when that is the organization default, false when the repository's own settings set it).

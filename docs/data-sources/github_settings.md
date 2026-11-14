@@ -21,6 +21,7 @@ data "sreagent_github_settings" "this" {}
 ### Read-Only
 
 - `account` (String) The installation's account.
+- `auto_merge_requires_verification` (Boolean) Auto-merge only what SRE Agent verified. Off by default: a fix SRE Agent's own checks did not run for can still merge by itself once the checks its branch requires pass (where a repository's auto_merge says so), and a change pushed onto a pull request afterwards merges on those checks alone. An organization admin takes that risk by leaving it off. On: only a fix whose exact commit those checks ran on and passed merges by itself. In both positions a fix whose checks failed, or ran and could not judge it, or has an open self-review blocker, never merges by itself.
 - `auto_pr_enabled` (Boolean) Open fix PRs automatically.
 - `auto_revise_on_review` (Boolean) Revise a PR when a review asks.
 - `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.

@@ -71,7 +71,7 @@ defaults. `set_here` lists the settings a row holds and `following` the ones it 
   nothing to plan for it, and it changes something only for a setting the row holds.
 - A followed `draft_prs` reads null, so a configuration that leaves it out is already satisfied. Read
   `data.sreagent_effective_repo_settings` for the value a repository actually runs with.
-- For `fix_runner`, `platform_fallback`, `auto_dispatch`, `check_network` and `allow_ci_config`, a setting the
+- For `fix_runner`, `platform_fallback`, `auto_dispatch`, `check_network`, `allow_ci_config` and `auto_merge`, a setting the
   configuration states with the value the row already reads is not written, so restating what a row follows does
   not pin it. That holds while the default does not move: a stated value is kept, so after the default changes the
   next apply writes the stated value and the row holds it. Remove a stated value that should follow the default, or
@@ -89,18 +89,33 @@ defaults. `set_here` lists the settings a row holds and `following` the ones it 
 resource "sreagent_repo_setting" "web" {
   repo            = "acme/web"
   fix_runner      = "self_hosted"
-  follows_default = ["platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config"]
+  follows_default = ["platform_fallback", "auto_dispatch", "draft_prs", "check_network", "allow_ci_config", "auto_merge"]
 }
 ```
+
+`auto_merge` makes a fix pull request merge by itself once the checks its branch requires pass, so turning it on needs
+`confirm = ["auto_merge"]` for the apply that turns it on. An imported row that already reads it on needs nothing, and
+the exported file never writes `confirm`. Leave `confirm` out afterwards: a confirmation left in the configuration also
+confirms every later apply that turns auto-merge on again.
 
 ## The organization's repository defaults
 
 `sreagent_repository_defaults` imports with the ID `repository_defaults`. A child organization that follows its
 parent's defaults has no row of its own, so there is nothing to import: the import fails and says why. Declaring
-the resource instead gives the child its own defaults for all six settings and stops it following the parent (the
+the resource instead gives the child its own defaults for every setting and stops it following the parent (the
 plan says so and lists what moves). Destroying the resource hands the child back to the parent and is planned like
-a change: the destroy plan lists what moves, and if the parent's defaults turn CI configuration or network access
+a change: the destroy plan lists what moves, and if the parent's defaults turn CI configuration, network access or auto-merge
 on, it fails until `confirm_on_destroy` holds the confirmation (set it, apply, then destroy).
+
+## The organization's Slack thread settings
+
+`sreagent_organization_settings` imports with the ID `organization_settings`. `language`, `slack_thread_events_off` and
+`reaction_quick_row` are read into state like the rest: an empty `slack_thread_events_off` or `reaction_quick_row`
+(`[]`) is the platform's default (every event posted, SRE Agent's twelve quick reactions). The platform stores the
+fully qualified form of each emoji in `reaction_quick_row`, and the provider treats a spelling that differs only by the
+presentation selector (U+FE0E, U+FE0F) as the same emoji, so either spelling plans nothing after an import. Write the
+emoji itself, never a Slack name such as `:tada:`: the platform stores the emoji the name stands for, which would plan a
+change on every run, so the plan refuses it.
 
 ## The security settings and rules
 

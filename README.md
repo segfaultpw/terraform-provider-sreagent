@@ -38,6 +38,12 @@ Most of the provider works against any platform that serves the configuration AP
 | `sreagent_security_digest_settings`, `sreagent_security_notification_rule`, and their data sources | v0.476.4 |
 | `sreagent_security_code_classes`, `data.sreagent_security_code_classes` | v0.476.6 |
 | `sreagent_secret_allow_rule`, `data.sreagent_secret_allow_rules` | v0.477.0 |
+| `data.sreagent_alert_follow_up_settings` | v0.489.0 |
+| `language` on `sreagent_organization_settings` | v0.493.0 |
+| `slack_thread_events_off` on `sreagent_organization_settings` | v0.494.0 |
+| `data.sreagent_alert_informative_kinds` | v0.495.0 |
+| `auto_merge` (and `confirm`) on `sreagent_repo_setting`, `auto_merge` on `sreagent_repository_defaults`, `auto_merge_requires_verification` on `sreagent_github_settings` | v0.496.0 |
+| `reaction_quick_row` on `sreagent_organization_settings` | v0.500.0 |
 
 The security resources need nothing newer than the release that first served each (0.3.0 changes the provider and the
 platform's published API document, not what a platform serves). They also need the infrastructure suite in the

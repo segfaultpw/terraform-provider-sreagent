@@ -135,7 +135,7 @@ must agree with the first.
 Destroying `sreagent_repository_defaults` in a child organization hands its repositories back to the parent's
 defaults, so the destroy plan asks for the preview too: it warns with the settings and repositories that move
 (and a stop the organization made in the app, which the destroy ends even when no value moves), and the delete uses the fingerprint of that plan; with an `api:config_read` plan key the delete previews itself and writes against that preview. When the parent's
-defaults turn CI configuration or network access on, the platform wants a confirmation that a destroy cannot
+defaults turn CI configuration, network access or auto-merge on, the platform wants a confirmation that a destroy cannot
 carry: set `confirm_on_destroy`, apply, then destroy. The destroy plan fails without it and the provider never
 confirms on its own. A destroy that moves nothing and ends no stop says nothing. If the platform refuses the destroy, or the plan cannot be made, the error names the ways to stop managing the defaults without changing them (a `removed` block with `lifecycle { destroy = false }`, or `terraform state rm`). In an organization with no parent the plan only warns that the defaults stay in force.
 

@@ -17,6 +17,10 @@ resource "sreagent_github_settings" "this" {
   draft_prs             = true
   review_enabled        = true
   review_severity_floor = "high"
+
+  # Auto-merge only what SRE Agent verified: a fix whose checks did not run for
+  # it never merges by itself, even where a repository's auto_merge is on.
+  auto_merge_requires_verification = true
 }
 ```
 
@@ -25,6 +29,7 @@ resource "sreagent_github_settings" "this" {
 
 ### Optional
 
+- `auto_merge_requires_verification` (Boolean) Auto-merge only what SRE Agent verified. Off by default: a fix SRE Agent's own checks did not run for can still merge by itself once the checks its branch requires pass (where a repository's auto_merge says so), and a change pushed onto a pull request afterwards merges on those checks alone. An organization admin takes that risk by leaving it off. On: only a fix whose exact commit those checks ran on and passed merges by itself. In both positions a fix whose checks failed, or ran and could not judge it, or has an open self-review blocker, never merges by itself.
 - `auto_pr_enabled` (Boolean) Open fix PRs automatically.
 - `auto_revise_on_review` (Boolean) Revise a PR when a review asks.
 - `context_repo` (String) A repository whose files give reviews context.
