@@ -1,3 +1,19 @@
+## [0.6.0]
+
+FEATURES:
+
+* `sreagent_organization_settings` takes `looking_window_hours`: how many hours the board shows who is looking at a card after they put eyes on it. The values are `4`, `8`, `24` (the platform's default) and `72`; the plan refuses any other number. The platform also has "until they remove the reaction", which it stores as null and which has no number, so the attribute writes it as `0`: state `looking_window_hours = 0` to send null, and state reads `0` for it. The data source `data.sreagent_organization_settings` reads that null as null. An organization admin's key (`api:admin`) may change it.
+* `sreagent_organization_settings` takes `reaction_meanings_off`: the reaction meanings the organization switched off, as the whole set. `looking` switches off eyes on a card making the person a watcher and showing their face on its tile; `take_it` switches off a raised hand on a card nobody is assigned to assigning it to the person. `[]` leaves both on (the default), the order does not matter (the platform stores the set sorted), and a reaction already made keeps its chip. An organization admin's key (`api:admin`) may change it. The data source answers it too.
+* The vendored API document is re-vendored whole, which ends the daily contract drift failure that named `looking_window_hours` and `reaction_meanings_off` as missing from the provider.
+
+UPGRADE NOTES:
+
+* Nothing changes for a configuration written for 0.5.0: it does not name either attribute, and the plan shows nothing for it whatever the platform holds (any window, including until removed, and any set of meanings). An attribute a configuration leaves out is left as it is and is never sent.
+* To bring the settings under Terraform, state them (or import the singleton and read its state). Destroying the block leaves the current values on the platform, whatever they are (Terraform stops managing them and says so). To go back to the defaults, state `looking_window_hours = 24` and `reaction_meanings_off = []`, apply, then remove the block.
+* `0` is the provider's way of writing the platform's null for the window, chosen because no real window is 0 hours; the platform's API document does not publish a stand-in for it yet. If you also call the platform's API or MCP tools directly, the same setting reads `null` there.
+* Both settings need platform v0.506.0 (README). A platform from before it reads them as null (the window stays null, not `0`) and refuses them as arguments it does not declare.
+* The exported file (`GET /api/v1/config/export?format=hcl`) names provider 0.5.0 as its floor and names the two settings in a comment when they are not the defaults, until the platform moves its floor to 0.6.0 and states them in the block.
+
 ## [0.5.0]
 
 FEATURES:
