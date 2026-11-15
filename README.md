@@ -87,7 +87,8 @@ docker compose -f acceptance/docker-compose.yml down -v
 
 `acceptance/IMAGE` holds the short commit SHA (one line, no tag prefix, for example `8f621a6`) of the sre-agent image the
 stack runs, pulled from `ghcr.io/segfaultpw/sre-agent`. Set it to the tag production serves when a release is cut, so the
-acceptance run exercises the platform the provider ships against.
+acceptance run exercises the platform the provider ships against. The platform's release commits (`chore: release vX`) build no image, so use the short SHA of the last commit before
+the release commit, and check it exists with `docker buildx imagetools inspect ghcr.io/segfaultpw/sre-agent:<sha>`.
 
 ## Releasing
 

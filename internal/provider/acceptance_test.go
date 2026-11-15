@@ -380,6 +380,16 @@ func TestAccDataSources(t *testing.T) {
 		}
 	}
 	checks = append(checks, resource.TestMatchResourceAttr("data.sreagent_aws_external_id.x", "external_id", regexp.MustCompile(`^sreagent-`)))
+	// A fresh organization has no runner registered and has not switched the follow-up on, and
+	// these three data sources exist only on a platform that carries them, so the values pin both
+	// that the read works and what a seeded organization really answers.
+	checks = append(checks,
+		resource.TestCheckResourceAttr("data.sreagent_fix_runner_health.x", "state", "none"),
+		resource.TestCheckResourceAttr("data.sreagent_fix_runner_health.x", "waiting", "0"),
+		resource.TestCheckResourceAttr("data.sreagent_fix_runner_health.x", "consecutive_refusals", "0"),
+		resource.TestCheckResourceAttr("data.sreagent_alert_follow_up_settings.x", "enabled", "false"),
+		resource.TestCheckResourceAttr("data.sreagent_alert_informative_kinds.x", "items.#", "0"),
+	)
 	for _, key := range []string{"SREAGENT_API_KEY", "SREAGENT_READ_API_KEY"} {
 		t.Run(key, func(t *testing.T) {
 			provider := fmt.Sprintf("provider \"sreagent\" {\n  base_url = %q\n  organization = %q\n  api_key = %q\n}\n", os.Getenv("SREAGENT_BASE_URL"), os.Getenv("SREAGENT_ORGANIZATION"), os.Getenv(key))
