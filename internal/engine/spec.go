@@ -122,6 +122,15 @@ type Attr struct {
 	// and a configuration that names one is refused at validate with IgnoredWhy.
 	IgnoredValues []string
 	IgnoredWhy    string
+	// KeepUnknown: a StringList bounded by OneOf whose answer may hold entries a
+	// later platform release adds (this provider release does not know them). The
+	// platform replaces the whole list on a write, so a write that sent only the
+	// configuration's entries would switch such an entry back off. A read keeps
+	// those entries out of state (the plan shows no change for them) and records
+	// them in private state; a write sends the configuration's entries plus them;
+	// a plan that names the attribute warns once, naming them. A configuration can
+	// still not name one (OneOf refuses it at plan).
+	KeepUnknown bool
 	// Kept: an Optional list of the configuration that the provider keeps in
 	// state and never sends or reads from the API: a value a later operation
 	// that has no configuration (a destroy) needs. It is never a write by itself.
@@ -136,6 +145,10 @@ type Attr struct {
 	// terraform_null_as and the contract test pins it, and a value equal to it is
 	// accepted by Min, Max and Pattern even though it lies outside them.
 	NullAs string
+	// NullAsMeaning finishes the sentence "use <NullAs> ..." in the plan refusal of a
+	// value outside the bounds: what the stand-in means for this attribute. Empty
+	// reads "for none".
+	NullAsMeaning string
 	// Min and Max are the published minimum and maximum of an Int, checked at plan.
 	Min, Max *int64
 	// IntOneOf bounds an Int to these values (the published enum, less the null a NullAs stands for).

@@ -459,7 +459,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 		}
 		for _, v := range bounds {
 			if sentinel, ok := a.nullAsValue(); ok {
-				v = nullAsInt{sentinel: sentinel.(types.Int64).ValueInt64(), inner: v}
+				v = nullAsInt{sentinel: sentinel.(types.Int64).ValueInt64(), meaning: a.NullAsMeaning, inner: v}
 			}
 			ia.Validators = append(ia.Validators, v)
 		}
@@ -556,7 +556,7 @@ func (a Attr) stringBounds() []validator.String {
 	}
 	if sentinel, ok := a.nullAsValue(); ok {
 		for i, v := range out {
-			out[i] = nullAsString{sentinel: sentinel.(types.String).ValueString(), inner: v}
+			out[i] = nullAsString{sentinel: sentinel.(types.String).ValueString(), meaning: a.NullAsMeaning, inner: v}
 		}
 	}
 	return out
@@ -847,11 +847,13 @@ func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	r.planRepositoryWide(ctx, req, resp)
 	if req.State.Raw.IsNull() {
 		if current != nil {
+			r.warnUnknown(ctx, req.Config, r.unknownIn(current.row), &resp.Diagnostics)
 			r.planAdoptionWarnings(ctx, req.Plan, *current, &resp.Diagnostics)
 		}
 		return
 	}
 	r.settleEquivalentPlan(ctx, req, resp)
+	r.warnUnknown(ctx, req.Config, r.unknownHeld(ctx, req.Private), &resp.Diagnostics)
 	r.planWarnings(ctx, req.Plan, req.State, &resp.Diagnostics)
 	r.planResets(ctx, req, resp)
 	for _, a := range r.spec.Attrs {
@@ -939,6 +941,7 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		return diags
 	}
 	id := RowID(r.spec, row)
+	heldUnknown := map[string][]string{}
 	diags.Append(state.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 	for _, a := range r.spec.Attrs {
 		if a.Secret {
@@ -1002,6 +1005,11 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		if len(a.IgnoredValues) > 0 {
 			remote = withoutValues(remote, a.IgnoredValues)
 		}
+		if a.KeepUnknown {
+			var unknown []string
+			remote, unknown = a.splitUnknown(remote)
+			heldUnknown[a.Name] = unknown
+		}
 		if prior != nil && !a.Computed {
 			before, d := getValue(ctx, prior, a)
 			diags.Append(d...)
@@ -1019,6 +1027,12 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 		// would refuse every later write, and a missing one refuses them too.
 		b, _ := json.Marshal(out.ETag)
 		diags.Append(priv.SetKey(ctx, "etag", b)...)
+		for _, a := range r.spec.Attrs {
+			if a.KeepUnknown {
+				held, _ := json.Marshal(append([]string{}, heldUnknown[a.Name]...))
+				diags.Append(priv.SetKey(ctx, a.unknownKey(), held)...)
+			}
+		}
 		if out.ETag == "" {
 			diags.AddWarning("No row version", fmt.Sprintf("The platform answered sreagent_%s without an ETag, so Terraform cannot prove a later write starts from this version; updates and deletes are refused until a refresh records one.", r.spec.TypeName))
 		}
@@ -1065,6 +1079,7 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() && answers(row, a.Name) {
 			remote = sentinel
 		}
+		remote, _ = a.splitUnknown(remote)
 		if !keep(a, held, remote) && (!held.IsNull() || !remote.IsNull()) {
 			return false, diags
 		}
@@ -1232,6 +1247,9 @@ func (r *facadeResource) adoptSingleton(ctx context.Context, body map[string]any
 		if ifMatch == "" {
 			return nil, fmt.Errorf("the platform answered the current sreagent_%s without a row version, so adopting it could overwrite a change made in the app; nothing was written", r.spec.TypeName)
 		}
+		if row, err := decodeRow(current.Data); err == nil {
+			r.withUnknown(body, r.unknownIn(row))
+		}
 	case client.IsNotFound(err):
 		if len(body) == 0 {
 			return nil, fmt.Errorf("sreagent_%s has no row of its own yet; set at least one attribute to create it", r.spec.TypeName)
@@ -1282,6 +1300,7 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 	resp.Diagnostics.Append(r.setIdentity(ctx, resp.Identity, id.ValueString())...)
 	body, secrets, diags := r.body(ctx, req.Plan, req.Config, req.State, opUpdate)
 	resp.Diagnostics.Append(diags...)
+	r.withUnknown(body, r.unknownHeld(ctx, req.Private))
 	etag, d := r.etag(ctx, req.Private)
 	resp.Diagnostics.Append(d...)
 	if resp.Diagnostics.HasError() {

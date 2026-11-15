@@ -23,7 +23,9 @@ func organizationSeed(row map[string]any) {
 	row["reaction_meanings_off"] = []any{}
 }
 
-var reactionMeanings = []string{"looking", "take_it"}
+// reactionMeanings are the meanings the platform admits in a write, answer_feedback (offered by a later
+// platform release) included: the provider declares only looking and take_it.
+var reactionMeanings = []string{"looking", "take_it", "answer_feedback"}
 var lookingWindows = []string{"4", "8", "24", "72"}
 
 var threadEvents = []string{"column_moves", "card_done", "card_wont_do", "pull_request_opened", "pull_request_merged", "pull_request_closed", "pull_request_reopened", "change_pushed", "assistant_replies", "comments"}

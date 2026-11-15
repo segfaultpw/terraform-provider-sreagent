@@ -49,6 +49,7 @@ func (s rowSource) GetAttribute(_ context.Context, p path.Path, target any) diag
 		if sentinel, ok := found.nullAsValue(); ok && v.IsNull() && answers(s.row, found.Name) {
 			v = sentinel
 		}
+		v, _ = found.splitUnknown(v)
 		value = v
 	}
 	switch dst := target.(type) {

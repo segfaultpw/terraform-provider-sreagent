@@ -140,7 +140,7 @@ func TestLookingWindowRefusesAnythingOffTheListAtPlan(t *testing.T) {
 			Steps: []resource.TestStep{{
 				Config:      orgSettingsConfig(f.URL, "  looking_window_hours = "+bad),
 				PlanOnly:    true,
-				ExpectError: regexp.MustCompile(`(?s)looking_window_hours.*must be one of 4, 8, 24, 72`),
+				ExpectError: regexp.MustCompile(`(?s)looking_window_hours.*must\s+be\s+one\s+of\s+4,\s+8,\s+24,\s+72.*Use\s+0\s+to\s+show\s+who\s+is\s+looking\s+until\s+the\s+reaction\s+is\s+removed`),
 			}},
 		})
 	}
@@ -312,4 +312,125 @@ func TestAConfigurationThatNamesNeitherReactionMeaningSettingSendsNeither(t *tes
 			{Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12\n  board_tile_reactions = false"), ConfigPlanChecks: emptyPlan},
 		},
 	})
+}
+
+// ---- a meaning this provider release does not know ----
+
+// The platform already admits answer_feedback for a later release. An admin can switch it off
+// in the app; a block that names reaction_meanings_off must neither show it as a change nor
+// switch it back on, and cannot name it (the plan refuses it).
+func TestAMeaningThisReleaseDoesNotKnowStaysOffWhenTheBlockNamesTheSet(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+		r["reaction_meanings_off"] = []any{"answer_feedback", "looking"}
+	})
+	cfg := func(list string) string { return orgSettingsConfig(f.URL, "  reaction_meanings_off = "+list) }
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			// Adopting the row: the block names looking only, the apply sends both.
+			{
+				Config: cfg(`["looking"]`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.#", "1"),
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.0", "looking"),
+					holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking"}),
+					func(*terraform.State) error {
+						got, _ := f.LastBody("PUT", "organization_settings")["reaction_meanings_off"].([]any)
+						if !reflect.DeepEqual(got, []any{"looking", "answer_feedback"}) {
+							return fmt.Errorf("the apply must send looking and the meaning it does not know, sent %v", got)
+						}
+						return nil
+					},
+				),
+			},
+			{Config: cfg(`["looking"]`), ConfigPlanChecks: emptyPlan},
+			// A change of the set keeps it off too.
+			{
+				Config: cfg(`["take_it", "looking"]`),
+				Check:  holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking", "take_it"}),
+			},
+			{Config: cfg(`["take_it", "looking"]`), ConfigPlanChecks: emptyPlan},
+			{
+				Config: cfg(`[]`),
+				Check:  holds(f, "reaction_meanings_off", []any{"answer_feedback"}),
+			},
+			{Config: cfg(`[]`), ConfigPlanChecks: emptyPlan},
+			{ResourceName: orgSettings, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: cfg(`[]`)},
+		},
+	})
+}
+
+// A block that leaves the attribute out sends nothing and plans nothing, whatever the
+// platform holds.
+func TestAConfigurationThatLeavesTheMeaningsOutSendsNothingWhenThePlatformHoldsAnUnknownOne(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+		r["reaction_meanings_off"] = []any{"answer_feedback", "looking"}
+	})
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"),
+				Check: resource.ComposeTestCheckFunc(
+					notSent(f, "reaction_meanings_off"),
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.#", "1"),
+				),
+			},
+			{Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"), ConfigPlanChecks: emptyPlan},
+			{
+				Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 14"),
+				Check: resource.ComposeTestCheckFunc(
+					notSent(f, "reaction_meanings_off"),
+					holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking"}),
+				),
+			},
+		},
+	})
+}
+
+// A configuration cannot name a meaning this release does not know: it is refused at plan.
+func TestAConfigurationCannotNameAMeaningThisReleaseDoesNotKnow(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config:      orgSettingsConfig(f.URL, "  reaction_meanings_off = [\"answer_feedback\"]"),
+			PlanOnly:    true,
+			ExpectError: regexp.MustCompile(`(?s)reaction_meanings_off.*value must be one of`),
+		}},
+	})
+	if n := f.Calls("PUT", "organization_settings"); n != 0 {
+		t.Fatalf("a refused configuration still sent %d PUTs", n)
+	}
+}
+
+// ---- against a platform before v0.506.0 ----
+
+// A platform from before the settings refuses each as an argument its tool does not declare,
+// and the person reads the platform's own sentence, not an inconsistent result.
+func TestSettingEitherReactionSettingAgainstAnOlderPlatformShowsThePlatformsRefusal(t *testing.T) {
+	for _, c := range []struct{ attr, line string }{
+		{"looking_window_hours", "  looking_window_hours = 0"},
+		{"looking_window_hours", "  looking_window_hours = 8"},
+		{"reaction_meanings_off", "  reaction_meanings_off = [\"looking\"]"},
+	} {
+		t.Run(c.line, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+				delete(r, "looking_window_hours")
+				delete(r, "reaction_meanings_off")
+			})
+			f.Undeclare("organization_settings", "looking_window_hours")
+			f.Undeclare("organization_settings", "reaction_meanings_off")
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config:      orgSettingsConfig(f.URL, c.line),
+					ExpectError: regexp.MustCompile(`(?s)` + c.attr + `\s+is\s+not\s+an\s+argument\s+this\s+tool\s+declares`),
+				}},
+			})
+		})
+	}
 }

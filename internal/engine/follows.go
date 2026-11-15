@@ -2,8 +2,10 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -328,4 +330,102 @@ func withoutValues(v attr.Value, drop []string) attr.Value {
 		kept = append(kept, e)
 	}
 	return types.ListValueMust(types.StringType, kept)
+}
+
+// splitUnknown separates the entries of an answered list that the attribute's
+// OneOf does not name (KeepUnknown) from those it does.
+func (a Attr) splitUnknown(v attr.Value) (attr.Value, []string) {
+	l, ok := v.(types.List)
+	if !a.KeepUnknown || !ok || l.IsNull() || l.IsUnknown() {
+		return v, nil
+	}
+	known := []attr.Value{}
+	unknown := []string{}
+	for _, e := range l.Elements() {
+		s, ok := e.(types.String)
+		if ok && !s.IsNull() && !s.IsUnknown() && !slices.Contains(a.OneOf, s.ValueString()) {
+			unknown = append(unknown, s.ValueString())
+			continue
+		}
+		known = append(known, e)
+	}
+	return types.ListValueMust(types.StringType, known), unknown
+}
+
+// unknownKey is the private state key that records the entries of a KeepUnknown
+// list the provider does not know.
+func (a Attr) unknownKey() string { return "unknown_" + a.Name }
+
+// unknownIn reads the unknown entries of every KeepUnknown attribute of an
+// answered row.
+func (r *facadeResource) unknownIn(row map[string]any) map[string][]string {
+	out := map[string][]string{}
+	for _, a := range r.spec.Attrs {
+		if !a.KeepUnknown {
+			continue
+		}
+		remote, err := fromJSON(a.Kind, row[a.Name])
+		if err != nil {
+			continue
+		}
+		if _, unknown := a.splitUnknown(remote); len(unknown) > 0 {
+			out[a.Name] = unknown
+		}
+	}
+	return out
+}
+
+// unknownHeld reads the unknown entries the last read or write recorded.
+func (r *facadeResource) unknownHeld(ctx context.Context, priv privateData) map[string][]string {
+	out := map[string][]string{}
+	if priv == nil {
+		return out
+	}
+	for _, a := range r.spec.Attrs {
+		if !a.KeepUnknown {
+			continue
+		}
+		b, _ := priv.GetKey(ctx, a.unknownKey())
+		var held []string
+		if len(b) > 0 && json.Unmarshal(b, &held) == nil && len(held) > 0 {
+			out[a.Name] = held
+		}
+	}
+	return out
+}
+
+// withUnknown adds the entries the platform holds that this provider does not
+// know to every KeepUnknown list the body sends, so the write leaves them as
+// they are.
+func (r *facadeResource) withUnknown(body map[string]any, held map[string][]string) {
+	for _, a := range r.spec.Attrs {
+		list, ok := body[a.Name].([]string)
+		if !a.KeepUnknown || !ok {
+			continue
+		}
+		out := slices.Clone(list)
+		for _, e := range held[a.Name] {
+			if !slices.Contains(out, e) {
+				out = append(out, e)
+			}
+		}
+		body[a.Name] = out
+	}
+}
+
+// warnUnknown says, once for each KeepUnknown attribute the configuration names,
+// which entries the platform holds that this provider release cannot manage.
+func (r *facadeResource) warnUnknown(ctx context.Context, config valueSource, held map[string][]string, diags *diag.Diagnostics) {
+	for _, a := range r.spec.Attrs {
+		if !a.KeepUnknown || len(held[a.Name]) == 0 {
+			continue
+		}
+		var list types.List
+		diags.Append(config.GetAttribute(ctx, path.Root(a.Attribute()), &list)...)
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		diags.AddAttributeWarning(path.Root(a.Attribute()), "The platform holds a value this provider release does not know",
+			fmt.Sprintf("%s holds %s on the platform, which this provider release cannot manage. It is left as it is by every apply and never shown as a change; upgrade the provider to manage it.", a.Attribute(), strings.Join(held[a.Name], ", ")))
+	}
 }

@@ -349,3 +349,22 @@ func TestANullAsIsReadOnlyForAnAnswerThatNamesTheField(t *testing.T) {
 		}
 	}
 }
+
+func TestTheRefusalOfAnIntOneOfSaysWhatItsNullStandInMeans(t *testing.T) {
+	spec := Spec{Key: "w", TypeName: "w", Shape: Singleton, Lifecycle: true,
+		Attrs: []Attr{{Name: "hours", Kind: Int, IntOneOf: []int64{4, 8, 24, 72}, NullAs: "0", NullAsMeaning: "to show who is looking until the reaction is removed"}}}
+	d := validateInt(t, spec, "hours", 48)
+	if !d.HasError() {
+		t.Fatal("48 must be refused")
+	}
+	text := d.Errors()[0].Detail()
+	for _, want := range []string{"4, 8, 24, 72", "Use 0 to show who is looking until the reaction is removed."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the refusal %q must contain %q", text, want)
+		}
+	}
+	plain := validateInt(t, windowSpec, "hours", 48)
+	if got := plain.Errors()[0].Detail(); !strings.Contains(got, "Use 0 for none.") {
+		t.Errorf("a stand-in with no meaning of its own reads for none, got %q", got)
+	}
+}

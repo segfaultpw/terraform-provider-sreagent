@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -199,13 +201,14 @@ func (v intOneOf) ValidateInt64(ctx context.Context, req validator.Int64Request,
 // so no real value can be mistaken for it.
 type nullAsString struct {
 	sentinel string
+	meaning  string
 	inner    validator.String
 }
 
 var _ validator.String = nullAsString{}
 
 func (v nullAsString) Description(ctx context.Context) string {
-	return fmt.Sprintf("%s, or %q for none", v.inner.Description(ctx), v.sentinel)
+	return fmt.Sprintf("%s, or %q %s", v.inner.Description(ctx), v.sentinel, meaningOr(v.meaning))
 }
 
 func (v nullAsString) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
@@ -214,19 +217,22 @@ func (v nullAsString) ValidateString(ctx context.Context, req validator.StringRe
 	if !req.ConfigValue.IsNull() && !req.ConfigValue.IsUnknown() && req.ConfigValue.ValueString() == v.sentinel {
 		return
 	}
-	v.inner.ValidateString(ctx, req, resp)
+	var inner validator.StringResponse
+	v.inner.ValidateString(ctx, req, &inner)
+	addWithStandIn(&resp.Diagnostics, inner.Diagnostics, req.Path, fmt.Sprintf("%q", v.sentinel), v.meaning)
 }
 
 // nullAsInt is nullAsString for an integer.
 type nullAsInt struct {
 	sentinel int64
+	meaning  string
 	inner    validator.Int64
 }
 
 var _ validator.Int64 = nullAsInt{}
 
 func (v nullAsInt) Description(ctx context.Context) string {
-	return fmt.Sprintf("%s, or %d for none", v.inner.Description(ctx), v.sentinel)
+	return fmt.Sprintf("%s, or %d %s", v.inner.Description(ctx), v.sentinel, meaningOr(v.meaning))
 }
 
 func (v nullAsInt) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
@@ -235,7 +241,30 @@ func (v nullAsInt) ValidateInt64(ctx context.Context, req validator.Int64Request
 	if !req.ConfigValue.IsNull() && !req.ConfigValue.IsUnknown() && req.ConfigValue.ValueInt64() == v.sentinel {
 		return
 	}
-	v.inner.ValidateInt64(ctx, req, resp)
+	var inner validator.Int64Response
+	v.inner.ValidateInt64(ctx, req, &inner)
+	addWithStandIn(&resp.Diagnostics, inner.Diagnostics, req.Path, fmt.Sprint(v.sentinel), v.meaning)
+}
+
+// meaningOr is what a null stand-in means when its attribute does not say.
+func meaningOr(meaning string) string {
+	if meaning == "" {
+		return "for none"
+	}
+	return meaning
+}
+
+// addWithStandIn passes the inner validator's diagnostics on, ending each refusal
+// with what the attribute's null stand-in means, so a person who wants that
+// setting is told how to write it.
+func addWithStandIn(into *diag.Diagnostics, from diag.Diagnostics, p path.Path, sentinel, meaning string) {
+	for _, d := range from {
+		if d.Severity() != diag.SeverityError {
+			into.Append(d)
+			continue
+		}
+		into.AddAttributeError(p, d.Summary(), fmt.Sprintf("%s Use %s %s.", d.Detail(), sentinel, meaningOr(meaning)))
+	}
 }
 
 // rfc3339 refuses a time that is not RFC 3339 with a zone: the platform stores an
