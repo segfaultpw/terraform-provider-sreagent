@@ -513,9 +513,7 @@ var unmodelled = map[string][]string{
 // held to the same rules as a published one (the update body accepts null, and the value
 // lies outside the published values), and the entry must go, and the spec follow the
 // contract, the day the platform publishes one.
-var nullAsUnpublished = map[string]string{
-	"organization_settings.looking_window_hours": "0",
-}
+var nullAsUnpublished = map[string]string{}
 
 func nullAsLiteral(text string) any {
 	var v any
@@ -1168,9 +1166,9 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			p["enum"] = append(slices.Clone(p["enum"].([]any)), float64(0))
 			d.Paths["/organization_settings"]["put"] = op
 		}},
-		{"the platform publishes a stand-in for the looking window", "organization_settings", func(d *Doc) {
+		{"the platform stops publishing the stand-in for the looking window", "organization_settings", func(d *Doc) {
 			r := d.Resources["organization_settings"]
-			r.TerraformNullAs = map[string]any{"looking_window_hours": float64(0)}
+			r.TerraformNullAs = map[string]any{}
 			d.Resources["organization_settings"] = r
 		}},
 		{"the platform publishes another stand-in for the looking window", "organization_settings", func(d *Doc) {
@@ -1255,6 +1253,10 @@ func TestEveryPatternTheEngineHoldsCompiles(t *testing.T) {
 // A platform that publishes a stand-in other than the one configurations already write is
 // told to publish that one; the provider does not follow it.
 func TestAnotherPublishedStandInIsAnsweredByAskingThePlatformToPublishOurs(t *testing.T) {
+	// The looking window's stand-in is published now; the test puts the entry back for
+	// its own duration to exercise the rule the next unpublished stand-in will meet.
+	nullAsUnpublished["organization_settings.looking_window_hours"] = "0"
+	defer delete(nullAsUnpublished, "organization_settings.looking_window_hours")
 	d := doc(t)
 	r := d.Resources["organization_settings"]
 	for value, want := range map[float64]string{
