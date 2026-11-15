@@ -1,3 +1,18 @@
+## [0.5.0]
+
+FEATURES:
+
+* `sreagent_organization_settings` takes `board_tile_reactions`: whether board tiles show a card's three most used reactions with their counts. It is on by default on the platform; each person can choose otherwise on their account page, and their choice wins over the organization's. An organization admin's key (`api:admin`) may change it. The data source `data.sreagent_organization_settings` answers it too.
+* `data.sreagent_fix_runner_health` reads whether the organization's self-hosted fix runner is working, as the state line of the runner card says it: `state` (`working`, `degraded`, `refusing`, `checking` or `none`), `since`, `consecutive_refusals`, `last_refusal` (the AI provider's last refusal in its own scrubbed words, as JSON), `waiting` (requests held for the runner), `degraded_since`, `hold_while_provider_down` and `next_check_at`. It is read only: Resume, Discard and the holding switch are on the runner card and in MCP tools, and the platform publishes no Terraform type for it. The read needs an organization admin's key and the GitHub integration and the self-hosted runner in the plan; without them the platform answers 403 and the read fails with its sentence. Needs platform v0.503.0.
+* The vendored API document is re-vendored whole, which ends the daily contract drift failure that named `board_tile_reactions` and `fix_runner_health` as missing from the provider.
+
+UPGRADE NOTES:
+
+* Nothing changes for a configuration written for 0.4.0: it does not name `board_tile_reactions`, and the plan shows nothing for it whatever the platform holds (true or false). An attribute a configuration leaves out is left as it is and is never sent.
+* To bring the setting under Terraform, state it (or import the singleton and read its state). The platform's default (on) stays in force when the block is destroyed: Terraform stops managing it and says so. To go back to the default, state `board_tile_reactions = true`, apply, then remove the block.
+* `board_tile_reactions` needs platform v0.502.0 and `data.sreagent_fix_runner_health` v0.503.0 (README). A platform from before the first reads it as null and refuses it as an argument it does not declare; before the second, the data source fails with an error naming the release.
+* The exported file (`GET /api/v1/config/export?format=hcl`) names provider 0.4.0 as its floor until the platform moves it to 0.5.0, and states `board_tile_reactions` in a block only from then on.
+
 ## [0.4.0]
 
 FEATURES:

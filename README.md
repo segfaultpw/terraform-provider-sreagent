@@ -44,6 +44,8 @@ Most of the provider works against any platform that serves the configuration AP
 | `data.sreagent_alert_informative_kinds` | v0.495.0 |
 | `auto_merge` (and `confirm`) on `sreagent_repo_setting`, `auto_merge` on `sreagent_repository_defaults`, `auto_merge_requires_verification` on `sreagent_github_settings` | v0.496.0 |
 | `reaction_quick_row` on `sreagent_organization_settings` | v0.500.0 |
+| `board_tile_reactions` on `sreagent_organization_settings` | v0.502.0 |
+| `data.sreagent_fix_runner_health` | v0.503.0 |
 
 The security resources need nothing newer than the release that first served each (0.3.0 changes the provider and the
 platform's published API document, not what a platform serves). They also need the infrastructure suite in the
