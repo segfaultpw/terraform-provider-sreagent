@@ -414,7 +414,10 @@ func (r *facadeResource) withUnknown(body map[string]any, held map[string][]stri
 }
 
 // warnUnknown says, once for each KeepUnknown attribute the configuration names,
-// which entries the platform holds that this provider release cannot manage.
+// which entries the platform holds that this provider release cannot manage. It
+// runs on a plan of a resource already in state (from the private state its last
+// read or write recorded) and on an adopting plan of a PlanAdoption singleton;
+// the first plan of any other singleton has no row to read, so it stays silent.
 func (r *facadeResource) warnUnknown(ctx context.Context, config valueSource, held map[string][]string, diags *diag.Diagnostics) {
 	for _, a := range r.spec.Attrs {
 		if !a.KeepUnknown || len(held[a.Name]) == 0 {
@@ -426,6 +429,6 @@ func (r *facadeResource) warnUnknown(ctx context.Context, config valueSource, he
 			continue
 		}
 		diags.AddAttributeWarning(path.Root(a.Attribute()), "The platform holds a value this provider release does not know",
-			fmt.Sprintf("%s holds %s on the platform, which this provider release cannot manage. It is left as it is by every apply and never shown as a change; upgrade the provider to manage it.", a.Attribute(), strings.Join(held[a.Name], ", ")))
+			fmt.Sprintf("%s holds %s on the platform, which this provider release cannot manage. It is left as it is by every apply and never shown as a change. To manage it, upgrade the provider; after the upgrade the plan shows it as removed from %s unless the configuration names it, and the next apply switches it back on, so add it to the configuration when upgrading if it should stay off.", a.Attribute(), strings.Join(held[a.Name], ", "), a.Attribute()))
 	}
 }
