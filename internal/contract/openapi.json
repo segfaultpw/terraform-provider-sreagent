@@ -1433,6 +1433,19 @@
               "null"
             ]
           },
+          "looking_window_hours": {
+            "enum": [
+              4,
+              8,
+              24,
+              72,
+              null
+            ],
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "mfa_effective": {
             "type": "object"
           },
@@ -1451,6 +1464,19 @@
           "monthly_ai_budget_usd": {
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "reaction_meanings_off": {
+            "items": {
+              "enum": [
+                "looking",
+                "take_it"
+              ],
+              "type": "string"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -1545,6 +1571,8 @@
           "slack_thread_events_off",
           "reaction_quick_row",
           "board_tile_reactions",
+          "looking_window_hours",
+          "reaction_meanings_off",
           "mfa_effective",
           "session_idle_effective",
           "updated_at"
@@ -6353,7 +6381,7 @@
     },
     "/organization_settings": {
       "get": {
-        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), the connections of its parent organization it does not use (inheritance_stopped), the language of the outcome lines written into a card's Slack threads (language, en or es) and the events switched off in those threads (slack_thread_events_off), the organization's quick reactions (reaction_quick_row, empty for SRE Agent's twelve) and whether board tiles show the top reactions of each card (board_tile_reactions, on by default; each person can choose otherwise).",
+        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), the connections of its parent organization it does not use (inheritance_stopped), the language of the outcome lines written into a card's Slack threads (language, en or es) and the events switched off in those threads (slack_thread_events_off), the organization's quick reactions (reaction_quick_row, empty for SRE Agent's twelve) and whether board tiles show the top reactions of each card (board_tile_reactions, on by default; each person can choose otherwise), which reactions on a card mean something (reaction_meanings_off: the meanings switched off, looking and take_it; empty means both on) and how long the board shows who is looking (looking_window_hours: 4, 8, 24 or 72, or null until the reaction is removed).",
         "operationId": "get_organization_settings",
         "parameters": [],
         "responses": {
@@ -6382,7 +6410,7 @@
         "summary": "Read the organization_settings"
       },
       "put": {
-        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too. language (en or es) is the language SRE Agent writes the outcome lines of a card's Slack threads in; an org admin's token or an API key with mcp:admin may change it. slack_thread_events_off is the list of events NOT posted in a card's Slack threads, as the whole set (an empty list posts everything, which is the default): column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies and comments. A fix or change that failed or was declined, a request an approval cancelled, a local fix session that failed and a change that could not be made on the pull request it was asked for (with the new pull request opened instead, or a pull request opened after a failure was posted) are always posted and have no name here. The same callers may change it. reaction_quick_row is the list of up to 12 emoji shown first when someone adds a reaction (an empty list uses SRE Agent's twelve); the same callers may change it. board_tile_reactions is whether board tiles show the top reactions of each card (on by default; each person can choose otherwise on their account page); the same callers may change it.",
+        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too. language (en or es) is the language SRE Agent writes the outcome lines of a card's Slack threads in; an org admin's token or an API key with mcp:admin may change it. slack_thread_events_off is the list of events NOT posted in a card's Slack threads, as the whole set (an empty list posts everything, which is the default): column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies and comments. A fix or change that failed or was declined, a request an approval cancelled, a local fix session that failed and a change that could not be made on the pull request it was asked for (with the new pull request opened instead, or a pull request opened after a failure was posted) are always posted and have no name here. The same callers may change it. reaction_quick_row is the list of up to 12 emoji shown first when someone adds a reaction (an empty list uses SRE Agent's twelve); the same callers may change it. board_tile_reactions is whether board tiles show the top reactions of each card (on by default; each person can choose otherwise on their account page); the same callers may change it. reaction_meanings_off is the list of reaction meanings switched off, as the whole set (an empty list leaves both on): looking, eyes on a card makes the person a watcher and shows their face, and take_it, a raised hand on an unassigned card assigns it to them. looking_window_hours is how long the board shows who is looking: 4, 8, 24 (the default) or 72, or null until the reaction is removed. The same callers may change both.",
         "operationId": "update_organization_settings",
         "parameters": [],
         "requestBody": {
@@ -6475,6 +6503,20 @@
                     ],
                     "type": "string"
                   },
+                  "looking_window_hours": {
+                    "description": "How many hours the board shows who is looking at a card after they put eyes on it: 4, 8, 24 (the default) or 72, or null to show them until they remove the reaction.",
+                    "enum": [
+                      4,
+                      8,
+                      24,
+                      72,
+                      null
+                    ],
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "mfa_grace_days": {
                     "description": "Days from switching the requirement on that a member without a factor can still enter the organization (0 holds them at once, default 7). Changing it needs a user token of an org admin of this organization.",
                     "maximum": 30,
@@ -6491,6 +6533,18 @@
                       "integer",
                       "null"
                     ]
+                  },
+                  "reaction_meanings_off": {
+                    "description": "The reaction meanings switched off, as the whole set; an empty list leaves every meaning on (the default). looking: eyes on a card makes the person a watcher and shows their face on its tile. take_it: a raised hand on a card nobody is assigned to assigns it to them. An org admin's token or an API key with mcp:admin may change it.",
+                    "items": {
+                      "enum": [
+                        "looking",
+                        "take_it"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
                   },
                   "reaction_quick_row": {
                     "description": "The emoji shown first when someone adds a reaction, in order, as the whole list: each one emoji character or its Slack name in colons (such as :tada:). An empty list uses SRE Agent's twelve. An org admin's token or an API key with mcp:admin may change it.",
@@ -12680,7 +12734,9 @@
         "language",
         "slack_thread_events_off",
         "reaction_quick_row",
-        "board_tile_reactions"
+        "board_tile_reactions",
+        "looking_window_hours",
+        "reaction_meanings_off"
       ],
       "id_args": [],
       "import_key": "organization_settings",
@@ -12719,9 +12775,11 @@
         "investigation_cooldown_minutes",
         "investigation_paused",
         "language",
+        "looking_window_hours",
         "mfa_grace_days",
         "mfa_required",
         "monthly_ai_budget_usd",
+        "reaction_meanings_off",
         "reaction_quick_row",
         "restrict_domain_signups",
         "session_idle_minutes",

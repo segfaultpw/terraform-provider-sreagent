@@ -138,6 +138,8 @@ type Attr struct {
 	NullAs string
 	// Min and Max are the published minimum and maximum of an Int, checked at plan.
 	Min, Max *int64
+	// IntOneOf bounds an Int to these values (the published enum, less the null a NullAs stands for).
+	IntOneOf []int64
 	// MinLength and MaxLength are the published length bounds of a String, in code
 	// points (the platform counts code points; the framework's own validator counts
 	// bytes). Zero means none.

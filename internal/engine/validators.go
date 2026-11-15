@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -169,6 +170,28 @@ func (v intBounds) ValidateInt64(ctx context.Context, req validator.Int64Request
 	if (v.min != nil && n < *v.min) || (v.max != nil && n > *v.max) {
 		resp.Diagnostics.AddAttributeError(req.Path, "Out of range", fmt.Sprintf("%s %s, got %d.", req.Path, v.Description(ctx), n))
 	}
+}
+
+// intOneOf refuses an Int that is not one of the published values.
+type intOneOf struct{ values []int64 }
+
+var _ validator.Int64 = intOneOf{}
+
+func (v intOneOf) Description(context.Context) string {
+	parts := make([]string, len(v.values))
+	for i, n := range v.values {
+		parts[i] = fmt.Sprint(n)
+	}
+	return "must be one of " + strings.Join(parts, ", ")
+}
+
+func (v intOneOf) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v intOneOf) ValidateInt64(ctx context.Context, req validator.Int64Request, resp *validator.Int64Response) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || slices.Contains(v.values, req.ConfigValue.ValueInt64()) {
+		return
+	}
+	resp.Diagnostics.AddAttributeError(req.Path, "Not an allowed value", fmt.Sprintf("%s %s, got %d.", req.Path, v.Description(ctx), req.ConfigValue.ValueInt64()))
 }
 
 // nullAsString lets the value an attribute reads a null as through a validator

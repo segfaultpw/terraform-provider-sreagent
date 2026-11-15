@@ -182,6 +182,14 @@ func (a Attr) nullAsValue() (attr.Value, bool) {
 	return a.literal(a.NullAs)
 }
 
+// answers is whether the platform's answer names the field at all. A null it answers is the
+// setting a NullAs stands for; a field it leaves out (a platform from before the field)
+// holds no setting, so it stays null instead of reading as the stand-in.
+func answers(row map[string]any, name string) bool {
+	_, ok := row[name]
+	return ok
+}
+
 // defaultValue is the platform's create default (Attr.Default).
 func (a Attr) defaultValue() (attr.Value, bool) {
 	return a.literal(a.Default)

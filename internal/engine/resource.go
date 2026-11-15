@@ -450,8 +450,14 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			mods = append(mods, int64planmodifier.RequiresReplace())
 		}
 		ia := schema.Int64Attribute{Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods}
+		var bounds []validator.Int64
 		if a.Min != nil || a.Max != nil {
-			var v validator.Int64 = intBounds{min: a.Min, max: a.Max}
+			bounds = append(bounds, intBounds{min: a.Min, max: a.Max})
+		}
+		if len(a.IntOneOf) > 0 {
+			bounds = append(bounds, intOneOf{values: a.IntOneOf})
+		}
+		for _, v := range bounds {
 			if sentinel, ok := a.nullAsValue(); ok {
 				v = nullAsInt{sentinel: sentinel.(types.Int64).ValueInt64(), inner: v}
 			}
@@ -990,7 +996,7 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 			diags.AddAttributeError(path.Root(a.Attribute()), "Unexpected API answer", err.Error())
 			continue
 		}
-		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() {
+		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() && answers(row, a.Name) {
 			remote = sentinel
 		}
 		if len(a.IgnoredValues) > 0 {
@@ -1056,7 +1062,7 @@ func (r *facadeResource) matchesState(ctx context.Context, state valueSource, ou
 		if err != nil || held == nil {
 			return false, diags
 		}
-		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() {
+		if sentinel, ok := a.nullAsValue(); ok && remote.IsNull() && answers(row, a.Name) {
 			remote = sentinel
 		}
 		if !keep(a, held, remote) && (!held.IsNull() || !remote.IsNull()) {

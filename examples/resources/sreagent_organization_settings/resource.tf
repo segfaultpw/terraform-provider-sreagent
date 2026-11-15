@@ -16,4 +16,15 @@ resource "sreagent_organization_settings" "this" {
   # Whether board tiles show a card's most used reactions. On by default; each
   # person can choose otherwise on their account page, and their choice wins.
   board_tile_reactions = false
+
+  # How many hours the board shows who is looking at a card after they put eyes
+  # on it: 4, 8, 24 (the default) or 72. 0 shows them until they remove the
+  # reaction (the platform stores that as null, which has no number).
+  looking_window_hours = 72
+
+  # The reaction meanings switched off, as the whole set: looking (eyes on a card
+  # makes the person a watcher and shows their face on its tile) and take_it (a
+  # raised hand on a card nobody is assigned to assigns it to them). [] leaves
+  # both on.
+  reaction_meanings_off = ["take_it"]
 }

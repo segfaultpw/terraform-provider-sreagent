@@ -12,13 +12,19 @@ import (
 func isOrganization(key string) bool { return key == "organization_settings" }
 
 // organizationSeed is what the platform answers for an organization nobody has
-// changed: English, every thread event posted, SRE Agent's twelve quick reactions, reactions on board tiles.
+// changed: English, every thread event posted, SRE Agent's twelve quick reactions, reactions on board tiles,
+// every reaction meaning on and looking shown for 24 hours.
 func organizationSeed(row map[string]any) {
 	row["language"] = "en"
 	row["slack_thread_events_off"] = []any{}
 	row["reaction_quick_row"] = []any{}
 	row["board_tile_reactions"] = true
+	row["looking_window_hours"] = 24
+	row["reaction_meanings_off"] = []any{}
 }
+
+var reactionMeanings = []string{"looking", "take_it"}
+var lookingWindows = []string{"4", "8", "24", "72"}
 
 var threadEvents = []string{"column_moves", "card_done", "card_wont_do", "pull_request_opened", "pull_request_merged", "pull_request_closed", "pull_request_reopened", "change_pushed", "assistant_replies", "comments"}
 
@@ -77,6 +83,19 @@ func organizationRefusal(body map[string]any) (int, string) {
 			}
 		}
 	}
+	if v, ok := body["looking_window_hours"]; ok && v != nil {
+		if !slices.Contains(lookingWindows, fmt.Sprint(v)) {
+			return http.StatusUnprocessableEntity, "looking_window_hours must be 4, 8, 24 or 72, or null to show who is looking until the reaction is removed"
+		}
+	}
+	if v, ok := body["reaction_meanings_off"]; ok {
+		list, _ := v.([]any)
+		for _, e := range list {
+			if !slices.Contains(reactionMeanings, fmt.Sprint(e)) {
+				return http.StatusUnprocessableEntity, "reaction_meanings_off must name only meanings that can be switched off: " + strings.Join(reactionMeanings, ", ")
+			}
+		}
+	}
 	if v, ok := body["reaction_quick_row"]; ok {
 		list, _ := v.([]any)
 		if len(list) > 12 {
@@ -115,6 +134,21 @@ func organizationStore(row, body map[string]any) {
 			out = append(out, n)
 		}
 		row["slack_thread_events_off"] = out
+	}
+	if v, ok := body["reaction_meanings_off"]; ok {
+		list, _ := v.([]any)
+		names := []string{}
+		for _, e := range list {
+			if n := fmt.Sprint(e); !slices.Contains(names, n) {
+				names = append(names, n)
+			}
+		}
+		sort.Strings(names)
+		out := make([]any, 0, len(names))
+		for _, n := range names {
+			out = append(out, n)
+		}
+		row["reaction_meanings_off"] = out
 	}
 	if v, ok := body["reaction_quick_row"]; ok {
 		list, _ := v.([]any)

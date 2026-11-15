@@ -46,7 +46,7 @@ func (s rowSource) GetAttribute(_ context.Context, p path.Path, target any) diag
 			diags.AddAttributeError(p, "Unexpected API answer", err.Error())
 			return diags
 		}
-		if sentinel, ok := found.nullAsValue(); ok && v.IsNull() {
+		if sentinel, ok := found.nullAsValue(); ok && v.IsNull() && answers(s.row, found.Name) {
 			v = sentinel
 		}
 		value = v

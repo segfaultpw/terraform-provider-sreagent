@@ -171,7 +171,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 			published = put.Properties
 		}
 		checkKeywords(s.Key, a, f, published[f], add)
-		checkNullAs(a, f, res, put.Properties[f], add)
+		checkNullAs(s.Key, a, f, res, put.Properties[f], add)
 	}
 	for _, f := range res.SecretFields {
 		if a, ok := byName[f]; !ok || !a.Secret {
@@ -508,6 +508,23 @@ var unmodelled = map[string][]string{
 	"organization_settings.alert_refire_cooldown_minutes": {"minimum", "maximum"},
 }
 
+// nullAsUnpublished are the null stand-ins the provider chose for a field whose null is a
+// real setting while the platform publishes no terraform_null_as for it. The stand-in is
+// held to the same rules as a published one (the update body accepts null, and the value
+// lies outside the published values), and the entry must go, and the spec follow the
+// contract, the day the platform publishes one.
+var nullAsUnpublished = map[string]string{
+	"organization_settings.looking_window_hours": "0",
+}
+
+func nullAsLiteral(text string) any {
+	var v any
+	if err := json.Unmarshal([]byte(text), &v); err != nil {
+		panic(err)
+	}
+	return v
+}
+
 // keywords is what a write body publishes about one property, in the forms the
 // engine's attributes take.
 type keywords struct {
@@ -605,6 +622,24 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 	if a.Kind == engine.StringList {
 		enum, hasEnum, label = kw.itemEnum, kw.hasItemEnum, "items.enum"
 	}
+	if a.Kind == engine.Int && hasEnum {
+		// A number enum lists a null as <nil>: the null is the setting NullAs stands for.
+		hasNull := slices.Contains(enum, "<nil>")
+		enum = slices.DeleteFunc(slices.Clone(enum), func(e string) bool { return e == "<nil>" })
+		if hasNull != (a.NullAs != "") {
+			add("field %s: the contract's enum holds null is %v, but NullAs is %q", f, hasNull, a.NullAs)
+		}
+		have := make([]string, 0, len(a.IntOneOf))
+		for _, n := range a.IntOneOf {
+			have = append(have, fmt.Sprint(n))
+		}
+		if !slices.Equal(have, enum) {
+			add("field %s IntOneOf %v, contract %s %v", f, have, label, enum)
+		}
+		hasEnum = false
+	} else if len(a.IntOneOf) > 0 {
+		add("field %s has IntOneOf but the contract declares no enum", f)
+	}
 	switch {
 	case hasEnum && !slices.Equal(a.OneOf, enum):
 		if len(a.OneOf) > 0 || !exempt(label) {
@@ -675,8 +710,19 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 // field with the same value, the update body accepts the null it is sent as, and
 // the value lies where no real value can (outside the published bounds or off
 // the published pattern), so a real value is never mistaken for the null.
-func checkNullAs(a engine.Attr, f string, res Resource, body map[string]any, add func(string, ...any)) {
+func checkNullAs(resource string, a engine.Attr, f string, res Resource, body map[string]any, add func(string, ...any)) {
 	published, ok := res.TerraformNullAs[f]
+	if choice, chosen := nullAsUnpublished[resource+"."+f]; chosen {
+		switch {
+		case ok:
+			add("field %s: the contract publishes terraform_null_as %v now; remove it from nullAsUnpublished and let the spec follow it", f, published)
+			return
+		case a.NullAs != choice:
+			add("field %s null as %q in the spec, %q chosen in nullAsUnpublished", f, a.NullAs, choice)
+			return
+		}
+		published, ok = nullAsLiteral(choice), true
+	}
 	switch {
 	case !ok && a.NullAs == "":
 		return
@@ -696,6 +742,12 @@ func checkNullAs(a engine.Attr, f string, res Resource, body map[string]any, add
 	kw := readKeywords(body)
 	switch v := published.(type) {
 	case float64:
+		if kw.hasEnum {
+			if slices.Contains(kw.enum, fmt.Sprint(v)) {
+				add("field %s: the null stand-in %v is a value the contract's enum allows", f, v)
+			}
+			return
+		}
 		inside := (kw.min == nil || v >= float64(*kw.min)) && (kw.max == nil || v <= float64(*kw.max))
 		if kw.min == nil && kw.max == nil || inside {
 			add("field %s: the null stand-in %v is a value the contract's bounds allow", f, v)
@@ -1093,6 +1145,36 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			op := d.Paths["/security_digest_settings"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["slack_channel"]["pattern"] = "^#[a-z]+$"
 			d.Paths["/security_digest_settings"]["put"] = op
+		}},
+		{"the looking window gains an hour", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			p := op.RequestBody.Content["application/json"].Schema.Properties["looking_window_hours"]
+			p["enum"] = append(slices.Clone(p["enum"].([]any)), float64(168))
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the looking window stops accepting null", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			p := op.RequestBody.Content["application/json"].Schema.Properties["looking_window_hours"]
+			p["enum"] = []any{float64(4), float64(8), float64(24), float64(72)}
+			p["type"] = "integer"
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the looking window's null stand-in becomes an allowed value", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			p := op.RequestBody.Content["application/json"].Schema.Properties["looking_window_hours"]
+			p["enum"] = append(slices.Clone(p["enum"].([]any)), float64(0))
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the platform publishes a stand-in for the looking window", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformNullAs = map[string]any{"looking_window_hours": float64(0)}
+			d.Resources["organization_settings"] = r
+		}},
+		{"a reaction meaning is added", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			items := op.RequestBody.Content["application/json"].Schema.Properties["reaction_meanings_off"]["items"].(map[string]any)
+			items["enum"] = append(slices.Clone(items["enum"].([]any)), "celebrate")
+			d.Paths["/organization_settings"]["put"] = op
 		}},
 		{"the digest channel's null stand-in starts matching its pattern", "security_digest_settings", func(d *Doc) {
 			op := d.Paths["/security_digest_settings"]["put"]

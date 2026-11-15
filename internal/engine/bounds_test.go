@@ -297,3 +297,55 @@ func TestTheDataSourceCarriesNoValidators(t *testing.T) {
 		}
 	}
 }
+
+// windowSpec is a scratch singleton shaped like the looking window: an Int that is one of a
+// published list, whose null is a real setting read as 0.
+var windowSpec = Spec{
+	Key: "window", TypeName: "window", Shape: Singleton, Lifecycle: true,
+	Attrs: []Attr{{Name: "hours", Kind: Int, IntOneOf: []int64{4, 8, 24, 72}, NullAs: "0"}},
+}
+
+func TestAnIntOneOfAcceptsItsValuesAndItsNullAs(t *testing.T) {
+	for value, bad := range map[int64]bool{0: false, 4: false, 8: false, 24: false, 72: false, 1: true, 5: true, 48: true, 73: true, -4: true} {
+		d := validateInt(t, windowSpec, "hours", value)
+		if d.HasError() != bad {
+			t.Errorf("%d: errors = %v, want error %v", value, d, bad)
+		}
+		if bad {
+			text := d.Errors()[0].Summary() + " " + d.Errors()[0].Detail()
+			if !strings.Contains(text, "hours") || !strings.Contains(text, "4, 8, 24, 72") {
+				t.Errorf("%d: the refusal must name the attribute and the values, got %q", value, text)
+			}
+		}
+	}
+	noStandIn := Spec{Key: "w", TypeName: "w", Shape: Singleton, Lifecycle: true, Attrs: []Attr{{Name: "hours", Kind: Int, IntOneOf: []int64{4, 8}}}}
+	if d := validateInt(t, noStandIn, "hours", 0); !d.HasError() {
+		t.Error("0 must be refused where the attribute names no stand-in")
+	}
+}
+
+func TestANullAsIsReadOnlyForAnAnswerThatNamesTheField(t *testing.T) {
+	r, sch := fixtureOf(t, windowSpec)
+	ctx := context.Background()
+	cases := []struct {
+		answer string
+		null   bool
+		want   int64
+	}{
+		{`{"hours": null}`, false, 0},
+		{`{"hours": 24}`, false, 24},
+		{`{}`, true, 0},
+	}
+	for _, c := range cases {
+		state := tfsdk.State{Schema: sch, Raw: rawObject(t, sch, nil)}
+		diags := r.writeState(ctx, &client.Response{Data: []byte(c.answer)}, nil, &state, nil, nil)
+		if diags.HasError() {
+			t.Fatal(diags)
+		}
+		var got types.Int64
+		diags.Append(state.GetAttribute(ctx, path.Root("hours"), &got)...)
+		if diags.HasError() || got.IsNull() != c.null || (!c.null && got.ValueInt64() != c.want) {
+			t.Errorf("answer %s read as %v, want null %v value %d (%v)", c.answer, got, c.null, c.want, diags)
+		}
+	}
+}
