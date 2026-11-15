@@ -349,6 +349,69 @@ func TestAccSingletons(t *testing.T) {
 	}
 }
 
+// The looking window and the reaction meanings round-trip through the real platform: a number is
+// stored as a number, 0 is stored as the null that means until the reaction is removed, a set
+// comes back sorted, a configuration that leaves them out plans nothing, and the last step puts
+// the stack back to the defaults.
+func TestAccReactionMeaningSettings(t *testing.T) {
+	accPreCheck(t)
+	const addr = "sreagent_organization_settings.test"
+	cfg := func(body string) string {
+		return accProvider() + "resource \"sreagent_organization_settings\" \"test\" {\n" + body + "\n}\n"
+	}
+	held := func(want string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			out, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodGet, Path: "organization_settings"})
+			if err != nil {
+				return err
+			}
+			var row map[string]json.RawMessage
+			if err := json.Unmarshal(out.Data, &row); err != nil {
+				return err
+			}
+			if got := string(row["looking_window_hours"]); got != want {
+				return fmt.Errorf("the platform holds looking_window_hours %s, want %s", got, want)
+			}
+			return nil
+		}
+	}
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{
+				Config: cfg("  looking_window_hours = 72\n  reaction_meanings_off = [\"take_it\", \"looking\"]"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "looking_window_hours", "72"),
+					resource.TestCheckResourceAttr(addr, "reaction_meanings_off.#", "2"),
+					held("72"),
+				),
+			},
+			{Config: cfg("  looking_window_hours = 72\n  reaction_meanings_off = [\"looking\", \"take_it\"]"), ConfigPlanChecks: emptyPlan},
+			{
+				Config: cfg("  looking_window_hours = 0\n  reaction_meanings_off = [\"take_it\"]"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "looking_window_hours", "0"),
+					resource.TestCheckResourceAttr(addr, "reaction_meanings_off.#", "1"),
+					held("null"),
+				),
+			},
+			{Config: cfg("  looking_window_hours = 0\n  reaction_meanings_off = [\"take_it\"]"), ConfigPlanChecks: emptyPlan},
+			{ResourceName: addr, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: cfg("  looking_window_hours = 0\n  reaction_meanings_off = [\"take_it\"]")},
+			// Left out, both stay as the platform holds them.
+			{Config: cfg("  alert_storm_threshold = 23"), Check: held("null")},
+			{
+				Config: cfg("  looking_window_hours = 24\n  reaction_meanings_off = []"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "looking_window_hours", "24"),
+					resource.TestCheckResourceAttr(addr, "reaction_meanings_off.#", "0"),
+					held("24"),
+				),
+			},
+		},
+	})
+}
+
 // startsEmpty are the singletons a fresh organization has no row of: both
 // need a Slack workspace on the other end first, and read as not configured.
 var startsEmpty = map[string]bool{"slack": true, "change_notifications": true}
