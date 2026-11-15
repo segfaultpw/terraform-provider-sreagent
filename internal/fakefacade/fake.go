@@ -38,6 +38,7 @@ type Fake struct {
 	etagMode    etagMode
 	defaults    map[string]any
 	legacy      map[string]bool
+	undeclared  map[string][]string
 	dm          defaultsModel
 	em          effectiveModel
 	history     map[string][]map[string]any
@@ -47,7 +48,7 @@ type Fake struct {
 // New starts a fake for specs; the server stops when the test ends.
 func New(t *testing.T, specs []engine.Spec) *Fake {
 	t.Helper()
-	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, refused: map[string]string{}, onWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}, history: map[string][]map[string]any{}, dm: defaultsModel{source: "built_in", parentValues: builtInDefaults()}}
+	f := &Fake{specs: map[string]engine.Spec{}, rows: map[string]map[string]map[string]any{}, beforeWrite: map[string]func(map[string]any){}, refused: map[string]string{}, onWrite: map[string]func(map[string]any){}, calls: map[string]int{}, bodies: map[string]map[string]any{}, truncated: map[string]bool{}, defaults: builtInDefaults(), legacy: map[string]bool{}, undeclared: map[string][]string{}, history: map[string][]map[string]any{}, dm: defaultsModel{source: "built_in", parentValues: builtInDefaults()}}
 	for _, s := range specs {
 		f.specs[s.Key] = s
 		f.rows[s.Key] = map[string]map[string]any{}
@@ -124,6 +125,15 @@ func (f *Fake) RefusePlan(key, sentence string) {
 		return
 	}
 	f.refused[key] = sentence
+}
+
+// Undeclare makes the platform of key refuse each named argument the way a
+// platform older than the setting does: a 422 saying the tool does not declare
+// it. Reads are not touched, so a test removes the key from the row itself.
+func (f *Fake) Undeclare(key string, names ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.undeclared[key] = append(f.undeclared[key], names...)
 }
 
 // OnWrite registers fn to run on a row of key after a create or an update stored
@@ -578,6 +588,9 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request, spec engine.Spec, 
 	}
 	if f.legacy[spec.Key] {
 		delete(byName, "follows_default")
+	}
+	for _, n := range f.undeclared[spec.Key] {
+		delete(byName, n)
 	}
 	for k, v := range body {
 		a, ok := byName[k]

@@ -2,19 +2,21 @@
 page_title: "sreagent_fix_runner_health Data Source - sreagent"
 subcategory: ""
 description: |-
-  Whether this organization's self-hosted fix runner is working, as the state line of the runner card on the Integrations page says it: working, degraded (its first model is refused and the second does the work), refusing (its AI provider refused three requests in a row, so new requests are routed around it or held), checking (one request is checking whether it works again) or none (no runner is registered). Read only: Resume, Discard and the holding switch are on the runner card and in MCP tools, not in Terraform. The read needs an organization admin's key and the GitHub integration and the self-hosted runner in the plan.
+  Whether this organization's self-hosted fix runner is working, as the state line of the runner card on the Integrations page says it: working, degraded (its first model is refused and the second does the work), refusing (its AI provider refused three requests in a row, so new requests are routed around it or held), checking (one request is checking whether it works again) or none (no runner is registered). Read only: Resume, Discard and the holding switch are on the runner card and in MCP tools, not in Terraform. Any key the configuration API accepts reads it (an api:admin key, or a plan-only api:config_read key), and the GitHub integration and the self-hosted runner must be in the plan. last_refusal holds the model name, the HTTP status and the AI provider's own words (masked by the platform: no key, account id or ARN); like every value this data source reads, it is stored in the Terraform state, so keep the state where you keep the rest of the organization's configuration. An output built on state, waiting or since changes whenever the runner's health does.
 ---
 
 # sreagent_fix_runner_health (Data Source)
 
-Whether this organization's self-hosted fix runner is working, as the state line of the runner card on the Integrations page says it: working, degraded (its first model is refused and the second does the work), refusing (its AI provider refused three requests in a row, so new requests are routed around it or held), checking (one request is checking whether it works again) or none (no runner is registered). Read only: Resume, Discard and the holding switch are on the runner card and in MCP tools, not in Terraform. The read needs an organization admin's key and the GitHub integration and the self-hosted runner in the plan.
+Whether this organization's self-hosted fix runner is working, as the state line of the runner card on the Integrations page says it: working, degraded (its first model is refused and the second does the work), refusing (its AI provider refused three requests in a row, so new requests are routed around it or held), checking (one request is checking whether it works again) or none (no runner is registered). Read only: Resume, Discard and the holding switch are on the runner card and in MCP tools, not in Terraform. Any key the configuration API accepts reads it (an `api:admin` key, or a plan-only `api:config_read` key), and the GitHub integration and the self-hosted runner must be in the plan. `last_refusal` holds the model name, the HTTP status and the AI provider's own words (masked by the platform: no key, account id or ARN); like every value this data source reads, it is stored in the Terraform state, so keep the state where you keep the rest of the organization's configuration. An output built on `state`, `waiting` or `since` changes whenever the runner's health does.
 
 ## Example Usage
 
 ```terraform
 # Read only: whether the organization's self-hosted fix runner works. Resume,
-# Discard and the holding switch are on the runner card in the app. The read
-# needs an organization admin's key and the self-hosted runner in the plan.
+# Discard and the holding switch are on the runner card in the app. Any key the
+# configuration API accepts reads it (api:admin, or a plan-only api:config_read
+# key), and the self-hosted runner must be in the plan. last_refusal, with the AI
+# provider's own words, is stored in the Terraform state.
 data "sreagent_fix_runner_health" "this" {}
 
 output "fix_runner_state" {
@@ -34,7 +36,7 @@ output "fix_requests_waiting_for_the_runner" {
 - `configured` (Boolean) Always true when the read succeeds; the read never answers false with null attributes. It fails with an error instead when the platform predates the resource, and when the organization's plan does not include the GitHub integration or the self-hosted fix runner (the platform answers 403).
 - `consecutive_refusals` (Number) How many requests in a row the runner's AI provider refused.
 - `degraded_since` (String) When the runner started using its second model, or null.
-- `hold_while_provider_down` (Boolean) Whether requests wait for the runner while its AI provider refuses, instead of being routed around it.
+- `hold_while_provider_down` (Boolean) Whether requests wait for the runner while its AI provider refuses, instead of being routed around it. True when no runner is registered.
 - `id` (String) The row's identifier on the platform.
 - `last_refusal` (String) The provider's last refusal, or null: class, class_phrase, model, status, provider_message (the provider's own words, scrubbed, one plain text field) and at.
 - `next_check_at` (String) The next timed check of a rate limit or quota, or null.

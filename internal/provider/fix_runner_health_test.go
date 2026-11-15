@@ -64,7 +64,7 @@ func TestFixRunnerHealthWithNoRunnerReadsNone(t *testing.T) {
 		r["last_refusal"] = nil
 		r["waiting"] = 0
 		r["degraded_since"] = nil
-		r["hold_while_provider_down"] = false
+		r["hold_while_provider_down"] = true
 		r["next_check_at"] = nil
 	})
 	resource.UnitTest(t, resource.TestCase{
@@ -74,6 +74,7 @@ func TestFixRunnerHealthWithNoRunnerReadsNone(t *testing.T) {
 			Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr(runnerHealth, "state", "none"),
 				resource.TestCheckResourceAttr(runnerHealth, "waiting", "0"),
+				resource.TestCheckResourceAttr(runnerHealth, "hold_while_provider_down", "true"),
 				resource.TestCheckNoResourceAttr(runnerHealth, "last_refusal"),
 				resource.TestCheckNoResourceAttr(runnerHealth, "since"),
 			),
@@ -103,15 +104,22 @@ func TestFixRunnerHealthOnAPlatformWithoutItIsAnError(t *testing.T) {
 // A plan without the GitHub integration or the self-hosted runner is answered
 // 403 with the platform's own sentence, which the read shows.
 func TestFixRunnerHealthRefusedByThePlanShowsThePlatformsSentence(t *testing.T) {
-	f := fakefacade.New(t, specs.All())
-	f.RefusePlan("fix_runner_health", "The self-hosted fix runner is not included in your plan.")
-	resource.UnitTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: factories,
-		Steps: []resource.TestStep{{
-			Config:      providerBlock(f.URL) + "data \"sreagent_fix_runner_health\" \"h\" {}\n",
-			ExpectError: regexp.MustCompile(`(?s)answered 403.*self-hosted fix runner is not\s+included in your plan`),
-		}},
-	})
+	for name, c := range map[string]struct{ sentence, want string }{
+		"no self-hosted runner": {"A fix runner on your own machine is not included in your plan.", `(?s)answered 403.*fix\s+runner\s+on\s+your\s+own\s+machine\s+is\s+not\s+included\s+in\s+your\s+plan`},
+		"no GitHub":             {"GitHub is not included in your plan.", `(?s)answered 403.*GitHub\s+is\s+not\s+included\s+in\s+your\s+plan`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := fakefacade.New(t, specs.All())
+			f.RefusePlan("fix_runner_health", c.sentence)
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: factories,
+				Steps: []resource.TestStep{{
+					Config:      providerBlock(f.URL) + "data \"sreagent_fix_runner_health\" \"h\" {}\n",
+					ExpectError: regexp.MustCompile(c.want),
+				}},
+			})
+		})
+	}
 }
 
 func TestNoFixRunnerHealthResourceExists(t *testing.T) {

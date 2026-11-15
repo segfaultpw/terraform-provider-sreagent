@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -131,5 +132,20 @@ func TestBoardTileReactionsReadAnOlderPlatformWithoutThem(t *testing.T) {
 			},
 			{Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"), ConfigPlanChecks: emptyPlan},
 		},
+	})
+}
+
+// A platform from before the attribute refuses it as an argument its tool does
+// not declare, and the plan shows that sentence when a configuration sets it.
+func TestBoardTileReactionsSetAgainstAnOlderPlatformShowThePlatformsRefusal(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) { delete(r, "board_tile_reactions") })
+	f.Undeclare("organization_settings", "board_tile_reactions")
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config:      orgSettingsConfig(f.URL, "  board_tile_reactions = false"),
+			ExpectError: regexp.MustCompile(`(?s)board_tile_reactions\s+is\s+not\s+an\s+argument\s+this\s+tool\s+declares`),
+		}},
 	})
 }
