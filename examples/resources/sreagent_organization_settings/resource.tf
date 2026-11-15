@@ -12,4 +12,8 @@ resource "sreagent_organization_settings" "this" {
   # The emoji shown first when someone adds a reaction, in order, written as the
   # emoji itself (never a :name:). [] uses SRE Agent's twelve.
   reaction_quick_row = ["\u2705", "\U0001F44D", "\U0001F680", "\U0001F440"]
+
+  # Whether board tiles show a card's most used reactions. On by default; each
+  # person can choose otherwise on their account page, and their choice wins.
+  board_tile_reactions = false
 }

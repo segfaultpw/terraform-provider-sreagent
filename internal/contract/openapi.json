@@ -968,6 +968,57 @@
         ],
         "type": "object"
       },
+      "fix_runner_health_row": {
+        "properties": {
+          "consecutive_refusals": {
+            "type": "integer"
+          },
+          "degraded_since": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hold_while_provider_down": {
+            "type": "boolean"
+          },
+          "last_refusal": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "next_check_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "waiting": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "consecutive_refusals",
+          "degraded_since",
+          "hold_while_provider_down",
+          "last_refusal",
+          "next_check_at",
+          "since",
+          "state",
+          "waiting"
+        ],
+        "type": "object"
+      },
       "github_settings_row": {
         "properties": {
           "account": {
@@ -1321,6 +1372,12 @@
               "null"
             ]
           },
+          "board_tile_reactions": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "fix_request_floor": {
             "enum": [
               "org_admin",
@@ -1487,6 +1544,7 @@
           "language",
           "slack_thread_events_off",
           "reaction_quick_row",
+          "board_tile_reactions",
           "mfa_effective",
           "session_idle_effective",
           "updated_at"
@@ -5901,6 +5959,37 @@
         "summary": "Export this organization's configuration as Terraform"
       }
     },
+    "/fix_runner_health": {
+      "get": {
+        "description": "Whether this organization's self-hosted fix runner is working, as the state line of the runner card on the Integrations page says it. state is working, degraded (its first model is refused and the second does the work), refusing (its AI provider refused three requests in a row, so new requests are routed around it or held), checking (one request is checking whether it works again) or none (no runner is registered). Also since, consecutive_refusals, waiting (requests held for the runner), degraded_since, hold_while_provider_down, next_check_at (the next timed check of a rate limit or quota) and last_refusal: class, class_phrase, model, status, provider_message (the provider's own words, scrubbed, one plain text field) and at. Needs an org_admin and the self-hosted runner in the plan. Reads only; nothing is changed.",
+        "operationId": "get_fix_runner_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/fix_runner_health_row"
+                    },
+                    "organization": {
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The row."
+          },
+          "404": {
+            "description": "No such resource."
+          }
+        },
+        "summary": "Read the fix_runner_health"
+      }
+    },
     "/github_settings": {
       "get": {
         "description": "How this organization's GitHub App connection stands, as the Integrations page's GitHub tab shows it: whether one is connected, the account it is installed on, the repositories it grants, the five behaviour toggles, the severity floor inline review comments start at, the grounding context repo, whether a webhook signing secret is stored, and this organization's own fix runner when it has registered one. The repository list is re-read from GitHub when it was last read more than an hour ago, and repos_refreshed_at says when that was; a GitHub that cannot be reached leaves the cached list and its stamp as they were. connected is false and every field of the installation is null when none is connected. No secret is returned: webhook_secret_set says only that one is stored.",
@@ -6264,7 +6353,7 @@
     },
     "/organization_settings": {
       "get": {
-        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), the connections of its parent organization it does not use (inheritance_stopped), the language of the outcome lines written into a card's Slack threads (language, en or es) and the events switched off in those threads (slack_thread_events_off), and the organization's quick reactions (reaction_quick_row, empty for SRE Agent's twelve).",
+        "description": "The organization's preferences as the Settings page shows them: timezone, alert storm grouping, the alert re-fire cooldown, automation approval TTL, investigation cooldown and pause, auto-incident bridge, monthly AI budget, the two sign-up policies, who may ask for a fix pull request (fix_request_floor), whether members must use a second sign-in factor (mfa_required, mfa_grace_days) and how long an API key may live (api_key_max_days, null for no limit), the requirement that actually holds (mfa_effective: the organization's own, its parent's, which one applies and when the grace period ends), how long a session may sit unused before it is signed out (session_idle_minutes, null for no limit; session_idle_effective is the limit that holds after the parent's), the connections of its parent organization it does not use (inheritance_stopped), the language of the outcome lines written into a card's Slack threads (language, en or es) and the events switched off in those threads (slack_thread_events_off), the organization's quick reactions (reaction_quick_row, empty for SRE Agent's twelve) and whether board tiles show the top reactions of each card (board_tile_reactions, on by default; each person can choose otherwise).",
         "operationId": "get_organization_settings",
         "parameters": [],
         "responses": {
@@ -6293,7 +6382,7 @@
         "summary": "Read the organization_settings"
       },
       "put": {
-        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too. language (en or es) is the language SRE Agent writes the outcome lines of a card's Slack threads in; an org admin's token or an API key with mcp:admin may change it. slack_thread_events_off is the list of events NOT posted in a card's Slack threads, as the whole set (an empty list posts everything, which is the default): column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies and comments. A fix or change that failed or was declined, a request an approval cancelled, a local fix session that failed and a change that could not be made on the pull request it was asked for (with the new pull request opened instead, or a pull request opened after a failure was posted) are always posted and have no name here. The same callers may change it. reaction_quick_row is the list of up to 12 emoji shown first when someone adds a reaction (an empty list uses SRE Agent's twelve); the same callers may change it.",
+        "description": "Change one or more preferences; omitted ones keep their value. Ranges are the page's: storm threshold at least 3, storm window 60..3600 seconds, re-fire cooldown 0..1440 minutes (0 pages on every re-fire), approval TTL 5..1440 minutes, investigation cooldown 0..1440 (0 disables), severity floor critical or high, AI budget at least 1 or null for none, warn percent 1..100. alert_refire_cooldown_minutes is how long after a resolve a re-fire stays quiet: it updates the alert's existing Slack thread instead of paging again, starts no automatic investigation, and reaches no outbound alerting rule. social_joins_enabled, restrict_domain_signups and fix_request_floor (who may ask SRE Agent for a fix pull request: org_admin or member) need a user token. mfa_required and mfa_grace_days (whether members must use a second sign-in factor, and the 0..30 days they get to enrol) need a user token of an org admin too; switching the requirement on starts the grace period and tells the members who have no factor, and a child organization can only add to its parent's requirement. session_idle_minutes (5..43200, null for no limit) is how long a member's browser session may sit unused before it is signed out; it needs a user token of an org admin too, and a child organization follows the stricter of its own and its parent's. api_key_max_days (the longest life, 1..730 days, of an API key created or rotated from now on; null for no limit) needs a user token of an org admin too. inheritance_stopped is the list of a parent organization's connections this organization stops using, as the whole set; changing it needs a user token too. language (en or es) is the language SRE Agent writes the outcome lines of a card's Slack threads in; an org admin's token or an API key with mcp:admin may change it. slack_thread_events_off is the list of events NOT posted in a card's Slack threads, as the whole set (an empty list posts everything, which is the default): column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies and comments. A fix or change that failed or was declined, a request an approval cancelled, a local fix session that failed and a change that could not be made on the pull request it was asked for (with the new pull request opened instead, or a pull request opened after a failure was posted) are always posted and have no name here. The same callers may change it. reaction_quick_row is the list of up to 12 emoji shown first when someone adds a reaction (an empty list uses SRE Agent's twelve); the same callers may change it. board_tile_reactions is whether board tiles show the top reactions of each card (on by default; each person can choose otherwise on their account page); the same callers may change it.",
         "operationId": "update_organization_settings",
         "parameters": [],
         "requestBody": {
@@ -6336,6 +6425,10 @@
                   },
                   "automation_approval_ttl_minutes": {
                     "type": "integer"
+                  },
+                  "board_tile_reactions": {
+                    "description": "Whether board tiles show a card's three most used reactions with their counts. On by default; each person can choose otherwise on their account page.",
+                    "type": "boolean"
                   },
                   "fix_request_floor": {
                     "description": "Who may ask SRE Agent for a fix pull request, or to change one it opened, in this organization: org_admin (the default) for org admins only, member for members and org admins. Viewers, guests and people with no account here never can. Changing it needs a user token of an org admin of this organization.",
@@ -12341,6 +12434,47 @@
       "update_fields": [],
       "upsert": false
     },
+    "fix_runner_health": {
+      "action_args": [],
+      "computed_fields": {
+        "consecutive_refusals": "integer",
+        "degraded_since": [
+          "string",
+          "null"
+        ],
+        "hold_while_provider_down": "boolean",
+        "last_refusal": [
+          "object",
+          "null"
+        ],
+        "next_check_at": [
+          "string",
+          "null"
+        ],
+        "since": [
+          "string",
+          "null"
+        ],
+        "state": "string",
+        "waiting": "integer"
+      },
+      "create_fields": [],
+      "fields": [],
+      "id_args": [],
+      "import_key": "fix_runner_health",
+      "lifecycle": false,
+      "list_max": null,
+      "natural_key": [],
+      "null_means": {},
+      "secret_fields": [],
+      "singleton": true,
+      "terraform_names": {},
+      "terraform_null_as": {},
+      "terraform_read_only": [],
+      "terraform_type": null,
+      "update_fields": [],
+      "upsert": false
+    },
     "github_settings": {
       "action_args": [],
       "computed_fields": {
@@ -12545,7 +12679,8 @@
         "api_key_max_days",
         "language",
         "slack_thread_events_off",
-        "reaction_quick_row"
+        "reaction_quick_row",
+        "board_tile_reactions"
       ],
       "id_args": [],
       "import_key": "organization_settings",
@@ -12577,6 +12712,7 @@
         "auto_close_incidents",
         "auto_open_incidents",
         "automation_approval_ttl_minutes",
+        "board_tile_reactions",
         "fix_request_floor",
         "incident_severity_floor",
         "inheritance_stopped",

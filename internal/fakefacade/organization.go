@@ -12,11 +12,12 @@ import (
 func isOrganization(key string) bool { return key == "organization_settings" }
 
 // organizationSeed is what the platform answers for an organization nobody has
-// changed: English, every thread event posted, SRE Agent's twelve quick reactions.
+// changed: English, every thread event posted, SRE Agent's twelve quick reactions, reactions on board tiles.
 func organizationSeed(row map[string]any) {
 	row["language"] = "en"
 	row["slack_thread_events_off"] = []any{}
 	row["reaction_quick_row"] = []any{}
+	row["board_tile_reactions"] = true
 }
 
 var threadEvents = []string{"column_moves", "card_done", "card_wont_do", "pull_request_opened", "pull_request_merged", "pull_request_closed", "pull_request_reopened", "change_pushed", "assistant_replies", "comments"}

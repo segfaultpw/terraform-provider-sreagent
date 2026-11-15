@@ -26,6 +26,10 @@ resource "sreagent_organization_settings" "this" {
   # The emoji shown first when someone adds a reaction, in order, written as the
   # emoji itself (never a :name:). [] uses SRE Agent's twelve.
   reaction_quick_row = ["\u2705", "\U0001F44D", "\U0001F680", "\U0001F440"]
+
+  # Whether board tiles show a card's most used reactions. On by default; each
+  # person can choose otherwise on their account page, and their choice wins.
+  board_tile_reactions = false
 }
 ```
 
@@ -42,6 +46,7 @@ resource "sreagent_organization_settings" "this" {
 - `auto_close_incidents` (Boolean) Close incidents automatically.
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
+- `board_tile_reactions` (Boolean) Whether board tiles show a card's three most used reactions with their counts. On by default; each person can choose otherwise on their account page, and their choice wins. An organization admin's key (api:admin) may change it.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
 - `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead.
 - `investigation_cooldown_minutes` (Number) Minutes between investigations of one alert.

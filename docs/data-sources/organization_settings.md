@@ -35,6 +35,7 @@ output "fix_request_floor" {
 - `auto_close_incidents` (Boolean) Close incidents automatically.
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
+- `board_tile_reactions` (Boolean) Whether board tiles show a card's three most used reactions with their counts. On by default; each person can choose otherwise on their account page, and their choice wins. An organization admin's key (api:admin) may change it.
 - `configured` (Boolean) False when the organization has no row of its own yet (or reads its parent's); every other attribute is then null.
 - `fix_request_floor` (String) Who may ask SRE Agent for a fix pull request, or to change one it opened: org_admin for org admins only, member for members too. Changed by an org admin in the app.
 - `id` (String) The row's identifier on the platform.

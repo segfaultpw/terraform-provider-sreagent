@@ -49,5 +49,6 @@ func All() []engine.Spec {
 		SecretAllowRules,
 		AlertFollowUpSettings,
 		AlertInformativeKinds,
+		FixRunnerHealth,
 	}
 }
