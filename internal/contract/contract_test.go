@@ -714,8 +714,11 @@ func checkNullAs(resource string, a engine.Attr, f string, res Resource, body ma
 	published, ok := res.TerraformNullAs[f]
 	if choice, chosen := nullAsUnpublished[resource+"."+f]; chosen {
 		switch {
+		case ok && reflect.DeepEqual(published, nullAsLiteral(choice)):
+			add("field %s: the contract publishes terraform_null_as %v now, the stand-in the provider chose; remove the entry from nullAsUnpublished and let the spec follow the contract", f, published)
+			return
 		case ok:
-			add("field %s: the contract publishes terraform_null_as %v now; remove it from nullAsUnpublished and let the spec follow it", f, published)
+			add("field %s: the contract publishes terraform_null_as %v, but configurations already write %s as the stand-in. Do not change the provider to follow it, that would break them: ask the platform to publish %s instead", f, published, choice, choice)
 			return
 		case a.NullAs != choice:
 			add("field %s null as %q in the spec, %q chosen in nullAsUnpublished", f, a.NullAs, choice)
@@ -1170,6 +1173,11 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			r.TerraformNullAs = map[string]any{"looking_window_hours": float64(0)}
 			d.Resources["organization_settings"] = r
 		}},
+		{"the platform publishes another stand-in for the looking window", "organization_settings", func(d *Doc) {
+			r := d.Resources["organization_settings"]
+			r.TerraformNullAs = map[string]any{"looking_window_hours": float64(-1)}
+			d.Resources["organization_settings"] = r
+		}},
 		{"a reaction meaning is added", "organization_settings", func(d *Doc) {
 			op := d.Paths["/organization_settings"]["put"]
 			items := op.RequestBody.Content["application/json"].Schema.Properties["reaction_meanings_off"]["items"].(map[string]any)
@@ -1240,6 +1248,30 @@ func TestEveryPatternTheEngineHoldsCompiles(t *testing.T) {
 			if _, err := regexp.Compile(a.Pattern); err != nil {
 				t.Errorf("%s.%s: pattern %q does not compile: %v", s.Key, a.Name, a.Pattern, err)
 			}
+		}
+	}
+}
+
+// A platform that publishes a stand-in other than the one configurations already write is
+// told to publish that one; the provider does not follow it.
+func TestAnotherPublishedStandInIsAnsweredByAskingThePlatformToPublishOurs(t *testing.T) {
+	d := doc(t)
+	r := d.Resources["organization_settings"]
+	for value, want := range map[float64]string{
+		-1: "ask the platform to publish 0 instead",
+		0:  "remove the entry from nullAsUnpublished",
+	} {
+		r.TerraformNullAs = map[string]any{"looking_window_hours": value}
+		d.Resources["organization_settings"] = r
+		var spec engine.Spec
+		for _, s := range specs.All() {
+			if s.Key == "organization_settings" {
+				spec = s
+			}
+		}
+		text := fmt.Sprint(specProblems(d, spec))
+		if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(text) {
+			t.Errorf("a published stand-in of %v: the problems say %s, want %q", value, text, want)
 		}
 	}
 }
