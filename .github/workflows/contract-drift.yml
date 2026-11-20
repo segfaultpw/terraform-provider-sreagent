@@ -12,6 +12,9 @@
 # fetched or compared, or when the tests fail against the new contract (for example
 # TestEveryContractResourceHasASpec after the platform added a resource the provider does not
 # have). The failing tests are named in the run summary. Nothing is committed in that case.
+# A field or an enumerated value the platform added ahead of a provider release is not such a
+# failure: the contract lists it (terraform_pending, terraform_pending_values) and the contract test
+# reads the lists, so the job vendors the document and stays green until a release declares it.
 #
 # Only `schedule` and `push` trigger it: never a pull request, so a fork never reaches the key or
 # the write permission.

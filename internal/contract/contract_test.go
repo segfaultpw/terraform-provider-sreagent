@@ -110,7 +110,11 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	for _, f := range res.Fields {
 		a, ok := byName[f]
 		if !ok {
-			add("field %s is missing from the spec", f)
+			// A field the platform lists as pending is one it added on purpose
+			// ahead of the provider release that declares it.
+			if !slices.Contains(res.TerraformPending, f) {
+				add("field %s is missing from the spec", f)
+			}
 			continue
 		}
 		// The contract names the writable fields no API key can write, so
@@ -170,7 +174,7 @@ func specProblems(d *Doc, s engine.Spec) []string {
 		if _, ok := published[f]; !ok {
 			published = put.Properties
 		}
-		checkKeywords(s.Key, a, f, published[f], add)
+		checkKeywords(s.Key, a, f, published[f], res.TerraformPendingValues[f], add)
 		checkNullAs(s.Key, a, f, res, put.Properties[f], add)
 	}
 	for _, f := range res.SecretFields {
@@ -599,13 +603,14 @@ func readKeywords(schema map[string]any) keywords {
 	return k
 }
 
-// checkKeywords holds one attribute to every keyword its write body publishes,
+// checkKeywords holds one attribute to every keyword its write body publishes
+// (less the enumerated values the contract lists as pending for the field),
 // and every keyword the attribute models to a published one: limits, enums
 // (items.enum for a list), defaults and patterns are the platform's, copied
 // here and proved equal. A keyword the engine does not understand fails, so a
 // new one is never ignored in silence. A read-only attribute is held to its
 // enum alone, since nothing validates it.
-func checkKeywords(resource string, a engine.Attr, f string, schema map[string]any, add func(string, ...any)) {
+func checkKeywords(resource string, a engine.Attr, f string, schema map[string]any, pending []string, add func(string, ...any)) {
 	// A JSON attribute is opaque text to the engine: whatever shape its schema
 	// publishes is not a limit the engine could check.
 	if a.Kind == engine.JSON {
@@ -619,6 +624,14 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 	label := "enum"
 	if a.Kind == engine.StringList {
 		enum, hasEnum, label = kw.itemEnum, kw.hasItemEnum, "items.enum"
+	}
+	// A value the platform lists as pending is one it accepts ahead of the
+	// provider release that lists it; a value the spec already lists is held to
+	// the contract whether or not it is still pending there.
+	if hasEnum && len(pending) > 0 {
+		enum = slices.DeleteFunc(slices.Clone(enum), func(e string) bool {
+			return slices.Contains(pending, e) && !slices.Contains(a.OneOf, e)
+		})
 	}
 	if a.Kind == engine.Int && hasEnum {
 		// A number enum lists a null as <nil>: the null is the setting NullAs stands for.
@@ -1204,6 +1217,80 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 				t.Fatal("the contract test missed this drift")
 			}
 		})
+	}
+}
+
+// An addition the platform lists as pending is not drift: the drift job vendors
+// such a document and stays green until a provider release declares it. The
+// same addition with no listing is drift, which the cases above already prove
+// for a value ("a reaction meaning is added") and this test proves for a field.
+func TestAPendingAdditionIsNotDrift(t *testing.T) {
+	spec := func(key string) engine.Spec {
+		for _, s := range specs.All() {
+			if s.Key == key {
+				return s
+			}
+		}
+		t.Fatalf("no spec for %s", key)
+		return engine.Spec{}
+	}
+	addField := func(d *Doc, key, field string, pending bool) {
+		r := d.Resources[key]
+		r.Fields = append(slices.Clone(r.Fields), field)
+		if pending {
+			r.TerraformPending = append(slices.Clone(r.TerraformPending), field)
+		}
+		d.Resources[key] = r
+	}
+	addMeaning := func(d *Doc, value string, pending bool) {
+		op := d.Paths["/organization_settings"]["put"]
+		items := op.RequestBody.Content["application/json"].Schema.Properties["reaction_meanings_off"]["items"].(map[string]any)
+		items["enum"] = append(slices.Clone(items["enum"].([]any)), value)
+		d.Paths["/organization_settings"]["put"] = op
+		if pending {
+			r := d.Resources["organization_settings"]
+			values := map[string][]string{}
+			for k, v := range r.TerraformPendingValues {
+				values[k] = v
+			}
+			values["reaction_meanings_off"] = append(slices.Clone(values["reaction_meanings_off"]), value)
+			r.TerraformPendingValues = values
+			d.Resources["organization_settings"] = r
+		}
+	}
+	for _, key := range []string{"organization_settings", "alert_follow_up_settings"} {
+		d := doc(t)
+		addField(d, key, "a_field_of_a_later_release", true)
+		if problems := specProblems(d, spec(key)); len(problems) != 0 {
+			t.Errorf("%s: a pending field was reported as drift: %v", key, problems)
+		}
+		d = doc(t)
+		addField(d, key, "a_field_of_a_later_release", false)
+		if len(specProblems(d, spec(key))) == 0 {
+			t.Errorf("%s: a field nobody listed as pending was not reported", key)
+		}
+	}
+	d := doc(t)
+	addMeaning(d, "celebrate", true)
+	if problems := specProblems(d, spec("organization_settings")); len(problems) != 0 {
+		t.Errorf("a pending value was reported as drift: %v", problems)
+	}
+	// Listing a value as pending excuses that value alone.
+	d = doc(t)
+	addMeaning(d, "celebrate", true)
+	addMeaning(d, "applaud", false)
+	if len(specProblems(d, spec("organization_settings"))) == 0 {
+		t.Error("a value nobody listed as pending was not reported beside a pending one")
+	}
+	// A value the spec lists stays held to the contract while it is still listed as pending.
+	d = doc(t)
+	r := d.Resources["organization_settings"]
+	r.TerraformPendingValues = map[string][]string{
+		"reaction_meanings_off": append(slices.Clone(r.TerraformPendingValues["reaction_meanings_off"]), "looking"),
+	}
+	d.Resources["organization_settings"] = r
+	if problems := specProblems(d, spec("organization_settings")); len(problems) != 0 {
+		t.Errorf("a declared value still listed as pending was reported: %v", problems)
 	}
 }
 

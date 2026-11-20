@@ -30,6 +30,15 @@ type Resource struct {
 	// channel) to the value the provider reads the null as and sends null for,
 	// which the spec's NullAs must equal.
 	TerraformNullAs map[string]any `json:"terraform_null_as"`
+	// TerraformPending names the fields the platform answers that no released
+	// provider declares yet, and TerraformPendingValues the values of an
+	// enumerated field no released provider lists yet. The platform adds to
+	// both in the release that adds the field or the value and empties them
+	// once a provider release declares it, so a spec that lacks one of them
+	// agrees with the contract, and the daily drift job stays green between the
+	// two releases. An addition the platform did not list is still drift.
+	TerraformPending       []string            `json:"terraform_pending"`
+	TerraformPendingValues map[string][]string `json:"terraform_pending_values"`
 	// ListMax is the most rows a list answers at once, null for a list with no
 	// cap.
 	ListMax *int `json:"list_max"`
