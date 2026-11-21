@@ -1243,6 +1243,40 @@ func TestTheContractTestCatchesDrift(t *testing.T) {
 			items["enum"] = append(slices.Clone(items["enum"].([]any)), "celebrate")
 			d.Paths["/organization_settings"]["put"] = op
 		}},
+		{"the column emoji gains a column", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			props := op.RequestBody.Content["application/json"].Schema.Properties["board_column_emoji"]["properties"].(map[string]any)
+			props["review"] = map[string]any{"type": []any{"string", "null"}, "maxLength": float64(64)}
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the column emoji loses a column", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			props := op.RequestBody.Content["application/json"].Schema.Properties["board_column_emoji"]["properties"].(map[string]any)
+			delete(props, "blocked")
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the column emoji's value length changes", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			props := op.RequestBody.Content["application/json"].Schema.Properties["board_column_emoji"]["properties"].(map[string]any)
+			props["done"].(map[string]any)["maxLength"] = float64(32)
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the column emoji allows any key", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["board_column_emoji"]["additionalProperties"] = true
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the column emoji becomes a list", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			op.RequestBody.Content["application/json"].Schema.Properties["board_column_emoji"]["type"] = "array"
+			d.Paths["/organization_settings"]["put"] = op
+		}},
+		{"the Slack reaction mode gains a value", "organization_settings", func(d *Doc) {
+			op := d.Paths["/organization_settings"]["put"]
+			p := op.RequestBody.Content["application/json"].Schema.Properties["slack_reaction_sync"]
+			p["enum"] = append(slices.Clone(p["enum"].([]any)), "to_slack")
+			d.Paths["/organization_settings"]["put"] = op
+		}},
 		{"the digest channel's null stand-in starts matching its pattern", "security_digest_settings", func(d *Doc) {
 			op := d.Paths["/security_digest_settings"]["put"]
 			op.RequestBody.Content["application/json"].Schema.Properties["slack_channel"]["pattern"] = "^.*$"
@@ -1409,6 +1443,88 @@ func TestAnotherPublishedStandInIsAnsweredByAskingThePlatformToPublishOurs(t *te
 		text := fmt.Sprint(specProblems(d, spec))
 		if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(text) {
 			t.Errorf("a published stand-in of %v: the problems say %s, want %q", value, text, want)
+		}
+	}
+}
+
+// The provider declares everything the platform's pending lists named when 0.7.0 was cut, so the
+// day the platform empties the lists nothing agrees less. The entries below are the ones 0.7.0
+// declares; a new pending entry the platform adds later is not in this table and stays excused.
+var declaredInSevenZero = struct {
+	fields map[string][]string
+	values map[string]map[string][]string
+}{
+	fields: map[string][]string{
+		"organization_settings":    {"board_column_emoji", "slack_reaction_sync", "slack_reaction_counts"},
+		"alert_follow_up_settings": {"telemetry_checks_enabled", "telemetry_model_enabled", "informative_learning_enabled"},
+	},
+	values: map[string]map[string][]string{
+		"organization_settings": {"reaction_meanings_off": {"tell_author", "answer_feedback"}},
+	},
+}
+
+func specOf(t *testing.T, key string) engine.Spec {
+	t.Helper()
+	for _, s := range specs.All() {
+		if s.Key == key {
+			return s
+		}
+	}
+	t.Fatalf("no spec for %s", key)
+	return engine.Spec{}
+}
+
+func TestTheProviderDeclaresEverythingZeroSevenAdds(t *testing.T) {
+	for key, fields := range declaredInSevenZero.fields {
+		byName := map[string]engine.Attr{}
+		for _, a := range specOf(t, key).Attrs {
+			byName[a.Name] = a
+		}
+		for _, f := range fields {
+			if _, ok := byName[f]; !ok {
+				t.Errorf("%s: 0.7.0 declares %s, but the spec does not", key, f)
+			}
+		}
+	}
+	for key, byField := range declaredInSevenZero.values {
+		byName := map[string]engine.Attr{}
+		for _, a := range specOf(t, key).Attrs {
+			byName[a.Name] = a
+		}
+		for field, values := range byField {
+			for _, v := range values {
+				if !slices.Contains(byName[field].OneOf, v) {
+					t.Errorf("%s.%s: 0.7.0 lists %s, but the spec does not", key, field, v)
+				}
+			}
+		}
+	}
+}
+
+// The platform empties terraform_pending and terraform_pending_values once this release is on
+// the Registry. A document whose lists lack what 0.7.0 declares must agree with every spec
+// exactly as the one with the lists does, so the drift job stays green on both sides of that day.
+func TestTheContractAgreesWithTheSpecsOnceThePendingListsAreEmptied(t *testing.T) {
+	d := doc(t)
+	for key, res := range d.Resources {
+		res.TerraformPending = slices.DeleteFunc(slices.Clone(res.TerraformPending), func(f string) bool {
+			return slices.Contains(declaredInSevenZero.fields[key], f)
+		})
+		values := map[string][]string{}
+		for field, listed := range res.TerraformPendingValues {
+			kept := slices.DeleteFunc(slices.Clone(listed), func(v string) bool {
+				return slices.Contains(declaredInSevenZero.values[key][field], v)
+			})
+			if len(kept) > 0 {
+				values[field] = kept
+			}
+		}
+		res.TerraformPendingValues = values
+		d.Resources[key] = res
+	}
+	for _, s := range specs.All() {
+		for _, problem := range specProblems(d, s) {
+			t.Errorf("%s: %s", s.Key, problem)
 		}
 	}
 }
