@@ -127,3 +127,31 @@ func TestTheUnknownEntriesAreReadFromAnAnsweredRow(t *testing.T) {
 		t.Errorf("an attribute without KeepUnknown holds nothing: %v", held)
 	}
 }
+
+// A state written by an earlier provider release recorded a value as unknown before a later
+// release declared it. Once the attribute's OneOf lists it, it is not held any more: it neither
+// warns nor is sent again against the configuration, and a value that is still unknown stays held.
+func TestAValueThisReleaseDeclaresIsNotHeldAsUnknownFromAnEarlierState(t *testing.T) {
+	ctx := context.Background()
+	r := keepUnknownResource()
+	priv := mapPrivate{"unknown_meanings_off": []byte(`["take_it"]`)}
+	if held := r.unknownHeld(ctx, priv); len(held) != 0 {
+		t.Fatalf("take_it is declared, so nothing is held, got %v", held)
+	}
+	var diags diag.Diagnostics
+	r.warnUnknown(ctx, listConfig{"meanings_off": stringsList("looking")}, r.unknownHeld(ctx, priv), &diags)
+	if len(diags) != 0 {
+		t.Errorf("a declared value must not warn: %v", diags)
+	}
+	body := map[string]any{"meanings_off": []string{"looking"}}
+	r.withUnknown(body, r.unknownHeld(ctx, priv))
+	if got := body["meanings_off"].([]string); len(got) != 1 || got[0] != "looking" {
+		t.Errorf("a declared value was sent again: %v", got)
+	}
+	// One declared and one still unknown: only the unknown one is held.
+	priv = mapPrivate{"unknown_meanings_off": []byte(`["take_it","future_meaning"]`)}
+	held := r.unknownHeld(ctx, priv)
+	if got := held["meanings_off"]; len(got) != 1 || got[0] != "future_meaning" {
+		t.Errorf("held = %v, want only future_meaning", held)
+	}
+}

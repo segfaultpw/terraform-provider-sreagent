@@ -377,7 +377,10 @@ func (r *facadeResource) unknownIn(row map[string]any) map[string][]string {
 	return out
 }
 
-// unknownHeld reads the unknown entries the last read or write recorded.
+// unknownHeld reads the unknown entries the last read or write recorded. An entry the
+// attribute's OneOf lists now is not unknown any more: a state written by an earlier provider
+// release recorded it as unknown before this release declared it, and it must neither warn nor
+// be sent again against the configuration.
 func (r *facadeResource) unknownHeld(ctx context.Context, priv privateData) map[string][]string {
 	out := map[string][]string{}
 	if priv == nil {
@@ -389,7 +392,11 @@ func (r *facadeResource) unknownHeld(ctx context.Context, priv privateData) map[
 		}
 		b, _ := priv.GetKey(ctx, a.unknownKey())
 		var held []string
-		if len(b) > 0 && json.Unmarshal(b, &held) == nil && len(held) > 0 {
+		if len(b) == 0 || json.Unmarshal(b, &held) != nil {
+			continue
+		}
+		held = slices.DeleteFunc(held, func(e string) bool { return slices.Contains(a.OneOf, e) })
+		if len(held) > 0 {
 			out[a.Name] = held
 		}
 	}

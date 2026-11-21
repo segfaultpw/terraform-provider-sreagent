@@ -447,44 +447,11 @@ func TestAccBoardAndSlackReactionSettings(t *testing.T) {
 			return nil
 		}
 	}
-	const first = "  board_column_emoji = {\n    done = \"\\u2705\"\n    in_progress = \"\\U0001F680\"\n  }\n  slack_reaction_sync = \"from_slack\"\n  slack_reaction_counts = false\n  reaction_meanings_off = [\"answer_feedback\", \"tell_author\"]"
-	const heartOnly = "  board_column_emoji = {\n    todo = \"\\u2764\"\n  }"
-	// TestTheAcceptanceFlowOfTheReactionSettingsRunsAgainstTheFake runs these steps against the fake.
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
 		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
-		Steps: []resource.TestStep{
-			{
-				Config: cfg(first),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(addr, "board_column_emoji.%", "2"),
-					resource.TestCheckResourceAttr(addr, "slack_reaction_sync", "from_slack"),
-					resource.TestCheckResourceAttr(addr, "slack_reaction_counts", "false"),
-					resource.TestCheckResourceAttr(addr, "reaction_meanings_off.#", "2"),
-					held("board_column_emoji", `{"done":"\u2705","in_progress":"\ud83d\ude80"}`),
-					held("slack_reaction_sync", `"from_slack"`),
-					held("slack_reaction_counts", `false`),
-					held("reaction_meanings_off", `["answer_feedback","tell_author"]`),
-				),
-			},
-			{Config: cfg(first), ConfigPlanChecks: emptyPlan},
-			{ResourceName: addr, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: cfg(first)},
-			// A heart spelled without its selector is stored qualified and plans no change.
-			{Config: cfg(heartOnly), Check: held("board_column_emoji", `{"todo":"\u2764\ufe0f"}`)},
-			{Config: cfg(heartOnly), ConfigPlanChecks: emptyPlan},
-			// Left out, everything stays as the platform holds it.
-			{Config: cfg("  alert_storm_threshold = 23"), Check: held("board_column_emoji", `{"todo":"\u2764\ufe0f"}`)},
-			{
-				Config: cfg("  board_column_emoji = {}\n  slack_reaction_sync = \"both\"\n  slack_reaction_counts = true\n  reaction_meanings_off = []"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(addr, "board_column_emoji.%", "0"),
-					held("board_column_emoji", `{}`),
-					held("slack_reaction_sync", `"both"`),
-					held("slack_reaction_counts", `true`),
-					held("reaction_meanings_off", `[]`),
-				),
-			},
-		},
+		// The steps are shared with TestTheAcceptanceFlowOfTheReactionSettingsRunsAgainstTheFake.
+		Steps: reactionSettingsFlow(cfg, addr, held),
 	})
 }
 
