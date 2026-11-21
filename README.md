@@ -47,6 +47,12 @@ Most of the provider works against any platform that serves the configuration AP
 | `board_tile_reactions` on `sreagent_organization_settings` | v0.502.0 |
 | `data.sreagent_fix_runner_health` | v0.503.0 |
 | `looking_window_hours` and `reaction_meanings_off` on `sreagent_organization_settings` | v0.506.0 |
+| `tell_author` in `reaction_meanings_off` on `sreagent_organization_settings` | v0.510.0 |
+| `telemetry_checks_enabled`, `telemetry_model_enabled` on `data.sreagent_alert_follow_up_settings` | v0.511.0 |
+| `board_column_emoji` on `sreagent_organization_settings` | v0.512.0 |
+| `informative_learning_enabled` on `data.sreagent_alert_follow_up_settings` | v0.513.0 |
+| `answer_feedback` in `reaction_meanings_off` on `sreagent_organization_settings` | v0.514.0 |
+| `slack_reaction_sync` and `slack_reaction_counts` on `sreagent_organization_settings` | v0.517.0 |
 
 The security resources need nothing newer than the release that first served each (0.3.0 changes the provider and the
 platform's published API document, not what a platform serves). They also need the infrastructure suite in the
