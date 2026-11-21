@@ -80,3 +80,26 @@ func (m sameNormalizedAsState) PlanModifyList(_ context.Context, req planmodifie
 		resp.PlanValue = req.StateValue
 	}
 }
+
+// sameNormalizedMapAsState plans the map state holds when the configuration names
+// the same keys with values the platform's normalization reads equal (an emoji
+// with or without its presentation selector). The platform answers its own
+// spelling, and Terraform accepts a plan that returns the prior value for a
+// configuration it is equivalent to.
+type sameNormalizedMapAsState struct{ normalize func(string) string }
+
+var _ planmodifier.Map = sameNormalizedMapAsState{}
+
+func (sameNormalizedMapAsState) Description(context.Context) string {
+	return "A map whose values equal the stored ones after the platform's normalization is no change."
+}
+
+func (m sameNormalizedMapAsState) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m sameNormalizedMapAsState) PlanModifyMap(_ context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) {
+	if sameMapAfter(m.normalize, req.PlanValue, req.StateValue) {
+		resp.PlanValue = req.StateValue
+	}
+}

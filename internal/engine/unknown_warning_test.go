@@ -52,7 +52,7 @@ func TestTheUnknownMeaningWarningNamesTheValueAndTheUpgradeAdviceOncePerPlan(t *
 	ctx := context.Background()
 	r := keepUnknownResource()
 	priv := mapPrivate{}
-	if d := priv.SetKey(ctx, "unknown_meanings_off", []byte(`["answer_feedback"]`)); d.HasError() {
+	if d := priv.SetKey(ctx, "unknown_meanings_off", []byte(`["future_meaning"]`)); d.HasError() {
 		t.Fatal(d)
 	}
 	held := r.unknownHeld(ctx, priv)
@@ -67,7 +67,7 @@ func TestTheUnknownMeaningWarningNamesTheValueAndTheUpgradeAdviceOncePerPlan(t *
 		t.Errorf("severity = %v, want a warning", d.Severity())
 	}
 	for _, want := range []string{
-		"answer_feedback",
+		"future_meaning",
 		"meanings_off",
 		"upgrade the provider",
 		"shows it as removed",
@@ -84,7 +84,7 @@ func TestTheUnknownMeaningWarningIsSilentWhenThereIsNothingToSay(t *testing.T) {
 	ctx := context.Background()
 	r := keepUnknownResource()
 
-	held := map[string][]string{"meanings_off": {"answer_feedback"}}
+	held := map[string][]string{"meanings_off": {"future_meaning"}}
 	var diags diag.Diagnostics
 	r.warnUnknown(ctx, listConfig{}, held, &diags)
 	if len(diags) != 0 {
@@ -119,9 +119,9 @@ func TestTheUnknownMeaningWarningIsSilentWhenThereIsNothingToSay(t *testing.T) {
 
 func TestTheUnknownEntriesAreReadFromAnAnsweredRow(t *testing.T) {
 	r := keepUnknownResource()
-	held := r.unknownIn(map[string]any{"meanings_off": []any{"answer_feedback", "looking"}, "plain": []any{"zzz"}})
-	if got := held["meanings_off"]; len(got) != 1 || got[0] != "answer_feedback" {
-		t.Errorf("held = %v, want only answer_feedback", held)
+	held := r.unknownIn(map[string]any{"meanings_off": []any{"future_meaning", "looking"}, "plain": []any{"zzz"}})
+	if got := held["meanings_off"]; len(got) != 1 || got[0] != "future_meaning" {
+		t.Errorf("held = %v, want only future_meaning", held)
 	}
 	if _, ok := held["plain"]; ok {
 		t.Errorf("an attribute without KeepUnknown holds nothing: %v", held)

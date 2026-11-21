@@ -270,7 +270,7 @@ func zero(a engine.Attr) any {
 		return a.Name == "enabled" || a.Name == "platform_fallback"
 	case engine.StringList:
 		return []any{}
-	case engine.JSON:
+	case engine.JSON, engine.StringMap:
 		return map[string]any{}
 	}
 	return nil

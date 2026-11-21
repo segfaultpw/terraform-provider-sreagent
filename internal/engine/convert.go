@@ -59,6 +59,9 @@ func getValue(ctx context.Context, src valueSource, a Attr) (attr.Value, diag.Di
 	case StringList:
 		var v types.List
 		return v, src.GetAttribute(ctx, p, &v)
+	case StringMap:
+		var v types.Map
+		return v, src.GetAttribute(ctx, p, &v)
 	case JSON:
 		var v jsontypes.Normalized
 		return v, src.GetAttribute(ctx, p, &v)
@@ -90,6 +93,16 @@ func toJSON(v attr.Value) (any, error) {
 				return nil, fmt.Errorf("list element %s is not a string", e)
 			}
 			out = append(out, s.ValueString())
+		}
+		return out, nil
+	case types.Map:
+		out := make(map[string]any, len(t.Elements()))
+		for k, e := range t.Elements() {
+			s, ok := e.(types.String)
+			if !ok || s.IsNull() || s.IsUnknown() {
+				return nil, fmt.Errorf("map element %s is not a string", k)
+			}
+			out[k] = s.ValueString()
 		}
 		return out, nil
 	}
@@ -163,6 +176,31 @@ func fromJSON(k Kind, raw any) (attr.Value, error) {
 			return nil, fmt.Errorf("building a list: %v", d)
 		}
 		return l, nil
+	case StringMap:
+		if raw == nil {
+			return types.MapNull(types.StringType), nil
+		}
+		obj, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("want an object, got %T", raw)
+		}
+		elems := make(map[string]attr.Value, len(obj))
+		for k, it := range obj {
+			// A null value is a key with nothing for it: the same as a key left out.
+			if it == nil {
+				continue
+			}
+			s, ok := it.(string)
+			if !ok {
+				return nil, fmt.Errorf("want an object of strings, got %T", it)
+			}
+			elems[k] = types.StringValue(s)
+		}
+		m, d := types.MapValue(types.StringType, elems)
+		if d.HasError() {
+			return nil, fmt.Errorf("building a map: %v", d)
+		}
+		return m, nil
 	case JSON:
 		if raw == nil {
 			return jsontypes.NewNormalizedNull(), nil
@@ -255,6 +293,8 @@ func keep(a Attr, before, remote attr.Value) bool {
 			return true
 		}
 		return sameAfter(a.Normalize, before, remote)
+	case StringMap:
+		return sameMapAfter(a.Normalize, before, remote)
 	case Float:
 		x, y := before.(types.Float64).ValueFloat64(), remote.(types.Float64).ValueFloat64()
 		return math.Abs(x-y) <= 1e-9*math.Max(1, math.Abs(x))
@@ -342,6 +382,32 @@ func sameAfter(normalize func(string) string, x, y attr.Value) bool {
 		s, ok1 := e.(types.String)
 		t, ok2 := b.Elements()[i].(types.String)
 		if !ok1 || !ok2 || s.IsNull() || s.IsUnknown() || t.IsNull() || t.IsUnknown() || normalize(s.ValueString()) != normalize(t.ValueString()) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameMapAfter reports that two known maps hold the same keys, with the same
+// values once normalize has been applied to each. A nil normalize compares the
+// values as they are.
+func sameMapAfter(normalize func(string) string, x, y attr.Value) bool {
+	a, aok := x.(types.Map)
+	b, bok := y.(types.Map)
+	if !aok || !bok || a.IsNull() || a.IsUnknown() || b.IsNull() || b.IsUnknown() || len(a.Elements()) != len(b.Elements()) {
+		return false
+	}
+	for k, e := range a.Elements() {
+		s, ok1 := e.(types.String)
+		t, ok2 := b.Elements()[k].(types.String)
+		if !ok1 || !ok2 || s.IsNull() || s.IsUnknown() || t.IsNull() || t.IsUnknown() {
+			return false
+		}
+		have, other := s.ValueString(), t.ValueString()
+		if normalize != nil {
+			have, other = normalize(have), normalize(other)
+		}
+		if have != other {
 			return false
 		}
 	}

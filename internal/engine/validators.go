@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -364,5 +365,59 @@ func (v uniqueAfter) ValidateList(_ context.Context, req validator.ListRequest, 
 			return
 		}
 		seen[key] = s.ValueString()
+	}
+}
+
+// mapShape holds a StringMap to what its write body publishes and the platform
+// accepts: only the published keys, one value for each (a null value would read
+// back as the key left out), a value no longer than the published maxLength in
+// code points, and a value the spec's ItemCheck does not refuse.
+type mapShape struct {
+	keys   []string
+	maxLen int
+	check  func(string) string
+}
+
+var _ validator.Map = mapShape{}
+
+func (v mapShape) Description(context.Context) string {
+	return fmt.Sprintf("may hold only the keys %s, each with one value", strings.Join(v.keys, ", "))
+}
+
+func (v mapShape) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v mapShape) ValidateMap(_ context.Context, req validator.MapRequest, resp *validator.MapResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	names := make([]string, 0, len(req.ConfigValue.Elements()))
+	for k := range req.ConfigValue.Elements() {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		if !slices.Contains(v.keys, k) {
+			resp.Diagnostics.AddAttributeError(req.Path.AtMapKey(k), "Unknown key", fmt.Sprintf("%q is not one of the keys the platform takes: %s.", k, strings.Join(v.keys, ", ")))
+			continue
+		}
+		s, ok := req.ConfigValue.Elements()[k].(types.String)
+		switch {
+		case !ok || s.IsUnknown():
+			continue
+		case s.IsNull():
+			resp.Diagnostics.AddAttributeError(req.Path.AtMapKey(k), "A key with no value", fmt.Sprintf("%q has no value. The platform reads a key with nothing for it as the key left out, so leave %q out instead.", k, k))
+			continue
+		}
+		if v.maxLen > 0 {
+			if n := utf8.RuneCountInString(s.ValueString()); n > v.maxLen {
+				resp.Diagnostics.AddAttributeError(req.Path.AtMapKey(k), "Value too long", fmt.Sprintf("A value must be at most %d characters, this one has %d.", v.maxLen, n))
+				continue
+			}
+		}
+		if v.check != nil {
+			if sentence := v.check(s.ValueString()); sentence != "" {
+				resp.Diagnostics.AddAttributeError(req.Path.AtMapKey(k), "Value the platform stores differently", sentence)
+			}
+		}
 	}
 }

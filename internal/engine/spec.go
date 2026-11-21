@@ -19,6 +19,8 @@ const (
 	Bool
 	StringList
 	JSON
+	// StringMap is a map of string to string whose keys are the attribute's MapKeys.
+	StringMap
 )
 
 // Attr is one field of a resource. Flags mirror x-sreagent-resources in the
@@ -63,12 +65,19 @@ type Attr struct {
 	// Normalize: the server stores this form; values equal after it are equal.
 	// On a StringList it is applied to each entry, in order: a list whose
 	// entries equal the stored ones after it is the stored list, so the
-	// configuration's spelling stays and plans no change.
+	// configuration's spelling stays and plans no change. On a StringMap it is
+	// applied to each value, and the keys must be the same.
 	Normalize func(string) string
-	// ItemMaxLength is the published items.maxLength of a StringList, in code
-	// points. Zero means none.
+	// ItemMaxLength is the published items.maxLength of a StringList, or the
+	// published maxLength of each value of a StringMap, in code points. Zero means
+	// none.
 	ItemMaxLength int
-	// ItemCheck refuses a StringList entry the platform would store as a
+	// MapKeys are the keys a StringMap may hold, as its write body publishes them
+	// (properties, with additionalProperties false). A key outside them is refused
+	// at plan. The map replaces the whole set on a write, so a key left out is
+	// removed.
+	MapKeys []string
+	// ItemCheck refuses a StringList entry (or a StringMap value) the platform would store as a
 	// different value than written (it returns the sentence), so the
 	// configuration is refused at plan instead of planning a change on every run.
 	ItemCheck func(entry string) string

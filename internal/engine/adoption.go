@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -76,6 +77,11 @@ func (s rowSource) GetAttribute(_ context.Context, p path.Path, target any) diag
 	case *types.List:
 		*dst = types.ListNull(types.StringType)
 		if v, ok := value.(types.List); ok {
+			*dst = v
+		}
+	case *types.Map:
+		*dst = types.MapNull(types.StringType)
+		if v, ok := value.(types.Map); ok {
 			*dst = v
 		}
 	case *jsontypes.Normalized:
@@ -227,6 +233,22 @@ func showValue(v attr.Value) string {
 			return "not set"
 		}
 		return "[" + strings.Join(stringsOf(t), ", ") + "]"
+	case types.Map:
+		if t.IsNull() {
+			return "not set"
+		}
+		keys := make([]string, 0, len(t.Elements()))
+		for k := range t.Elements() {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			if s, ok := t.Elements()[k].(types.String); ok {
+				parts = append(parts, k+" = "+strconv.Quote(s.ValueString()))
+			}
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
 	}
 	return v.String()
 }

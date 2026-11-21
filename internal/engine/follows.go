@@ -277,6 +277,8 @@ func unknownOf(a Attr) attr.Value {
 		return types.BoolUnknown()
 	case StringList:
 		return types.ListUnknown(types.StringType)
+	case StringMap:
+		return types.MapUnknown(types.StringType)
 	}
 	return types.StringUnknown()
 }

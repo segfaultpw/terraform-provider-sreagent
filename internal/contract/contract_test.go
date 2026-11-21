@@ -138,7 +138,8 @@ func specProblems(d *Doc, s engine.Spec) []string {
 		} else if a.NullMeans != "" {
 			add("field %s has null meaning %q in the spec but none in the contract", f, a.NullMeans)
 		}
-		if got, want := a.Kind, kindFor(row[f]); got != want {
+		// A map of strings is an object in the document; checkMap holds its shape.
+		if got, want := a.Kind, kindFor(row[f]); got != want && (a.Kind != engine.StringMap || want != engine.JSON) {
 			add("field %s kind %d, contract %d", f, got, want)
 		}
 		if s.Lifecycle && s.Shape != engine.Singleton {
@@ -616,6 +617,10 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 	if a.Kind == engine.JSON {
 		return
 	}
+	if a.Kind == engine.StringMap {
+		checkMap(a, f, schema, add)
+		return
+	}
 	kw := readKeywords(schema)
 	exempt := func(keyword string) bool {
 		return slices.Contains(unmodelled[resource+"."+f], keyword)
@@ -714,6 +719,49 @@ func checkKeywords(resource string, a engine.Attr, f string, schema map[string]a
 		}
 	default:
 		add("field %s: the contract publishes format %q, which the engine does not understand", f, kw.format)
+	}
+}
+
+// checkMap holds a StringMap to its write body: an object with no other keys than the
+// ones the attribute lists, each a string (or null) of at most the published length.
+func checkMap(a engine.Attr, f string, schema map[string]any, add func(string, ...any)) {
+	if t, _ := typeOf(schema); t != "object" {
+		add("field %s is a map in the spec, but the contract publishes type %v", f, schema["type"])
+		return
+	}
+	for key := range schema {
+		switch key {
+		case "type", "description", "additionalProperties", "properties":
+		default:
+			add("field %s: the contract publishes %q, which the engine does not understand", f, key)
+		}
+	}
+	if extra, ok := schema["additionalProperties"].(bool); !ok || extra {
+		add("field %s: the contract allows keys beyond its properties, so MapKeys cannot hold it", f)
+	}
+	props, _ := schema["properties"].(map[string]any)
+	published := make([]string, 0, len(props))
+	for name, p := range props {
+		published = append(published, name)
+		prop, _ := p.(map[string]any)
+		if t, nullable := typeOf(prop); t != "string" || !nullable {
+			add("field %s key %s: the contract publishes type %v, want a string or null", f, name, prop["type"])
+		}
+		if n := intOf(prop["maxLength"]); n != a.ItemMaxLength {
+			add("field %s key %s ItemMaxLength %d, contract maxLength %d", f, name, a.ItemMaxLength, n)
+		}
+		for key := range prop {
+			switch key {
+			case "type", "description", "maxLength":
+			default:
+				add("field %s key %s: the contract publishes %q, which the engine does not understand", f, name, key)
+			}
+		}
+	}
+	slices.Sort(published)
+	keys := slices.Sorted(slices.Values(a.MapKeys))
+	if !slices.Equal(published, keys) {
+		add("field %s MapKeys %v, contract properties %v", f, keys, published)
 	}
 }
 

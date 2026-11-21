@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -412,6 +413,81 @@ func TestAccReactionMeaningSettings(t *testing.T) {
 	})
 }
 
+// The four meanings, the column emoji and the two Slack reaction settings round-trip through the
+// real platform: a map replaces the whole set and {} clears it, a heart written without its
+// presentation selector is stored in its fully qualified form and plans no change, a set comes
+// back sorted, a configuration that leaves them out plans nothing, and the last step puts the
+// stack back to the defaults.
+func TestAccBoardAndSlackReactionSettings(t *testing.T) {
+	accPreCheck(t)
+	const addr = "sreagent_organization_settings.test"
+	cfg := func(body string) string {
+		return accProvider() + "resource \"sreagent_organization_settings\" \"test\" {\n" + body + "\n}\n"
+	}
+	held := func(field, want string) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			out, err := accClient(t).Do(context.Background(), client.Request{Method: http.MethodGet, Path: "organization_settings"})
+			if err != nil {
+				return err
+			}
+			var row map[string]json.RawMessage
+			if err := json.Unmarshal(out.Data, &row); err != nil {
+				return err
+			}
+			var got, w any
+			if err := json.Unmarshal(row[field], &got); err != nil {
+				return fmt.Errorf("the platform answered %s %s: %w", field, row[field], err)
+			}
+			if err := json.Unmarshal([]byte(want), &w); err != nil {
+				return err
+			}
+			if !reflect.DeepEqual(got, w) {
+				return fmt.Errorf("the platform holds %s %s, want %s", field, row[field], want)
+			}
+			return nil
+		}
+	}
+	const first = "  board_column_emoji = {\n    done = \"\\u2705\"\n    in_progress = \"\\U0001F680\"\n  }\n  slack_reaction_sync = \"from_slack\"\n  slack_reaction_counts = false\n  reaction_meanings_off = [\"answer_feedback\", \"tell_author\"]"
+	const heartOnly = "  board_column_emoji = {\n    todo = \"\\u2764\"\n  }"
+	// TestTheAcceptanceFlowOfTheReactionSettingsRunsAgainstTheFake runs these steps against the fake.
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		TerraformVersionChecks:   []tfversion.TerraformVersionCheck{tfversion.SkipBelow(tfversion.Version1_12_0)},
+		Steps: []resource.TestStep{
+			{
+				Config: cfg(first),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "board_column_emoji.%", "2"),
+					resource.TestCheckResourceAttr(addr, "slack_reaction_sync", "from_slack"),
+					resource.TestCheckResourceAttr(addr, "slack_reaction_counts", "false"),
+					resource.TestCheckResourceAttr(addr, "reaction_meanings_off.#", "2"),
+					held("board_column_emoji", `{"done":"\u2705","in_progress":"\ud83d\ude80"}`),
+					held("slack_reaction_sync", `"from_slack"`),
+					held("slack_reaction_counts", `false`),
+					held("reaction_meanings_off", `["answer_feedback","tell_author"]`),
+				),
+			},
+			{Config: cfg(first), ConfigPlanChecks: emptyPlan},
+			{ResourceName: addr, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: cfg(first)},
+			// A heart spelled without its selector is stored qualified and plans no change.
+			{Config: cfg(heartOnly), Check: held("board_column_emoji", `{"todo":"\u2764\ufe0f"}`)},
+			{Config: cfg(heartOnly), ConfigPlanChecks: emptyPlan},
+			// Left out, everything stays as the platform holds it.
+			{Config: cfg("  alert_storm_threshold = 23"), Check: held("board_column_emoji", `{"todo":"\u2764\ufe0f"}`)},
+			{
+				Config: cfg("  board_column_emoji = {}\n  slack_reaction_sync = \"both\"\n  slack_reaction_counts = true\n  reaction_meanings_off = []"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(addr, "board_column_emoji.%", "0"),
+					held("board_column_emoji", `{}`),
+					held("slack_reaction_sync", `"both"`),
+					held("slack_reaction_counts", `true`),
+					held("reaction_meanings_off", `[]`),
+				),
+			},
+		},
+	})
+}
+
 // startsEmpty are the singletons a fresh organization has no row of: both
 // need a Slack workspace on the other end first, and read as not configured.
 var startsEmpty = map[string]bool{"slack": true, "change_notifications": true}
@@ -453,6 +529,12 @@ func TestAccDataSources(t *testing.T) {
 		resource.TestCheckResourceAttr("data.sreagent_fix_runner_health.x", "waiting", "0"),
 		resource.TestCheckResourceAttr("data.sreagent_fix_runner_health.x", "consecutive_refusals", "0"),
 		resource.TestMatchResourceAttr("data.sreagent_alert_follow_up_settings.x", "enabled", regexp.MustCompile(`^(true|false)$`)),
+		resource.TestMatchResourceAttr("data.sreagent_alert_follow_up_settings.x", "telemetry_checks_enabled", regexp.MustCompile(`^(true|false)$`)),
+		resource.TestMatchResourceAttr("data.sreagent_alert_follow_up_settings.x", "telemetry_model_enabled", regexp.MustCompile(`^(true|false)$`)),
+		resource.TestMatchResourceAttr("data.sreagent_alert_follow_up_settings.x", "informative_learning_enabled", regexp.MustCompile(`^(true|false)$`)),
+		resource.TestMatchResourceAttr("data.sreagent_organization_settings.x", "slack_reaction_sync", regexp.MustCompile(`^(both|from_slack|off)$`)),
+		resource.TestMatchResourceAttr("data.sreagent_organization_settings.x", "slack_reaction_counts", regexp.MustCompile(`^(true|false)$`)),
+		resource.TestCheckResourceAttrSet("data.sreagent_organization_settings.x", "board_column_emoji.%"),
 		resource.TestCheckResourceAttr("data.sreagent_alert_informative_kinds.x", "items.#", "0"),
 	)
 	for _, key := range []string{"SREAGENT_API_KEY", "SREAGENT_READ_API_KEY"} {

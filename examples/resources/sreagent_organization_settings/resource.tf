@@ -23,8 +23,27 @@ resource "sreagent_organization_settings" "this" {
   looking_window_hours = 72
 
   # The reaction meanings switched off, as the whole set: looking (eyes on a card
-  # makes the person a watcher and shows their face on its tile) and take_it (a
-  # raised hand on a card nobody is assigned to assigns it to them). [] leaves
-  # both on.
-  reaction_meanings_off = ["take_it"]
+  # makes the person a watcher and shows their face on its tile), take_it (a
+  # raised hand on a card nobody is assigned to assigns it to them), tell_author
+  # (people are told when others react to their cards and comments) and
+  # answer_feedback (a thumbs on an assistant answer is recorded as a rating).
+  # [] leaves all four on.
+  reaction_meanings_off = ["take_it", "answer_feedback"]
+
+  # The emoji shown before each board column's name, as the whole set: a map from
+  # a column (backlog, triage, todo, in_progress, blocked, done) to one emoji. A
+  # column left out has no emoji, and {} removes them all.
+  board_column_emoji = {
+    in_progress = "\U0001F680"
+    done        = "\u2705"
+  }
+
+  # How reactions travel between a card and its Slack threads: both (the
+  # default), from_slack (a reaction in Slack shows on the card and SRE Agent adds
+  # none) or off.
+  slack_reaction_sync = "from_slack"
+
+  # Whether SRE Agent's messages in a card's Slack thread carry the board's
+  # counts. On by default.
+  slack_reaction_counts = false
 }

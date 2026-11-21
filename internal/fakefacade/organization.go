@@ -21,11 +21,23 @@ func organizationSeed(row map[string]any) {
 	row["board_tile_reactions"] = true
 	row["looking_window_hours"] = 24
 	row["reaction_meanings_off"] = []any{}
+	row["board_column_emoji"] = map[string]any{}
+	row["slack_reaction_sync"] = "both"
+	row["slack_reaction_counts"] = true
 }
 
-// reactionMeanings are the meanings the platform admits in a write, answer_feedback (offered by a later
-// platform release) included: the provider declares only looking and take_it.
-var reactionMeanings = []string{"looking", "take_it", "answer_feedback"}
+// FutureMeaning is a reaction meaning no provider release declares: a platform release newer than the
+// one a test provider knows admits it. Tests put it on the platform to prove such a value is kept.
+const FutureMeaning = "future_meaning"
+
+// reactionMeanings are the meanings the platform admits in a write: the four the provider declares and
+// FutureMeaning, which a later platform release adds.
+var reactionMeanings = []string{"looking", "take_it", "tell_author", "answer_feedback", FutureMeaning}
+
+// boardColumns are the columns that can carry an emoji.
+var boardColumns = []string{"backlog", "triage", "todo", "in_progress", "blocked", "done"}
+
+var slackReactionModes = []string{"both", "from_slack", "off"}
 var lookingWindows = []string{"4", "8", "24", "72"}
 
 var threadEvents = []string{"column_moves", "card_done", "card_wont_do", "pull_request_opened", "pull_request_merged", "pull_request_closed", "pull_request_reopened", "change_pushed", "assistant_replies", "comments"}
@@ -98,6 +110,40 @@ func organizationRefusal(body map[string]any) (int, string) {
 			}
 		}
 	}
+	if v, ok := body["board_column_emoji"]; ok {
+		const mapSentence = "board_column_emoji must be an object that maps columns (backlog, triage, todo, in_progress, blocked, done) to one emoji each. A column left out has no emoji."
+		m, isMap := v.(map[string]any)
+		if !isMap {
+			return http.StatusUnprocessableEntity, mapSentence
+		}
+		columns := make([]string, 0, len(m))
+		for column := range m {
+			columns = append(columns, column)
+		}
+		sort.Strings(columns)
+		for _, column := range columns {
+			if !slices.Contains(boardColumns, column) {
+				return http.StatusUnprocessableEntity, mapSentence
+			}
+			if m[column] == nil {
+				continue
+			}
+			s, isString := m[column].(string)
+			if _, known := normalizeEmoji(s); !isString || !known {
+				return http.StatusUnprocessableEntity, "The emoji for " + column + " is not an emoji SRE Agent knows. Pick one from the list."
+			}
+		}
+	}
+	if v, ok := body["slack_reaction_sync"]; ok {
+		if s, _ := v.(string); !slices.Contains(slackReactionModes, s) {
+			return http.StatusUnprocessableEntity, `slack_reaction_sync must be "both" (reactions show on the card and in Slack), "from_slack" (reactions in Slack show on the card) or "off".`
+		}
+	}
+	if v, ok := body["slack_reaction_counts"]; ok {
+		if _, isBool := v.(bool); !isBool {
+			return http.StatusUnprocessableEntity, "slack_reaction_counts must be true or false."
+		}
+	}
 	if v, ok := body["reaction_quick_row"]; ok {
 		list, _ := v.([]any)
 		if len(list) > 12 {
@@ -151,6 +197,18 @@ func organizationStore(row, body map[string]any) {
 			out = append(out, n)
 		}
 		row["reaction_meanings_off"] = out
+	}
+	if v, ok := body["board_column_emoji"]; ok {
+		m, _ := v.(map[string]any)
+		out := make(map[string]any, len(m))
+		for column, e := range m {
+			if e == nil {
+				continue
+			}
+			full, _ := normalizeEmoji(fmt.Sprint(e))
+			out[column] = full
+		}
+		row["board_column_emoji"] = out
 	}
 	if v, ok := body["reaction_quick_row"]; ok {
 		list, _ := v.([]any)

@@ -69,6 +69,8 @@ func kindType(k Kind) attr.Type {
 		return types.BoolType
 	case StringList:
 		return types.ListType{ElemType: types.StringType}
+	case StringMap:
+		return types.MapType{ElemType: types.StringType}
 	case JSON:
 		return jsontypes.NormalizedType{}
 	}
@@ -85,6 +87,8 @@ func computedAttribute(a Attr) schema.Attribute {
 		return schema.BoolAttribute{Computed: true, Description: a.Description}
 	case StringList:
 		return schema.ListAttribute{Computed: true, ElementType: types.StringType, Description: a.Description}
+	case StringMap:
+		return schema.MapAttribute{Computed: true, ElementType: types.StringType, Description: a.Description}
 	case JSON:
 		return schema.StringAttribute{Computed: true, CustomType: jsontypes.NormalizedType{}, Description: a.Description}
 	}

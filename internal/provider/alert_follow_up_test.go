@@ -21,6 +21,9 @@ func TestAlertFollowUpSettingsAreReadWholeAndNeverWritten(t *testing.T) {
 		r["enabled"] = true
 		r["still_active_enabled"] = false
 		r["informative_expire_hours"] = 24
+		r["telemetry_checks_enabled"] = true
+		r["telemetry_model_enabled"] = false
+		r["informative_learning_enabled"] = true
 		r["resolve_modes"] = map[string]any{"critical": "suggest", "high": "suggest", "medium": "auto"}
 		r["ages"] = map[string]any{"critical": map[string]any{"check": 30, "nudge": 60}}
 		r["defaults"] = false
@@ -37,6 +40,9 @@ func TestAlertFollowUpSettingsAreReadWholeAndNeverWritten(t *testing.T) {
 				resource.TestCheckResourceAttr(followUp, "enabled", "true"),
 				resource.TestCheckResourceAttr(followUp, "still_active_enabled", "false"),
 				resource.TestCheckResourceAttr(followUp, "informative_expire_hours", "24"),
+				resource.TestCheckResourceAttr(followUp, "telemetry_checks_enabled", "true"),
+				resource.TestCheckResourceAttr(followUp, "telemetry_model_enabled", "false"),
+				resource.TestCheckResourceAttr(followUp, "informative_learning_enabled", "true"),
 				resource.TestCheckResourceAttr(followUp, "defaults", "false"),
 				resource.TestCheckResourceAttr(followUp, "updated_at", "2026-11-12T10:00:00Z"),
 				resource.TestCheckResourceAttr(followUp, "configured", "true"),
@@ -65,6 +71,9 @@ func TestAlertFollowUpSettingsReadTheDefaultsAnOrganizationNeverChanged(t *testi
 	f.Mutate("alert_follow_up_settings", "alert_follow_up_settings", func(r map[string]any) {
 		r["enabled"] = false
 		r["still_active_enabled"] = false
+		r["telemetry_checks_enabled"] = false
+		r["telemetry_model_enabled"] = false
+		r["informative_learning_enabled"] = false
 		r["informative_expire_hours"] = nil
 		r["resolve_modes"] = nil
 		r["ages"] = nil
@@ -77,6 +86,9 @@ func TestAlertFollowUpSettingsReadTheDefaultsAnOrganizationNeverChanged(t *testi
 			Config: providerBlock(f.URL) + "data \"sreagent_alert_follow_up_settings\" \"f\" {}\n",
 			Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr(followUp, "enabled", "false"),
+				resource.TestCheckResourceAttr(followUp, "telemetry_checks_enabled", "false"),
+				resource.TestCheckResourceAttr(followUp, "telemetry_model_enabled", "false"),
+				resource.TestCheckResourceAttr(followUp, "informative_learning_enabled", "false"),
 				resource.TestCheckResourceAttr(followUp, "defaults", "true"),
 				resource.TestCheckNoResourceAttr(followUp, "updated_at"),
 				resource.TestCheckNoResourceAttr(followUp, "informative_expire_hours"),
@@ -204,6 +216,30 @@ func TestAlertInformativeKindsAnEmptyOrganizationReadsAnEmptyList(t *testing.T) 
 		Steps: []resource.TestStep{{
 			Config: providerBlock(f.URL) + "data \"sreagent_alert_informative_kinds\" \"k\" {}\n",
 			Check:  resource.TestCheckResourceAttr(kinds, "items.#", "0"),
+		}},
+	})
+}
+
+// A platform from before the three switches answers none of them: they read as null, and
+// nothing else about the read changes.
+func TestAlertFollowUpSettingsReadAnOlderPlatformWithoutTheThreeSwitches(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("alert_follow_up_settings", "alert_follow_up_settings", func(r map[string]any) {
+		r["enabled"] = true
+		delete(r, "telemetry_checks_enabled")
+		delete(r, "telemetry_model_enabled")
+		delete(r, "informative_learning_enabled")
+	})
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{{
+			Config: providerBlock(f.URL) + "data \"sreagent_alert_follow_up_settings\" \"f\" {}\n",
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(followUp, "enabled", "true"),
+				resource.TestCheckNoResourceAttr(followUp, "telemetry_checks_enabled"),
+				resource.TestCheckNoResourceAttr(followUp, "telemetry_model_enabled"),
+				resource.TestCheckNoResourceAttr(followUp, "informative_learning_enabled"),
+			),
 		}},
 	})
 }

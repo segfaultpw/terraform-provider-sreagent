@@ -231,6 +231,79 @@ func TestReactionMeaningsAreASetAndEmptyLeavesEveryMeaningOn(t *testing.T) {
 	})
 }
 
+// All four meanings are declared: tell_author (reactions tell the author of a card or comment) and
+// answer_feedback (a thumbs on an assistant answer is a rating) are managed like looking and take_it,
+// the platform stores the set sorted, and the order is no change.
+func TestAllFourReactionMeaningsAreASetTheProviderManages(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	cfg := func(list string) string { return orgSettingsConfig(f.URL, "  reaction_meanings_off = "+list) }
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfg(`["tell_author"]`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.#", "1"),
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.0", "tell_author"),
+					holds(f, "reaction_meanings_off", []any{"tell_author"}),
+				),
+			},
+			{Config: cfg(`["tell_author"]`), ConfigPlanChecks: emptyPlan},
+			{
+				Config: cfg(`["tell_author", "answer_feedback", "take_it", "looking"]`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.#", "4"),
+					holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking", "take_it", "tell_author"}),
+				),
+			},
+			{Config: cfg(`["looking", "take_it", "answer_feedback", "tell_author"]`), ConfigPlanChecks: emptyPlan},
+			{
+				Config: cfg(`["answer_feedback"]`),
+				Check:  holds(f, "reaction_meanings_off", []any{"answer_feedback"}),
+			},
+			{ResourceName: orgSettings, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: cfg(`["answer_feedback"]`)},
+			{Config: cfg(`[]`), Check: holds(f, "reaction_meanings_off", []any{})},
+			{Config: cfg(`[]`), ConfigPlanChecks: emptyPlan},
+		},
+	})
+}
+
+// An organization that switched tell_author and answer_feedback off in the app while only 0.6.0
+// was out: 0.6.0 kept them off without showing them. A block that names the set the 0.6.0 way,
+// without them, now plans their removal (the next apply switches them back on): the upgrade note
+// says to add them. A block that names them plans nothing, and one that leaves the attribute out
+// plans nothing and sends nothing.
+func TestUpgradingFromZeroSixShowsTheTwoMeaningsAsRemovedUnlessTheBlockNamesThem(t *testing.T) {
+	f := fakefacade.New(t, specs.All())
+	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
+		r["reaction_meanings_off"] = []any{"answer_feedback", "looking", "tell_author"}
+	})
+	cfg := func(list string) string { return orgSettingsConfig(f.URL, "  reaction_meanings_off = "+list) }
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: factories,
+		Steps: []resource.TestStep{
+			// A block that leaves the attribute out plans nothing against what the platform holds.
+			{
+				Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.#", "3"),
+					notSent(f, "reaction_meanings_off"),
+				),
+			},
+			{Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 12"), ConfigPlanChecks: emptyPlan},
+			// The block of a 0.6.0 configuration names looking alone: the plan now shows the two as removed.
+			{
+				Config:             cfg(`["looking"]`),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+			// Naming all three keeps them off and plans nothing.
+			{Config: cfg(`["looking", "tell_author", "answer_feedback"]`), ConfigPlanChecks: emptyPlan},
+			{Config: cfg(`["answer_feedback", "looking", "tell_author"]`), ConfigPlanChecks: emptyPlan, Check: holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking", "tell_author"})},
+		},
+	})
+}
+
 func TestReactionMeaningsRefuseAnUnknownMeaningAndARepeatAtPlan(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	resource.UnitTest(t, resource.TestCase{
@@ -316,13 +389,13 @@ func TestAConfigurationThatNamesNeitherReactionMeaningSettingSendsNeither(t *tes
 
 // ---- a meaning this provider release does not know ----
 
-// The platform already admits answer_feedback for a later release. An admin can switch it off
+// A platform release newer than this provider admits a meaning it does not declare (fakefacade.FutureMeaning). An admin can switch it off
 // in the app; a block that names reaction_meanings_off must neither show it as a change nor
 // switch it back on, and cannot name it (the plan refuses it).
 func TestAMeaningThisReleaseDoesNotKnowStaysOffWhenTheBlockNamesTheSet(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
-		r["reaction_meanings_off"] = []any{"answer_feedback", "looking"}
+		r["reaction_meanings_off"] = []any{fakefacade.FutureMeaning, "looking"}
 	})
 	cfg := func(list string) string { return orgSettingsConfig(f.URL, "  reaction_meanings_off = "+list) }
 	resource.UnitTest(t, resource.TestCase{
@@ -334,10 +407,10 @@ func TestAMeaningThisReleaseDoesNotKnowStaysOffWhenTheBlockNamesTheSet(t *testin
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.#", "1"),
 					resource.TestCheckResourceAttr(orgSettings, "reaction_meanings_off.0", "looking"),
-					holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking"}),
+					holds(f, "reaction_meanings_off", []any{fakefacade.FutureMeaning, "looking"}),
 					func(*terraform.State) error {
 						got, _ := f.LastBody("PUT", "organization_settings")["reaction_meanings_off"].([]any)
-						if !reflect.DeepEqual(got, []any{"looking", "answer_feedback"}) {
+						if !reflect.DeepEqual(got, []any{"looking", fakefacade.FutureMeaning}) {
 							return fmt.Errorf("the apply must send looking and the meaning it does not know, sent %v", got)
 						}
 						return nil
@@ -348,12 +421,12 @@ func TestAMeaningThisReleaseDoesNotKnowStaysOffWhenTheBlockNamesTheSet(t *testin
 			// A change of the set keeps it off too.
 			{
 				Config: cfg(`["take_it", "looking"]`),
-				Check:  holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking", "take_it"}),
+				Check:  holds(f, "reaction_meanings_off", []any{fakefacade.FutureMeaning, "looking", "take_it"}),
 			},
 			{Config: cfg(`["take_it", "looking"]`), ConfigPlanChecks: emptyPlan},
 			{
 				Config: cfg(`[]`),
-				Check:  holds(f, "reaction_meanings_off", []any{"answer_feedback"}),
+				Check:  holds(f, "reaction_meanings_off", []any{fakefacade.FutureMeaning}),
 			},
 			{Config: cfg(`[]`), ConfigPlanChecks: emptyPlan},
 			{ResourceName: orgSettings, ImportState: true, ImportStateId: "organization_settings", ImportStateVerify: true, Config: cfg(`[]`)},
@@ -366,7 +439,7 @@ func TestAMeaningThisReleaseDoesNotKnowStaysOffWhenTheBlockNamesTheSet(t *testin
 func TestAConfigurationThatLeavesTheMeaningsOutSendsNothingWhenThePlatformHoldsAnUnknownOne(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	f.Mutate("organization_settings", "organization_settings", func(r map[string]any) {
-		r["reaction_meanings_off"] = []any{"answer_feedback", "looking"}
+		r["reaction_meanings_off"] = []any{fakefacade.FutureMeaning, "looking"}
 	})
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
@@ -383,7 +456,7 @@ func TestAConfigurationThatLeavesTheMeaningsOutSendsNothingWhenThePlatformHoldsA
 				Config: orgSettingsConfig(f.URL, "  alert_storm_threshold = 14"),
 				Check: resource.ComposeTestCheckFunc(
 					notSent(f, "reaction_meanings_off"),
-					holds(f, "reaction_meanings_off", []any{"answer_feedback", "looking"}),
+					holds(f, "reaction_meanings_off", []any{fakefacade.FutureMeaning, "looking"}),
 				),
 			},
 		},
@@ -396,7 +469,7 @@ func TestAConfigurationCannotNameAMeaningThisReleaseDoesNotKnow(t *testing.T) {
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: factories,
 		Steps: []resource.TestStep{{
-			Config:      orgSettingsConfig(f.URL, "  reaction_meanings_off = [\"answer_feedback\"]"),
+			Config:      orgSettingsConfig(f.URL, "  reaction_meanings_off = [\"future_meaning\"]"),
 			PlanOnly:    true,
 			ExpectError: regexp.MustCompile(`(?s)reaction_meanings_off.*value must be one of`),
 		}},

@@ -28,6 +28,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -539,6 +540,20 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			la.Default = listdefault.StaticValue(v.(types.List))
 		}
 		return map[string]schema.Attribute{a.Attribute(): la}
+	case StringMap:
+		mods := []planmodifier.Map{}
+		if stable {
+			mods = append(mods, mapplanmodifier.UseStateForUnknown())
+		}
+		if a.CreateOnly || a.NotRead {
+			mods = append(mods, mapplanmodifier.RequiresReplace())
+		}
+		if a.Normalize != nil {
+			mods = append([]planmodifier.Map{sameNormalizedMapAsState{normalize: a.Normalize}}, mods...)
+		}
+		ma := schema.MapAttribute{ElementType: types.StringType, Description: a.Description, Required: required, Optional: optional, Computed: computed, PlanModifiers: mods,
+			Validators: []validator.Map{mapShape{keys: a.MapKeys, maxLen: a.ItemMaxLength, check: a.ItemCheck}}}
+		return map[string]schema.Attribute{a.Attribute(): ma}
 	}
 	return nil
 }
@@ -1549,7 +1564,7 @@ func (r *facadeResource) planWarnings(ctx context.Context, plan, prior valueSour
 // zone).
 func (r *facadeResource) equivalence() bool {
 	for _, a := range r.spec.Attrs {
-		if a.Unordered || a.Timestamp {
+		if a.Unordered || a.Timestamp || (a.Kind == StringMap && a.Normalize != nil) {
 			return true
 		}
 	}

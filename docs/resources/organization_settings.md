@@ -37,10 +37,29 @@ resource "sreagent_organization_settings" "this" {
   looking_window_hours = 72
 
   # The reaction meanings switched off, as the whole set: looking (eyes on a card
-  # makes the person a watcher and shows their face on its tile) and take_it (a
-  # raised hand on a card nobody is assigned to assigns it to them). [] leaves
-  # both on.
-  reaction_meanings_off = ["take_it"]
+  # makes the person a watcher and shows their face on its tile), take_it (a
+  # raised hand on a card nobody is assigned to assigns it to them), tell_author
+  # (people are told when others react to their cards and comments) and
+  # answer_feedback (a thumbs on an assistant answer is recorded as a rating).
+  # [] leaves all four on.
+  reaction_meanings_off = ["take_it", "answer_feedback"]
+
+  # The emoji shown before each board column's name, as the whole set: a map from
+  # a column (backlog, triage, todo, in_progress, blocked, done) to one emoji. A
+  # column left out has no emoji, and {} removes them all.
+  board_column_emoji = {
+    in_progress = "\U0001F680"
+    done        = "\u2705"
+  }
+
+  # How reactions travel between a card and its Slack threads: both (the
+  # default), from_slack (a reaction in Slack shows on the card and SRE Agent adds
+  # none) or off.
+  slack_reaction_sync = "from_slack"
+
+  # Whether SRE Agent's messages in a card's Slack thread carry the board's
+  # counts. On by default.
+  slack_reaction_counts = false
 }
 ```
 
@@ -57,6 +76,7 @@ resource "sreagent_organization_settings" "this" {
 - `auto_close_incidents` (Boolean) Close incidents automatically.
 - `auto_open_incidents` (Boolean) Open incidents automatically.
 - `automation_approval_ttl_minutes` (Number) How long an approval stays valid.
+- `board_column_emoji` (Map of String) The emoji shown before each board column's name, as the whole set: a map from a column (backlog, triage, todo, in_progress, blocked or done) to one emoji written as the emoji itself. A column left out has no emoji, so {} removes them all; the map replaces what the organization holds, so a column the platform has an emoji for and the configuration leaves out is removed. Display only: it changes what the board's column headers, the Move to menu, the card's status buttons and the new card form say. The platform stores the fully qualified form of each emoji; a value written without a selector (for example a heart spelled as one code point) is accepted, kept as you wrote it in state and plans no change. A Slack name such as :white_check_mark: is accepted by the platform but stores the emoji it names, so it is refused here instead of planning a change on every run, and so is a column with a null value (leave it out). An organization admin's key (api:admin) may change it.
 - `board_tile_reactions` (Boolean) Whether board tiles show a card's three most used reactions with their counts. On by default; each person can choose otherwise on their account page, and their choice wins. An organization admin's key (api:admin) may change it.
 - `incident_severity_floor` (String) The lowest severity that opens an incident.
 - `inheritance_stopped` (List of String) The connections of the parent organization this organization does not use, as the whole set: slack, github_installation, ai_providers, outbound_targets, ticket_integrations. Only a child organization can stop using a parent's. The platform refuses a change of the list from an API key, so a value that differs from the one it holds fails the apply; set it in the app. The platform also keeps a sixth kind, repository_defaults, which this list never reads, sends or accepts: it is changed in the app, and sreagent_repository_defaults gives a child its own defaults instead.
@@ -65,8 +85,10 @@ resource "sreagent_organization_settings" "this" {
 - `language` (String) The language of the outcome lines SRE Agent writes into a card's Slack threads: how a fix, a change or a pull request ended, a card moved to Done or closed as won't do, and the label in front of a comment posted from the card. en (English, the default) or es (Spanish). Names, links, error messages and what people and the AI wrote are posted as they are. The card itself, its comments, the app's pages and emails stay in English. An organization admin's key (api:admin) may change it. One of: en, es.
 - `looking_window_hours` (Number) How many hours the board shows who is looking at a card after they put eyes on it: 4, 8, 24 (the default) or 72, or 0 to show them until they remove the reaction. The platform stores "until they remove the reaction" as null, which has no number, so this attribute writes it as 0 (the data source reads the null as null). Leaving the attribute out keeps whatever the organization has. An organization admin's key (api:admin) may change it.
 - `monthly_ai_budget_usd` (Number) The monthly AI budget.
-- `reaction_meanings_off` (List of String) The reaction meanings switched off, as the whole set: [] leaves every meaning on (the default), looking switches off eyes on a card making the person a watcher and showing their face on its tile, and take_it switches off a raised hand on a card nobody is assigned to assigning it to the person. The order does not matter. A reaction already made keeps its chip. This attribute lists only the meanings this provider release knows. A meaning a later platform release adds and an admin switched off in the app is left out of it, stays off on every apply (it is sent along with the set you write, never as removed), and is not shown as a change; read data.sreagent_organization_settings to see every value the platform holds. A plan of a block already in state that names this attribute warns, naming the value, once; the first plan that adopts the singleton does not. When you upgrade to a provider release that declares the value, add it to this attribute if it should stay off: the plan then shows it as removed, and the next apply switches it back on unless the configuration names it. An organization admin's key (api:admin) may change it. One of: looking, take_it.
+- `reaction_meanings_off` (List of String) The reaction meanings switched off, as the whole set: [] leaves every meaning on (the default). looking switches off eyes on a card making the person a watcher and showing their face on its tile; take_it switches off a raised hand on a card nobody is assigned to assigning it to the person; tell_author switches off telling people, in the attention list and the morning briefing, when others react to their cards and comments (each person can also switch it off for themselves on their account page); answer_feedback switches off recording a thumbs up or down on an assistant answer or an investigation as feedback on it, so new ones are no longer recorded. The order does not matter. A reaction already made keeps its chip. This attribute lists only the meanings this provider release knows. A meaning a later platform release adds and an admin switched off in the app is left out of it, stays off on every apply (it is sent along with the set you write, never as removed), and is not shown as a change; read data.sreagent_organization_settings to see every value the platform holds. A plan of a block already in state that names this attribute warns, naming the value, once; the first plan that adopts the singleton does not. When you upgrade to a provider release that declares the value, add it to this attribute if it should stay off: the plan then shows it as removed, and the next apply switches it back on unless the configuration names it. An organization admin's key (api:admin) may change it. One of: looking, take_it, tell_author, answer_feedback.
 - `reaction_quick_row` (List of String) The emoji shown first when someone adds a reaction, in order, as the whole list: up to 12, each one emoji (the platform refuses an entry over 16 code points or 64 bytes) written as the emoji itself, never repeated (the same emoji spelled with and without its presentation selector counts as a repeat). [] uses SRE Agent's twelve. The platform stores the fully qualified form of each emoji; an entry written without a selector (for example a heart or a thumbs up spelled as one code point) is accepted, kept as you wrote it in state and plans no change. A Slack name such as :tada: is accepted by the platform but stores the emoji it names, so it is refused here instead of planning a change on every run. An organization admin's key (api:admin) may change it.
+- `slack_reaction_counts` (Boolean) Whether SRE Agent's messages in a card's Slack thread carry the board's counts ("On the board: :+1: 2"). On by default. An organization admin's key (api:admin) may change it.
+- `slack_reaction_sync` (String) How reactions travel between a card and its Slack threads: both (the default), from_slack (a reaction in Slack shows on the card, and SRE Agent adds none in Slack) or off (nothing arrives from Slack, and SRE Agent adds none). Switching never removes reactions already in place. An organization admin's key (api:admin) may change it. One of: both, from_slack, off.
 - `slack_thread_events_off` (List of String) The events NOT posted in a card's Slack threads, as the whole set: [] posts everything (the default), and a list posts everything else. The order does not matter. Failed, declined or cancelled fixes and changes, a failed local fix session, a change that could not be made on the pull request it was asked for and the assistant's answer to a question asked in Slack are always posted and have no name here. The card, the tracker and the notices to the card's people are not affected. One of: column_moves, card_done, card_wont_do, pull_request_opened, pull_request_merged, pull_request_closed, pull_request_reopened, change_pushed, assistant_replies, comments.
 - `timezone` (String) An IANA time zone.
 
