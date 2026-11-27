@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -372,7 +373,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 	if a.Address {
 		return map[string]schema.Attribute{a.Attribute(): schema.StringAttribute{
 			Required: true, Description: a.Description,
-			PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			PlanModifiers: []planmodifier.String{replaceAddress(a)},
 		}}
 	}
 	if a.Secret {
@@ -516,7 +517,7 @@ func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
 			mods = append(mods, listplanmodifier.RequiresReplace())
 		}
 		if a.Unordered {
-			mods = append([]planmodifier.List{sameSetAsState{}}, mods...)
+			mods = append([]planmodifier.List{sameSetAsState{normalize: a.Normalize}}, mods...)
 		}
 		if a.Normalize != nil {
 			mods = append([]planmodifier.List{sameNormalizedAsState{normalize: a.Normalize}}, mods...)
@@ -605,6 +606,36 @@ func replaceString(a Attr) planmodifier.String {
 	}
 	return stringplanmodifier.RequiresReplaceIf(func(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 		resp.RequiresReplace = req.PlanValue.IsUnknown() || normalize(req.PlanValue.ValueString()) != normalize(req.StateValue.ValueString())
+	}, desc, desc)
+}
+
+// replaceAddress replaces the row when its address changes to another row. The
+// platform names a row by more than one spelling (a child by id or by name, an
+// account in any case or by installation number), and an import holds the one the
+// import id used, so a block that names the same row another way is not a new
+// row: the apply records the block's spelling and writes nothing.
+func replaceAddress(a Attr) planmodifier.String {
+	const desc = "Changing it replaces the row; naming the same row another way (another case, its name or number) does not."
+	return stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+		if req.PlanValue.IsUnknown() || req.StateValue.IsNull() {
+			resp.RequiresReplace = !req.PlanValue.Equal(req.StateValue)
+			return
+		}
+		want := req.PlanValue.ValueString()
+		names := []string{req.StateValue.ValueString()}
+		for _, other := range a.NamedBy {
+			var v attr.Value
+			if d := req.State.GetAttribute(ctx, path.Root(other), &v); d.HasError() || v == nil || v.IsNull() || v.IsUnknown() {
+				continue
+			}
+			switch x := v.(type) {
+			case types.String:
+				names = append(names, x.ValueString())
+			case types.Int64:
+				names = append(names, strconv.FormatInt(x.ValueInt64(), 10))
+			}
+		}
+		resp.RequiresReplace = !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, want) })
 	}, desc, desc)
 }
 
@@ -1722,7 +1753,7 @@ func (r *facadeResource) settleEquivalentPlan(ctx context.Context, req resource.
 	for _, a := range r.spec.Attrs {
 		// A secret's version is part of the diff: sending or clearing the secret changes what
 		// the platform answers (the host of a URL), so it is not only spelling.
-		if a.Secret && a.Kind == String && r.versionChanged(ctx, resp.Plan, req.State, a.Attribute()) {
+		if a.Secret && r.versionChanged(ctx, resp.Plan, req.State, a.Attribute()) {
 			return
 		}
 		if a.Computed || a.Secret || a.Local || a.WriteOnly || a.Kept || a.NotRead || len(a.Complement) > 0 {

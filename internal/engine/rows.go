@@ -54,6 +54,9 @@ func (r *facadeResource) adoptMissing(id string, err error) string {
 	if r.spec.AdoptHint != "" {
 		hint = " " + r.spec.AdoptHint
 	}
+	if r.spec.MinPlatform != "" {
+		hint += fmt.Sprintf(" If the platform is older than %s it does not serve this resource at all: sreagent_%s needs platform %s or later.", r.spec.MinPlatform, r.spec.TypeName, r.spec.MinPlatform)
+	}
 	return fmt.Sprintf("%s\n\nThe platform has no sreagent_%s for %s, and it has no door that creates one, so there is nothing to adopt. Connect or link it in the app first, then declare this resource for it.%s",
 		err.Error(), r.spec.TypeName, id, hint)
 }

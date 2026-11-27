@@ -151,6 +151,11 @@ type Attr struct {
 	// child by id where the configuration wrote its name). The contract lists it
 	// as an id argument of the resource, not as a field.
 	Address bool
+	// NamedBy: for an Address attribute, the other attributes of the row whose
+	// answered value names the same row (a child by its name, an account by its
+	// installation number). A configured address that equals one of them, or the
+	// state's own value in any case, is the row state holds, not another row.
+	NamedBy []string
 	// Local: Computed and kept by the provider alone. It is never sent, never read
 	// from the API, and carried through a refresh from the prior state.
 	Local bool

@@ -289,7 +289,7 @@ func keep(a Attr, before, remote attr.Value) bool {
 		}
 		return normalize(before.(types.String).ValueString()) == normalize(remote.(types.String).ValueString())
 	case StringList:
-		if a.Unordered && sameSet(before, remote) {
+		if a.Unordered && sameSetAfter(a.Normalize, before, remote) {
 			return true
 		}
 		return sameAfter(a.Normalize, before, remote)
@@ -333,7 +333,14 @@ func isEmptyObject(v attr.Value) bool {
 }
 
 // sameSet reports that two known lists hold the same entries, in any order.
-func sameSet(x, y attr.Value) bool {
+func sameSet(x, y attr.Value) bool { return sameSetAfter(nil, x, y) }
+
+// sameSetAfter reports that two known lists hold the same entries, in any order,
+// once normalize (nil is none) has been applied to each entry.
+func sameSetAfter(normalize func(string) string, x, y attr.Value) bool {
+	if normalize == nil {
+		normalize = func(s string) string { return s }
+	}
 	a, aok := x.(types.List)
 	b, bok := y.(types.List)
 	if !aok || !bok || a.IsNull() || a.IsUnknown() || b.IsNull() || b.IsUnknown() {
@@ -345,7 +352,7 @@ func sameSet(x, y attr.Value) bool {
 		if !ok || s.IsNull() || s.IsUnknown() {
 			return false
 		}
-		have[s.ValueString()] = true
+		have[normalize(s.ValueString())] = true
 	}
 	other := map[string]bool{}
 	for _, e := range b.Elements() {
@@ -353,7 +360,7 @@ func sameSet(x, y attr.Value) bool {
 		if !ok || s.IsNull() || s.IsUnknown() {
 			return false
 		}
-		other[s.ValueString()] = true
+		other[normalize(s.ValueString())] = true
 	}
 	if len(have) != len(other) {
 		return false

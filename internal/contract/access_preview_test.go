@@ -256,7 +256,16 @@ func TestThePublishedChildAccessPreviewsConformToTheFixtures(t *testing.T) {
 	}
 	for _, status := range []string{"428", "409"} {
 		schema := put.Responses[status].Content["application/json"].Schema.Properties["preview"]
-		data := schema["properties"].(map[string]any)["data"].(map[string]any)
+		properties, ok := schema["properties"].(map[string]any)
+		if !ok {
+			t.Errorf("the PUT of github_child_access does not publish the preview object of its %s answer", status)
+			continue
+		}
+		data, ok := properties["data"].(map[string]any)
+		if !ok {
+			t.Errorf("the PUT of github_child_access does not publish preview.data of its %s answer", status)
+			continue
+		}
 		for name, fixture := range fixtures {
 			if problems := conformance(fixture, data, name); len(problems) > 0 {
 				t.Errorf("%s: %s", status, strings.Join(problems, "; "))

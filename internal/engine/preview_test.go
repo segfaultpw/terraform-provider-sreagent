@@ -151,6 +151,16 @@ func TestAStaleAnswerToARetriedRequestSaysTheFirstAttemptMayHaveApplied(t *testi
 	if !strings.Contains(detail, "first attempt may have been applied") || strings.Contains(detail, "nothing was written") {
 		t.Fatalf("%s", detail)
 	}
+	if !strings.Contains(detail, "see the defaults as they are now") {
+		t.Fatalf("%s", detail)
+	}
+	// Another previewed resource names itself, not the defaults.
+	other := &facadeResource{spec: Spec{TypeName: "github_child_access"}}
+	d = nil
+	other.staleError(&d, "update", &client.APIError{Status: 409, Retried: true})
+	if got := d.Errors()[0].Detail(); strings.Contains(got, "defaults") || !strings.Contains(got, "sreagent_github_child_access as it is now") {
+		t.Fatalf("%s", got)
+	}
 	d = nil
 	r.staleError(&d, "update", &client.APIError{Status: 409})
 	if got := d.Errors()[0].Detail(); !strings.Contains(got, "nothing was written") || !strings.Contains(got, "terraform plan again") {

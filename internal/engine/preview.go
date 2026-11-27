@@ -496,7 +496,11 @@ func (r *facadeResource) staleError(diags *diag.Diagnostics, verb string, err er
 		rerun = "terraform plan -destroy"
 	}
 	if client.IsRetried(err) {
-		diags.AddError(r.title(verb), fmt.Sprintf("The platform answered 409 to a retried request after a gateway error, so the first attempt may have been applied. Run %s to see the defaults as they are now.", rerun))
+		now := "the defaults as they are now"
+		if r.spec.TypeName != "repository_defaults" {
+			now = fmt.Sprintf("sreagent_%s as it is now", r.spec.TypeName)
+		}
+		diags.AddError(r.title(verb), fmt.Sprintf("The platform answered 409 to a retried request after a gateway error, so the first attempt may have been applied. Run %s to see %s.", rerun, now))
 		return
 	}
 	detail := fmt.Sprintf("What would move changed since the plan (the platform answered 409), so nothing was written. Run %s again to review the fresh preview.", rerun)

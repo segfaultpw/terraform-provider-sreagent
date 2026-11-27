@@ -93,3 +93,20 @@ func TestTheNullDefaultIsAnUnsetClearableValue(t *testing.T) {
 		t.Fatal("a value set in the app is drift")
 	}
 }
+
+func TestAnUnorderedListWithANormalizerKeepsTheConfiguredSpellingAnyOrder(t *testing.T) {
+	list := func(v ...string) types.List {
+		l, _ := types.ListValueFrom(nil, types.StringType, v)
+		return l
+	}
+	a := Attr{Name: "repositories", Kind: StringList, Unordered: true, Normalize: Lower}
+	if !keep(a, list("acme/web", "ACME/INFRA"), list("Acme/Infra", "Acme/Web")) {
+		t.Fatal("the same repositories in another case and order are one list")
+	}
+	if keep(a, list("acme/web"), list("Acme/Web", "Acme/Infra")) {
+		t.Fatal("a list with another member is not the configured one")
+	}
+	if keep(Attr{Name: "x", Kind: StringList, Unordered: true}, list("acme/web"), list("Acme/Web")) {
+		t.Fatal("without a normalizer the spelling matters")
+	}
+}

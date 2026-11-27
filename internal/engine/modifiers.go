@@ -8,10 +8,11 @@ import (
 )
 
 // sameSetAsState plans the list state holds when the configuration names the
-// same entries in another order. Terraform accepts a plan that returns the prior
+// same entries in another order (and, with a normalization, in another spelling the
+// platform reads as the same). Terraform accepts a plan that returns the prior
 // value for a configuration it is equivalent to, and the platform stores these
 // lists sorted, so a reordered configuration is no change.
-type sameSetAsState struct{}
+type sameSetAsState struct{ normalize func(string) string }
 
 var _ planmodifier.List = sameSetAsState{}
 
@@ -21,8 +22,8 @@ func (sameSetAsState) Description(context.Context) string {
 
 func (m sameSetAsState) MarkdownDescription(ctx context.Context) string { return m.Description(ctx) }
 
-func (sameSetAsState) PlanModifyList(_ context.Context, req planmodifier.ListRequest, resp *planmodifier.ListResponse) {
-	if sameSet(req.PlanValue, req.StateValue) {
+func (m sameSetAsState) PlanModifyList(_ context.Context, req planmodifier.ListRequest, resp *planmodifier.ListResponse) {
+	if sameSetAfter(m.normalize, req.PlanValue, req.StateValue) {
 		resp.PlanValue = req.StateValue
 	}
 }

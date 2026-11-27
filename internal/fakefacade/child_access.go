@@ -191,6 +191,26 @@ type childAccessPlan struct {
 	narrows, widens, any bool
 }
 
+// spelled answers each named repository in the spelling the account lists it with,
+// once, as the platform does: it folds case, stores GitHub's spelling and drops a repeat.
+func (m *childAccessModel) spelled(account string, names []string) []string {
+	out := make([]string, 0, len(names))
+	seen := map[string]bool{}
+	for _, n := range names {
+		for _, have := range m.accounts[account] {
+			if strings.EqualFold(have, n) {
+				n = have
+				break
+			}
+		}
+		if !seen[strings.ToLower(n)] {
+			seen[strings.ToLower(n)] = true
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 func (m *childAccessModel) plan(row *childAccessRow, body map[string]any) (*childAccessPlan, string) {
 	p := &childAccessPlan{row: row, mode: row.mode, repos: row.repos, shared: row.shared}
 	if v, ok := body["mode"].(string); ok {
@@ -202,7 +222,7 @@ func (m *childAccessModel) plan(row *childAccessRow, body map[string]any) (*chil
 	_, named := body["repositories"]
 	switch {
 	case named:
-		p.repos = asStrings(body["repositories"])
+		p.repos = m.spelled(row.account, asStrings(body["repositories"]))
 		if p.mode != "selected" {
 			return nil, "Repositories can only be given with the mode selected."
 		}
