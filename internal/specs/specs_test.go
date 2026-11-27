@@ -90,3 +90,42 @@ func TestAQuickRowEntryIsHeldToTheEmojiBoundsOfThePlatform(t *testing.T) {
 		t.Fatalf("fixture is %d bytes, want 64", n)
 	}
 }
+
+func TestTheTwoGitHubAccountResourcesSayWhichOneToUseWhen(t *testing.T) {
+	for _, want := range []string{"sreagent_github_settings manages the organization's managed account", "the one connected longest", "fights sreagent_github_settings", "any other account", "terraform import sreagent_github_account.<name>"} {
+		if !strings.Contains(GitHubAccount.Description, want) {
+			t.Errorf("sreagent_github_account does not say %q", want)
+		}
+	}
+	for _, want := range []string{"<child id>?account=<account>", "api:config_read", "Destroying the resource leaves the row in place", "fingerprint", "adopts it"} {
+		if !strings.Contains(GitHubChildAccess.Description, want) {
+			t.Errorf("sreagent_github_child_access does not say %q", want)
+		}
+	}
+	if !GitHubAccount.AdoptOnly || GitHubAccount.LeaveOnDestroy == "" || !GitHubChildAccess.AdoptOnly || GitHubChildAccess.LeaveOnDestroy == "" {
+		t.Error("an account or a child grant has a door that creates or deletes it, which the platform has not")
+	}
+	for _, a := range append(append([]engine.Attr{}, GitHubAccount.Attrs...), GitHubChildAccess.Attrs...) {
+		if a.Name == "context_repo" {
+			t.Error("context_repo is an action argument of the account row, not an attribute: sreagent_github_settings sets it")
+		}
+	}
+}
+
+// No description carries a dash used as punctuation (an em or en dash), which the
+// platform's own prose check refuses in anything committed.
+func TestNoSpecDescriptionUsesAnEmOrEnDash(t *testing.T) {
+	for _, s := range All() {
+		texts := []string{s.Description, s.ReadDescription}
+		for _, list := range [][]engine.Attr{s.Attrs, s.ListAttrs, s.ExtraAttrs, s.QueryAttrs} {
+			for _, a := range list {
+				texts = append(texts, a.Description, a.ReadDescription)
+			}
+		}
+		for _, text := range texts {
+			if strings.ContainsAny(text, "—–") {
+				t.Errorf("%s: a description uses an em or en dash: %.60s", s.Key, text)
+			}
+		}
+	}
+}

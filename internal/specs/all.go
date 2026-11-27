@@ -50,5 +50,7 @@ func All() []engine.Spec {
 		AlertFollowUpSettings,
 		AlertInformativeKinds,
 		FixRunnerHealth,
+		GitHubAccount,
+		GitHubChildAccess,
 	}
 }
