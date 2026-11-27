@@ -90,7 +90,7 @@ func sliConfig(url, body string) string {
 	return providerBlock(url) + fmt.Sprintf("resource \"sreagent_sli\" \"s\" {\n  name = \"checkout\"\n  sli_type = \"availability\"\n%s\n}\n", body)
 }
 
-func TestSLIEventQueriesThresholdAndUnitRoundTripAndClear(t *testing.T) {
+func TestSLIEventQueriesThresholdAndUnitRoundTripAndAreLeftWhenLeftOut(t *testing.T) {
 	f := fakefacade.New(t, specs.All())
 	events := "  good_events_query = \"sum(rate(ok[5m]))\"\n  total_events_query = \"sum(rate(all[5m]))\"\n  unit = \"requests\"\n"
 	resource.UnitTest(t, resource.TestCase{
@@ -115,11 +115,16 @@ func TestSLIEventQueriesThresholdAndUnitRoundTripAndClear(t *testing.T) {
 				Config: sliConfig(f.URL, "  threshold_good = 99.5\n  unit = \"ms\"\n"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(sliAddr, "threshold_good", "99.5"),
-					resource.TestCheckNoResourceAttr(sliAddr, "good_events_query"),
+					// Left out, the event queries keep what the platform holds and are not sent.
+					resource.TestCheckResourceAttr(sliAddr, "good_events_query", "sum(rate(ok[5m]))"),
 					func(*terraform.State) error {
 						row := f.Row("slis", mustSLIID(t, f))
-						if fmt.Sprint(row["threshold_good"]) != "99.5" || row["good_events_query"] != nil || row["total_events_query"] != nil {
+						if fmt.Sprint(row["threshold_good"]) != "99.5" || row["good_events_query"] != "sum(rate(ok[5m]))" || row["total_events_query"] != "sum(rate(all[5m]))" {
 							return fmt.Errorf("the platform holds %v", row)
+						}
+						body := f.LastBody("PUT", "slis")
+						if _, sent := body["good_events_query"]; sent {
+							return fmt.Errorf("an unstated good_events_query was sent: %v", body)
 						}
 						return nil
 					},

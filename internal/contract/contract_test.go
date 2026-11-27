@@ -164,7 +164,11 @@ func specProblems(d *Doc, s engine.Spec) []string {
 				body, which = post.Properties, "create"
 			}
 			_, nullable := typeOf(body[f])
-			if a.Clearable != nullable {
+			if keptWhenOmitted(s.Key, f) && nullable && !a.Clearable {
+				// Nullable on the platform, but a field declared after configurations
+				// existed is never cleared by leaving it out: it stays what the platform
+				// holds (Optional and Computed), so an upgrade plans nothing.
+			} else if a.Clearable != nullable {
 				add("field %s Clearable %v, %s body nullable %v", f, a.Clearable, which, nullable)
 			}
 		}
@@ -1514,6 +1518,13 @@ var declaredInEightZero = struct {
 		"slis":                  {"good_events_query", "total_events_query", "threshold_good", "unit"},
 		"organization_settings": {"board_summary_model_enabled"},
 	},
+}
+
+// keptWhenOmitted reports a field 0.8.0 declared on an existing resource whose update body is
+// nullable: the provider does not clear it from an omission, because a configuration written
+// for 0.7.0 does not state it and the platform may hold a value set in the app.
+func keptWhenOmitted(key, field string) bool {
+	return key == "slis" && slices.Contains(declaredInEightZero.fields[key], field)
 }
 
 func specOf(t *testing.T, key string) engine.Spec {
