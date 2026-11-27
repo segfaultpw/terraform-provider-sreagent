@@ -8,6 +8,10 @@
 # two repositories) is applied only against a preview: terraform plan asks the
 # platform for it and warns with what the child stops reaching and what is held
 # on those repositories, and terraform apply sends the plan's fingerprint.
+#
+# child_organization takes the child's id or its name. Prefer the id: a name is
+# never taken for the same row as an id (organization names are not unique), so
+# changing between the two plans a replacement that changes nothing on the platform.
 resource "sreagent_github_child_access" "acme_labs_acme" {
   child_organization = "acme-labs"
   account            = "acme"

@@ -69,7 +69,7 @@ func TestGitHubChildAccessImportedSpellingEqualsTheBlocksAnyCase(t *testing.T) {
 			{Config: childAccessConfig(f.URL, cfg), ConfigPlanChecks: emptyPlan},
 		},
 	})
-	if n := len(putFingerprints(f)); n > 1 {
+	if n := len(putFingerprints(f)); n != 0 {
 		t.Fatalf("an equal list was written %d times", n)
 	}
 }

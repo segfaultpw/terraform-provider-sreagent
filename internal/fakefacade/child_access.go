@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -107,9 +108,38 @@ func (f *Fake) ChildAccessWrites() int {
 	return f.ca.writes
 }
 
-func (m *childAccessModel) find(child, account string) *childAccessRow {
+// resolve names the child the way the platform does: an exact id first, else the
+// name without regard to case, and a name two children share is ambiguous.
+func (m *childAccessModel) resolve(ref string) (id string, ambiguous bool) {
+	names := map[string]bool{}
 	for _, row := range m.rows {
-		if (row.child == child || strings.EqualFold(row.name, child)) && (account == "" || strings.EqualFold(row.account, account)) {
+		if row.child == ref {
+			return row.child, false
+		}
+	}
+	for _, row := range m.rows {
+		if strings.EqualFold(row.name, ref) {
+			names[row.child] = true
+		}
+	}
+	for c := range names {
+		id = c
+	}
+	return id, len(names) > 1
+}
+
+// names reports whether ref is the account's login (in any case), its
+// installation number or the form "installation N", as the platform accepts.
+func (row *childAccessRow) names(ref string) bool {
+	number := strconv.Itoa(1000 + len(row.account))
+	ref = strings.TrimSpace(ref)
+	return strings.EqualFold(row.account, ref) || ref == number || ref == "installation "+number
+}
+
+func (m *childAccessModel) find(child, account string) *childAccessRow {
+	id, _ := m.resolve(child)
+	for _, row := range m.rows {
+		if row.child == id && (account == "" || row.names(account)) {
 			return row
 		}
 	}
@@ -117,9 +147,10 @@ func (m *childAccessModel) find(child, account string) *childAccessRow {
 }
 
 func (m *childAccessModel) accountsOf(child string) []*childAccessRow {
+	id, _ := m.resolve(child)
 	var out []*childAccessRow
 	for _, row := range m.rows {
-		if row.child == child || strings.EqualFold(row.name, child) {
+		if id != "" && row.child == id {
 			out = append(out, row)
 		}
 	}
@@ -346,6 +377,10 @@ func (f *Fake) serveChildAccess(w http.ResponseWriter, r *http.Request, id strin
 	segment, _, _ := strings.Cut(id, "?")
 	child, _ := url.PathUnescape(segment)
 	account := r.URL.Query().Get("account")
+	if _, ambiguous := m.resolve(child); ambiguous {
+		fail(w, 422, "unprocessable_entity", "More than one child organization has that name. Use its id.")
+		return
+	}
 	candidates := m.accountsOf(child)
 	if len(candidates) == 0 {
 		fail(w, 404, "not_found", "That organization is not a child of this one.")

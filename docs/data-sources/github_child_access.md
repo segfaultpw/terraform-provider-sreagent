@@ -35,10 +35,10 @@ output "children_that_read_nothing" {
 
 Read-Only:
 
-- `account` (String) The parent's GitHub account, by its login as the Integrations page shows it (the platform ignores case) or its installation number. Changing it replaces the resource.
+- `account` (String) The parent's GitHub account, by its login as the Integrations page shows it or its installation number. Another case of the login is the same account (one in-place update that sends nothing); another account, or the number where the row was imported by its login, replaces the resource, which changes nothing on the platform: the old row keeps what it holds.
 - `applies` (Boolean) True when the child reads this grant. False when it cannot yet (reason says why).
 - `child_name` (String) The child organization's name.
-- `child_organization` (String) The child organization, by its id or its name. Changing it replaces the resource: the old row keeps what it holds.
+- `child_organization` (String) The child organization, by its id (preferred) or its name. A name is never taken for the id, because organization names are not unique and the platform refuses a name two children share (use the id then): changing it, even to the other spelling of the same child, replaces the resource. The replacement changes nothing on the platform: the old row keeps what it holds and the block adopts the row it now names.
 - `context_repo_shared` (Boolean) Whether the child may use the parent's context repository (the one sreagent_github_settings sets), through an account it was given something of. It is the child's setting, not the account's: the platform holds one value for each child whichever account's row states it. State it on one block of the child only, because two blocks of one child that state different values change it on every apply. On by default.
 - `details_read` (Boolean) True when the platform has read the account's repository list for a selected child, so repository_details is complete.
 - `id` (String) The row's identifier on the platform.

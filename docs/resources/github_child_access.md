@@ -6,7 +6,7 @@ description: |-
   Use it in the parent organization. A child reads only what it is given here: a child linked under the parent is given all of the accounts connected at that moment, except that a child organization that has its own GitHub account is given nothing of its parent's accounts until an admin of the parent gives it repositories here. An account connected later reaches no existing child until it is given. A repository the child is not given is never read, minted a token for or opened a pull request on for the child.
   The platform has no door that creates or deletes the row (a child is linked under its parent by a platform administrator, and the account is connected in the app), so the resource adopts it: creating it reads the row, judges the block against it and writes only the difference, and a setting the block leaves out is left as it is. A child or account that does not exist is an error that says where to link or connect it. Destroying the resource leaves the row in place and changes nothing; the child keeps what it was given, so to take access away state mode = "none" (or narrow it) and apply.
   A change that takes repositories away from the child is applied only against a preview of what it moves, so terraform plan asks the platform for the preview (it needs an api:admin key; with an api:config_read key the plan says so, and the apply previews and applies) and warns with what the child may use now and will use, the repositories it stops reaching, and what is held on them: open fix pull requests stay open on GitHub with one comment saying SRE Agent no longer manages them, auto-merge is turned off, and waiting requests and the cards are named. Nothing is closed or deleted. The apply sends the plan's fingerprint and fails without writing when what would move changed since the plan; plan again. Where the plan could not take the preview (an api:config_read key, or a child or account known only at apply) the apply takes it and applies what it finds, with a warning, so review the plan with an api:admin key first. A change that takes nothing away (giving the child more, or changing only context_repo_shared) is applied at once.
-  Import it as CHILD_ID?account=ACCOUNT (terraform import sreagent_github_child_access.NAME CHILD_ID?account=acme); without the account an organization with one connected account takes that one. CHILD_ID is the child's id or its name: write it the way the block writes child_organization, and the account the way the block writes account. A block that names the same row another way (the child's name for its id, another case of the login) is not a new row: the plan shows one in-place update that sends nothing and never a replacement. The key's organization must be the parent. Needs the GitHub integration in the plan.
+  Import it as CHILD_ID?account=ACCOUNT (terraform import sreagent_github_child_access.NAME CHILD_ID?account=acme); without the account an organization with one connected account takes that one. CHILD_ID is the child's id or its name; prefer the id, and write the import id the way the block writes child_organization and account. A block that names the same row another way (the child's name where the import used its id, or the name in another case, or the installation number for the login) is shown as a replacement, which changes nothing on the platform: destroy leaves the old row in place, and the same row is adopted again and only what the block states is written (an unchanged grant sends nothing). Only the account's login in another case is taken for the same row (one in-place update that sends nothing). A name is never taken for the same row, because organization names are not unique. The key's organization must be the parent. Needs the GitHub integration in the plan.
 ---
 
 # sreagent_github_child_access (Resource)
@@ -19,7 +19,7 @@ The platform has no door that creates or deletes the row (a child is linked unde
 
 A change that takes repositories away from the child is applied only against a preview of what it moves, so terraform plan asks the platform for the preview (it needs an api:admin key; with an api:config_read key the plan says so, and the apply previews and applies) and warns with what the child may use now and will use, the repositories it stops reaching, and what is held on them: open fix pull requests stay open on GitHub with one comment saying SRE Agent no longer manages them, auto-merge is turned off, and waiting requests and the cards are named. Nothing is closed or deleted. The apply sends the plan's fingerprint and fails without writing when what would move changed since the plan; plan again. Where the plan could not take the preview (an api:config_read key, or a child or account known only at apply) the apply takes it and applies what it finds, with a warning, so review the plan with an api:admin key first. A change that takes nothing away (giving the child more, or changing only context_repo_shared) is applied at once.
 
-Import it as `CHILD_ID?account=ACCOUNT` (`terraform import sreagent_github_child_access.NAME CHILD_ID?account=acme`); without the account an organization with one connected account takes that one. CHILD_ID is the child's id or its name: write it the way the block writes child_organization, and the account the way the block writes account. A block that names the same row another way (the child's name for its id, another case of the login) is not a new row: the plan shows one in-place update that sends nothing and never a replacement. The key's organization must be the parent. Needs the GitHub integration in the plan.
+Import it as `CHILD_ID?account=ACCOUNT` (`terraform import sreagent_github_child_access.NAME CHILD_ID?account=acme`); without the account an organization with one connected account takes that one. CHILD_ID is the child's id or its name; prefer the id, and write the import id the way the block writes child_organization and account. A block that names the same row another way (the child's name where the import used its id, or the name in another case, or the installation number for the login) is shown as a replacement, which changes nothing on the platform: destroy leaves the old row in place, and the same row is adopted again and only what the block states is written (an unchanged grant sends nothing). Only the account's login in another case is taken for the same row (one in-place update that sends nothing). A name is never taken for the same row, because organization names are not unique. The key's organization must be the parent. Needs the GitHub integration in the plan.
 
 ## Example Usage
 
@@ -34,6 +34,10 @@ Import it as `CHILD_ID?account=ACCOUNT` (`terraform import sreagent_github_child
 # two repositories) is applied only against a preview: terraform plan asks the
 # platform for it and warns with what the child stops reaching and what is held
 # on those repositories, and terraform apply sends the plan's fingerprint.
+#
+# child_organization takes the child's id or its name. Prefer the id: a name is
+# never taken for the same row as an id (organization names are not unique), so
+# changing between the two plans a replacement that changes nothing on the platform.
 resource "sreagent_github_child_access" "acme_labs_acme" {
   child_organization = "acme-labs"
   account            = "acme"
@@ -57,8 +61,8 @@ resource "sreagent_github_child_access" "acme_labs_jane" {
 
 ### Required
 
-- `account` (String) The parent's GitHub account, by its login as the Integrations page shows it (the platform ignores case) or its installation number. Changing it replaces the resource.
-- `child_organization` (String) The child organization, by its id or its name. Changing it replaces the resource: the old row keeps what it holds.
+- `account` (String) The parent's GitHub account, by its login as the Integrations page shows it or its installation number. Another case of the login is the same account (one in-place update that sends nothing); another account, or the number where the row was imported by its login, replaces the resource, which changes nothing on the platform: the old row keeps what it holds.
+- `child_organization` (String) The child organization, by its id (preferred) or its name. A name is never taken for the id, because organization names are not unique and the platform refuses a name two children share (use the id then): changing it, even to the other spelling of the same child, replaces the resource. The replacement changes nothing on the platform: the old row keeps what it holds and the block adopts the row it now names.
 
 ### Optional
 
@@ -89,7 +93,10 @@ naming the same ID. See the [importing guide](../guides/importing.md).
 
 ```shell
 # A row imports by the child and the account: CHILD?account=ACCOUNT, where the child
-# is its id or its name, written the way the block writes child_organization.
+# is its id (preferred) or its name, written exactly the way the block writes
+# child_organization. A block that names the child another way (its name where the
+# import used its id, or the name in another case) plans a replacement that changes
+# nothing on the platform: the old row is left in place and the same row is adopted again.
 # While the organization has one connected account, the child alone is enough.
 terraform import sreagent_github_child_access.acme_labs_acme acme-labs?account=acme
 ```

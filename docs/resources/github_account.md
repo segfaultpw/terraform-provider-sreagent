@@ -41,7 +41,7 @@ resource "sreagent_github_account" "acme_labs" {
 
 ### Required
 
-- `account` (String) The account's login on GitHub, as the Integrations page shows it (the platform ignores case). Changing it replaces the resource: the old account keeps its settings and the block adopts the other one.
+- `account` (String) The account's login on GitHub, as the Integrations page shows it. Another case of the same login is the same account (one in-place update that sends nothing); changing it to another account replaces the resource: the old account keeps its settings and the block adopts the other one.
 
 ### Optional
 

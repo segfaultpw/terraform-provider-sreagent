@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -94,7 +93,7 @@ func (r *facadeResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		"id": schema.StringAttribute{Computed: true, Description: "The row's identifier on the platform.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 	}
 	for _, a := range r.spec.Attrs {
-		for name, sa := range resourceAttributes(a, r.spec.Shape == Singleton) {
+		for name, sa := range resourceAttributes(r.spec, a, r.spec.Shape == Singleton) {
 			attrs[name] = sa
 		}
 	}
@@ -369,11 +368,11 @@ func (r *facadeResource) IdentitySchema(_ context.Context, _ resource.IdentitySc
 	}}
 }
 
-func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
+func resourceAttributes(spec Spec, a Attr, singleton bool) map[string]schema.Attribute {
 	if a.Address {
 		return map[string]schema.Attribute{a.Attribute(): schema.StringAttribute{
 			Required: true, Description: a.Description,
-			PlanModifiers: []planmodifier.String{replaceAddress(a)},
+			PlanModifiers: []planmodifier.String{replaceAddress(spec, a)},
 		}}
 	}
 	if a.Secret {
@@ -609,33 +608,45 @@ func replaceString(a Attr) planmodifier.String {
 	}, desc, desc)
 }
 
-// replaceAddress replaces the row when its address changes to another row. The
-// platform names a row by more than one spelling (a child by id or by name, an
-// account in any case or by installation number), and an import holds the one the
-// import id used, so a block that names the same row another way is not a new
-// row: the apply records the block's spelling and writes nothing.
-func replaceAddress(a Attr) planmodifier.String {
-	const desc = "Changing it replaces the row; naming the same row another way (another case, its name or number) does not."
+// replaceAddress replaces the row when its address changes, unless the new text
+// is, without doubt, the same row. The row's id holds the canonical halves the
+// platform answered (the path value and the query value of a PathAndQuery id), so
+// the only proof of identity is the new text equal to one of them: the path half
+// exactly (a child's uuid), the query half, or a natural key that is a login,
+// without regard to case (GitHub keeps a login unique in any case). A
+// display name is never proof, because organization names are not unique: two
+// siblings can differ only by case. Anything else, another case of a name, a name
+// for an id, a login for a number, replaces the row, which is safe for a resource
+// whose destroy writes nothing and whose create adopts the row and writes only
+// what the block states.
+func replaceAddress(spec Spec, a Attr) planmodifier.String {
+	const desc = "Changing it replaces the row, unless the new text is the row's own id or account as the platform answered it (a login in another case); a name is never taken for the same row."
 	return stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 		if req.PlanValue.IsUnknown() || req.StateValue.IsNull() {
 			resp.RequiresReplace = !req.PlanValue.Equal(req.StateValue)
 			return
 		}
-		want := req.PlanValue.ValueString()
-		names := []string{req.StateValue.ValueString()}
-		for _, other := range a.NamedBy {
-			var v attr.Value
-			if d := req.State.GetAttribute(ctx, path.Root(other), &v); d.HasError() || v == nil || v.IsNull() || v.IsUnknown() {
-				continue
-			}
-			switch x := v.(type) {
-			case types.String:
-				names = append(names, x.ValueString())
-			case types.Int64:
-				names = append(names, strconv.FormatInt(x.ValueInt64(), 10))
-			}
+		var id types.String
+		if d := req.State.GetAttribute(ctx, path.Root("id"), &id); d.HasError() || id.IsNull() || id.IsUnknown() {
+			resp.RequiresReplace = true
+			return
 		}
-		resp.RequiresReplace = !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, want) })
+		want := req.PlanValue.ValueString()
+		if spec.Shape == NaturalKey {
+			resp.RequiresReplace = !strings.EqualFold(want, id.ValueString())
+			return
+		}
+		segment, value, ok := splitPathQueryID(spec.QueryAttr, id.ValueString())
+		switch {
+		case !ok:
+			resp.RequiresReplace = true
+		case a.Name == spec.IDAttr:
+			resp.RequiresReplace = want != segment
+		case a.Name == spec.QueryAttr:
+			resp.RequiresReplace = !strings.EqualFold(want, value)
+		default:
+			resp.RequiresReplace = true
+		}
 	}, desc, desc)
 }
 

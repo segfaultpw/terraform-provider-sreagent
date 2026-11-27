@@ -35,7 +35,7 @@ output "github_accounts" {
 
 Read-Only:
 
-- `account` (String) The account's login on GitHub, as the Integrations page shows it (the platform ignores case). Changing it replaces the resource: the old account keeps its settings and the block adopts the other one.
+- `account` (String) The account's login on GitHub, as the Integrations page shows it. Another case of the same login is the same account (one in-place update that sends nothing); changing it to another account replaces the resource: the old account keeps its settings and the block adopts the other one.
 - `account_id` (Number) GitHub's id of the account, or null when it has not been recorded yet.
 - `account_type` (String) User or Organization, as GitHub reports it, or null when it has not been recorded yet.
 - `auto_merge_requires_verification` (Boolean) Auto-merge only what SRE Agent verified. Off by default: a fix SRE Agent's own checks did not run for can still merge by itself once the checks its branch requires pass (where a repository's auto_merge says so), and a change pushed onto a pull request afterwards merges on those checks alone. An organization admin takes that risk by leaving it off. On: only a fix whose exact commit those checks ran on and passed merges by itself. In both positions a fix whose checks failed, or ran and could not judge it, or has an open self-review blocker, never merges by itself.
