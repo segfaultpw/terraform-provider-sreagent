@@ -77,6 +77,18 @@ func (f *Fake) Row(key, id string) map[string]any {
 	return f.rows[key][id]
 }
 
+// IDs answers the ids of the stored rows of key, sorted.
+func (f *Fake) IDs(key string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := make([]string, 0, len(f.rows[key]))
+	for id := range f.rows[key] {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // Mutate edits a stored row the way a person would in the browser.
 func (f *Fake) Mutate(key, id string, fn func(map[string]any)) {
 	f.mu.Lock()

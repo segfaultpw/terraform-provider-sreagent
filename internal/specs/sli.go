@@ -15,6 +15,10 @@ var SLI = engine.Spec{
 		{Name: "query", Kind: engine.String, Description: "The query against the data source."},
 		{Name: "data_source_id", Kind: engine.String, Description: "The data source the query runs on."},
 		{Name: "description", Kind: engine.String, Description: "What the indicator measures."},
+		{Name: "good_events_query", Kind: engine.String, Clearable: true, Description: "A query counting good events, in the data source's own language. Both event queries (this and total_events_query) make an event-ratio SLI. Needs platform v0.529.3."},
+		{Name: "total_events_query", Kind: engine.String, Clearable: true, Description: "A query counting all events, to pair with good_events_query. Needs platform v0.529.3."},
+		{Name: "threshold_good", Kind: engine.Float, Clearable: true, Description: "The line between a good sample and a bad one when the SLI has no event queries, in the SLI's unit: at or under it is good for latency, error_rate and saturation, at or over it is good for availability and throughput. Needs platform v0.529.3."},
+		{Name: "unit", Kind: engine.String, Clearable: true, Description: "The label for the SLI's numbers, such as ms. Needs platform v0.529.3."},
 		{Name: "status", Kind: engine.String, Computed: true, Description: "draft, approved or archived; changed in the app."},
 	},
 }

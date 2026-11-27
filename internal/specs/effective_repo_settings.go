@@ -14,6 +14,7 @@ var EffectiveRepoSettings = engine.Spec{
 		ro("repo", engine.String, "owner/name."),
 		ro("archived", engine.Bool, "Whether GitHub reports the repository archived. Archived repositories are left out unless include_archived is true."),
 		ro("reachable", engine.Bool, "Whether the organization's GitHub App still reaches the repository."),
+		ro("account", engine.String, "The GitHub account the repository is read through: an own account as its login (or installation N when no login is recorded), and, for a child organization that reads its parent's account, the parent's login (or the parent organization's account), never an installation number. Null for a repository no account lists (a name only a settings row holds, a list not read yet, a repository the child was not given). Needs platform v0.538.0."),
 		ro("has_row", engine.Bool, "Whether the repository has settings saved (sreagent_repo_setting)."),
 		ro("fence", engine.String, "The write fence: none, detected or person."),
 		ro("settings", engine.JSON, "An object with one key per setting (fix_runner, platform_fallback, auto_dispatch, draft_prs, check_network, allow_ci_config, auto_merge), each holding value (what the repository runs with) and following (true when that is the organization default, false when the repository's own settings set it)."),

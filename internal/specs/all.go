@@ -52,5 +52,9 @@ func All() []engine.Spec {
 		FixRunnerHealth,
 		GitHubAccount,
 		GitHubChildAccess,
+		TicketTemplates,
+		TicketSchedules,
+		BoardRules,
+		LeadAgentSettings,
 	}
 }

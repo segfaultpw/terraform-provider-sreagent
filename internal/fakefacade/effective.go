@@ -17,6 +17,7 @@ import (
 type effectiveModel struct {
 	reachable []string
 	archived  []string
+	accounts  map[string]string
 	pageCap   int
 	queries   []map[string]string
 }
@@ -26,6 +27,20 @@ func (f *Fake) Reachable(repos ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.em.reachable = append(f.em.reachable, repos...)
+}
+
+// ReadThrough names the GitHub account each repository is read through, the way
+// the platform's answer does for an organization that connected several: a
+// repository no account was named for answers account null.
+func (f *Fake) ReadThrough(account string, repos ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.em.accounts == nil {
+		f.em.accounts = map[string]string{}
+	}
+	for _, r := range repos {
+		f.em.accounts[r] = account
+	}
 }
 
 // Archived marks repositories GitHub reports archived.
@@ -82,8 +97,12 @@ func (f *Fake) effectiveRow(repo string) map[string]any {
 			}
 		}
 	}
+	var account any
+	if a, ok := f.em.accounts[repo]; ok {
+		account = a
+	}
 	return map[string]any{
-		"repo": repo, "archived": slices.Contains(f.em.archived, repo), "reachable": true,
+		"repo": repo, "account": account, "archived": slices.Contains(f.em.archived, repo), "reachable": true,
 		"has_row": len(rows) > 0, "fence": "none", "settings": settings, "differs_by_branch": differs,
 	}
 }

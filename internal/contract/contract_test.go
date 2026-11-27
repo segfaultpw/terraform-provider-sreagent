@@ -1501,6 +1501,21 @@ var declaredInSevenZero = struct {
 	},
 }
 
+// 0.8.0 declares every field the platform's pending lists named when it was cut, which the lists
+// of 0.7.0 left out: the card event settings of a webhook target, the four SLI fields and the
+// board summary switch. Together with the table above, nothing the vendored document lists as
+// pending is left for a later provider release.
+var declaredInEightZero = struct {
+	fields map[string][]string
+	values map[string]map[string][]string
+}{
+	fields: map[string][]string{
+		"outbound_configs":      {"card_event_kinds", "card_event_text"},
+		"slis":                  {"good_events_query", "total_events_query", "threshold_good", "unit"},
+		"organization_settings": {"board_summary_model_enabled"},
+	},
+}
+
 func specOf(t *testing.T, key string) engine.Spec {
 	t.Helper()
 	for _, s := range specs.All() {
@@ -1539,6 +1554,20 @@ func TestTheProviderDeclaresEverythingZeroSevenAdds(t *testing.T) {
 	}
 }
 
+func TestTheProviderDeclaresEverythingZeroEightAdds(t *testing.T) {
+	for key, fields := range declaredInEightZero.fields {
+		byName := map[string]engine.Attr{}
+		for _, a := range specOf(t, key).Attrs {
+			byName[a.Name] = a
+		}
+		for _, f := range fields {
+			if _, ok := byName[f]; !ok {
+				t.Errorf("%s: 0.8.0 declares %s, but the spec does not", key, f)
+			}
+		}
+	}
+}
+
 // The platform empties terraform_pending and terraform_pending_values once this release is on
 // the Registry. A document whose lists lack what 0.7.0 declares must agree with every spec
 // exactly as the one with the lists does, so the drift job stays green on both sides of that day.
@@ -1546,7 +1575,7 @@ func TestTheContractAgreesWithTheSpecsOnceThePendingListsAreEmptied(t *testing.T
 	d := doc(t)
 	for key, res := range d.Resources {
 		res.TerraformPending = slices.DeleteFunc(slices.Clone(res.TerraformPending), func(f string) bool {
-			return slices.Contains(declaredInSevenZero.fields[key], f)
+			return slices.Contains(declaredInSevenZero.fields[key], f) || slices.Contains(declaredInEightZero.fields[key], f)
 		})
 		values := map[string][]string{}
 		for field, listed := range res.TerraformPendingValues {
