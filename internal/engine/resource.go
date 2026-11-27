@@ -1720,6 +1720,11 @@ func (r *facadeResource) settleEquivalentPlan(ctx context.Context, req resource.
 		return
 	}
 	for _, a := range r.spec.Attrs {
+		// A secret's version is part of the diff: sending or clearing the secret changes what
+		// the platform answers (the host of a URL), so it is not only spelling.
+		if a.Secret && a.Kind == String && r.versionChanged(ctx, resp.Plan, req.State, a.Attribute()) {
+			return
+		}
 		if a.Computed || a.Secret || a.Local || a.WriteOnly || a.Kept || a.NotRead || len(a.Complement) > 0 {
 			continue
 		}
@@ -1742,6 +1747,15 @@ func (r *facadeResource) settleEquivalentPlan(ctx context.Context, req resource.
 		}
 		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
 	}
+}
+
+// versionChanged reports that the plan's <n>_wo_version differs from state's.
+func (r *facadeResource) versionChanged(ctx context.Context, plan tfsdk.Plan, state tfsdk.State, n string) bool {
+	var planned, prior types.Int64
+	if plan.GetAttribute(ctx, path.Root(n+"_wo_version"), &planned).HasError() || state.GetAttribute(ctx, path.Root(n+"_wo_version"), &prior).HasError() {
+		return true
+	}
+	return !planned.Equal(prior)
 }
 
 // addConfirm sends the configuration's confirmations with a write of a spec
