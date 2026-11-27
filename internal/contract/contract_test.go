@@ -164,11 +164,12 @@ func specProblems(d *Doc, s engine.Spec) []string {
 				body, which = post.Properties, "create"
 			}
 			_, nullable := typeOf(body[f])
-			if keptWhenOmitted(s.Key, f) && nullable && !a.Clearable {
-				// Nullable on the platform, but a field declared after configurations
-				// existed is never cleared by leaving it out: it stays what the platform
-				// holds (Optional and Computed), so an upgrade plans nothing.
-			} else if a.Clearable != nullable {
+			// A field that is nullable on the platform but was declared after
+			// configurations existed is never cleared by leaving it out: it stays
+			// what the platform holds (Optional and Computed), so an upgrade plans
+			// nothing, and its Clearable is not held to the nullability.
+			kept := keptWhenOmitted(s.Key, f) && nullable && !a.Clearable
+			if !kept && a.Clearable != nullable {
 				add("field %s Clearable %v, %s body nullable %v", f, a.Clearable, which, nullable)
 			}
 		}

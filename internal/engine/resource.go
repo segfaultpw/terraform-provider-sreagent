@@ -1615,17 +1615,18 @@ func discoveredWarning(spec Spec, discovered bool) string {
 func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := req.ID
 	if id == "" && req.Identity != nil {
-		if r.spec.Shape == PathAndQuery {
+		switch r.spec.Shape {
+		case PathAndQuery:
 			var segment, value types.String
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root(r.spec.IDAttr), &segment)...)
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root(r.spec.QueryAttr), &value)...)
 			id = pathQueryID(r.spec.QueryAttr, segment.ValueString(), value.ValueString())
-		} else if r.spec.Shape == ServiceBinding {
+		case ServiceBinding:
 			var service, env types.String
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("service"), &service)...)
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("environment"), &env)...)
 			id = bindingID(service.ValueString(), env.ValueString())
-		} else {
+		default:
 			var v types.String
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("id"), &v)...)
 			id = v.ValueString()

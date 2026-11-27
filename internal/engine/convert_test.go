@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -96,7 +97,7 @@ func TestTheNullDefaultIsAnUnsetClearableValue(t *testing.T) {
 
 func TestAnUnorderedListWithANormalizerKeepsTheConfiguredSpellingAnyOrder(t *testing.T) {
 	list := func(v ...string) types.List {
-		l, _ := types.ListValueFrom(nil, types.StringType, v)
+		l, _ := types.ListValueFrom(context.Background(), types.StringType, v)
 		return l
 	}
 	a := Attr{Name: "repositories", Kind: StringList, Unordered: true, Normalize: Lower}

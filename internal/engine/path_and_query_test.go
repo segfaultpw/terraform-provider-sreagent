@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -297,7 +298,7 @@ func TestAStaleFingerprintAtTheApplyFailsWithoutWritingAndShowsTheFreshPreview(t
 	r := &facadeResource{spec: childSpec, client: w.client()}
 	var diags diag.Diagnostics
 	_, _, err := r.writeRow(context.Background(), &diags, "update", "child-1?account=acme", map[string]any{"mode": "selected"}, `"v1"`, nil, types.StringValue("fp-old"))
-	if err != errReported || !diags.HasError() {
+	if !errors.Is(err, errReported) || !diags.HasError() {
 		t.Fatalf("got %v %v", err, diags)
 	}
 	text := diags[0].Detail()
@@ -321,7 +322,7 @@ func TestAnApplyThatMeetsAPreviewTheNullPlanNeverShowedRefusesIt(t *testing.T) {
 	r := &facadeResource{spec: childSpec, client: w.client()}
 	var diags diag.Diagnostics
 	_, _, err := r.writeRow(context.Background(), &diags, "update", "child-1?account=acme", map[string]any{"mode": "selected"}, `"v1"`, nil, types.StringNull())
-	if err != errReported || !diags.HasError() || !strings.Contains(diags[0].Detail(), "which the plan did not show, so nothing was written") {
+	if !errors.Is(err, errReported) || !diags.HasError() || !strings.Contains(diags[0].Detail(), "which the plan did not show, so nothing was written") {
 		t.Fatalf("got %v %v", err, diags)
 	}
 	if len(w.requests) != 1 {

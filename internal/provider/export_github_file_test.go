@@ -25,7 +25,7 @@ var githubKeys = map[string]string{
 }
 
 func adoptRenderedGitHubFile(t *testing.T, path string, expect map[string]int) {
-	src, err := os.ReadFile(path)
+	src, err := os.ReadFile(path) //nolint:gosec // a fixture of this repository
 	if err != nil {
 		t.Fatal(err)
 	}

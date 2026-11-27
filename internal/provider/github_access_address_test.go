@@ -25,9 +25,9 @@ func notReplaced(addr string) resource.ConfigPlanChecks {
 	}}
 }
 
-func replacedAddress(addr string) resource.ConfigPlanChecks {
+func replacedChildAccess() resource.ConfigPlanChecks {
 	return resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-		plancheck.ExpectResourceAction(addr, plancheck.ResourceActionDestroyBeforeCreate),
+		plancheck.ExpectResourceAction(childAccess, plancheck.ResourceActionDestroyBeforeCreate),
 	}}
 }
 
@@ -46,7 +46,7 @@ func TestGitHubChildAccessImportedByIdThenNamedByNameReplacesAndWritesNothing(t 
 		TerraformVersionChecks:   childAccessVersions,
 		Steps: []resource.TestStep{
 			{ResourceName: childAccess, ImportState: true, ImportStatePersist: true, ImportStateId: "child-1?account=acme", Config: providerBlock(f.URL) + byName},
-			{Config: providerBlock(f.URL) + byName, ConfigPlanChecks: replacedAddress(childAccess)},
+			{Config: providerBlock(f.URL) + byName, ConfigPlanChecks: replacedChildAccess()},
 			{Config: providerBlock(f.URL) + byName, ConfigPlanChecks: emptyPlan},
 		},
 	})
@@ -66,7 +66,7 @@ func TestGitHubChildAccessAReplacementSendsOnlyTheStatedDifference(t *testing.T)
 		TerraformVersionChecks:   childAccessVersions,
 		Steps: []resource.TestStep{
 			{ResourceName: childAccess, ImportState: true, ImportStatePersist: true, ImportStateId: "child-1?account=acme", Config: providerBlock(f.URL) + byName},
-			{Config: providerBlock(f.URL) + byName, ConfigPlanChecks: replacedAddress(childAccess)},
+			{Config: providerBlock(f.URL) + byName, ConfigPlanChecks: replacedChildAccess()},
 			{Config: providerBlock(f.URL) + byName, ConfigPlanChecks: emptyPlan},
 		},
 	})
@@ -100,7 +100,7 @@ func TestGitHubChildAccessANameTwoSiblingsShareIsNeverTakenForTheManagedChild(t 
 			{Config: providerBlock(f.URL) + childAccessBlock("child-1", "acme", "  mode = \"all\"\n")},
 			{
 				Config:           providerBlock(f.URL) + childAccessBlock("ACME-LABS", "acme", "  mode = \"none\"\n"),
-				ConfigPlanChecks: replacedAddress(childAccess),
+				ConfigPlanChecks: replacedChildAccess(),
 				ExpectError:      regexp.MustCompile(`(?s)Could\s+not\s+create.*More\s+than\s+one\s+child\s+organization\s+has\s+that\s+name\.\s+Use\s+its\s+id`),
 			},
 		},
@@ -124,7 +124,7 @@ func TestGitHubChildAccessTheOtherSiblingByIdIsAdoptedAndTheFirstNeverWritten(t 
 		TerraformVersionChecks:   childAccessVersions,
 		Steps: []resource.TestStep{
 			{Config: providerBlock(f.URL) + childAccessBlock("child-1", "acme", "  mode = \"all\"\n")},
-			{Config: providerBlock(f.URL) + childAccessBlock("child-2", "acme", "  mode = \"none\"\n"), ConfigPlanChecks: replacedAddress(childAccess)},
+			{Config: providerBlock(f.URL) + childAccessBlock("child-2", "acme", "  mode = \"none\"\n"), ConfigPlanChecks: replacedChildAccess()},
 			{Config: providerBlock(f.URL) + childAccessBlock("child-2", "acme", "  mode = \"none\"\n"), ConfigPlanChecks: emptyPlan},
 		},
 	})
@@ -167,7 +167,7 @@ func TestGitHubChildAccessTheAccountByNumberReplacesAndWritesNothing(t *testing.
 		TerraformVersionChecks:   childAccessVersions,
 		Steps: []resource.TestStep{
 			{ResourceName: childAccess, ImportState: true, ImportStatePersist: true, ImportStateId: "child-1?account=acme", Config: providerBlock(f.URL) + byNumber},
-			{Config: providerBlock(f.URL) + byNumber, ConfigPlanChecks: replacedAddress(childAccess)},
+			{Config: providerBlock(f.URL) + byNumber, ConfigPlanChecks: replacedChildAccess()},
 			{Config: providerBlock(f.URL) + byNumber, ConfigPlanChecks: emptyPlan},
 		},
 	})
@@ -188,7 +188,7 @@ func TestGitHubChildAccessANamedOtherAccountStillReplaces(t *testing.T) {
 		TerraformVersionChecks:   childAccessVersions,
 		Steps: []resource.TestStep{
 			{Config: cfg("acme")},
-			{Config: cfg("jane"), ConfigPlanChecks: replacedAddress(childAccess)},
+			{Config: cfg("jane"), ConfigPlanChecks: replacedChildAccess()},
 		},
 	})
 }

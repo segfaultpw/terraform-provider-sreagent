@@ -332,9 +332,6 @@ func isEmptyObject(v attr.Value) bool {
 	return json.Unmarshal([]byte(n.ValueString()), &obj) == nil && obj != nil && len(obj) == 0
 }
 
-// sameSet reports that two known lists hold the same entries, in any order.
-func sameSet(x, y attr.Value) bool { return sameSetAfter(nil, x, y) }
-
 // sameSetAfter reports that two known lists hold the same entries, in any order,
 // once normalize (nil is none) has been applied to each entry.
 func sameSetAfter(normalize func(string) string, x, y attr.Value) bool {

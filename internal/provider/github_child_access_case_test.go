@@ -38,7 +38,7 @@ func TestGitHubChildAccessRepositoriesInAnotherCaseApplyAndPlanNothing(t *testin
 				Config: childAccessConfig(f.URL, cfg),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(childAccess, "repositories.#", "2"),
-					func(s *terraform.State) error {
+					func(_ *terraform.State) error {
 						_, repos, _, _ := f.ChildAccessRow("child-1", "acme")
 						if !reflect.DeepEqual(repos, []string{"Acme/Web", "Acme/Infra"}) {
 							return fmt.Errorf("the platform holds %v, want GitHub's spelling", repos)
