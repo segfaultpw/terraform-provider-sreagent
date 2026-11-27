@@ -60,6 +60,9 @@ type preview struct {
 	// themselves. A platform from before auto-merge sends none, and a shape this
 	// version does not read is left out: the warning then says less, never wrong.
 	AutoMerge autoMergePreview
+	// Access marks a child access preview, which carries its own sentence.
+	Access bool
+	text   string
 }
 
 type autoMergePreview struct {
@@ -261,6 +264,9 @@ func repositories(n int) string {
 // warning is what a person reads before the change is applied: the settings
 // that change, the repositories that move, and what stays.
 func (p preview) warning() string {
+	if p.Access {
+		return p.text
+	}
 	var b strings.Builder
 	if len(p.Changes) == 0 {
 		b.WriteString("This change moves no setting.")
@@ -407,6 +413,9 @@ func (r *facadeResource) addProblems(diags *diag.Diagnostics, probs []problem) {
 // configuredConfirm is the confirmations the configuration states; known is
 // false when they depend on a value not yet known.
 func (r *facadeResource) configuredConfirm(ctx context.Context, cfg valueSource) (names []string, known bool, diags diag.Diagnostics) {
+	if _, has := r.attrNamed(confirmAttr); !has {
+		return nil, true, diags
+	}
 	var list types.List
 	diags.Append(cfg.GetAttribute(ctx, path.Root(confirmAttr), &list)...)
 	if list.IsUnknown() {
@@ -418,7 +427,7 @@ func (r *facadeResource) configuredConfirm(ctx context.Context, cfg valueSource)
 // settingsKnown reports that every setting the configuration states is known.
 func (r *facadeResource) settingsKnown(ctx context.Context, cfg valueSource) bool {
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.WriteOnly || a.Local || a.Kept || a.Secret {
+		if a.Computed || a.WriteOnly || a.Local || a.Kept || a.Secret || a.Address {
 			continue
 		}
 		v, d := getValue(ctx, cfg, a)
@@ -432,7 +441,7 @@ func (r *facadeResource) settingsKnown(ctx context.Context, cfg valueSource) boo
 // errReported marks a failure already added to the diagnostics.
 var errReported = errors.New("reported")
 
-func (r *facadeResource) previewedRequest(body map[string]any, ifMatch string, confirm []string, fingerprint string) client.Request {
+func (r *facadeResource) previewedRequest(id string, body map[string]any, ifMatch string, confirm []string, fingerprint string) client.Request {
 	b := maps.Clone(body)
 	if len(confirm) > 0 {
 		b[confirmAttr] = confirm
@@ -440,21 +449,45 @@ func (r *facadeResource) previewedRequest(body map[string]any, ifMatch string, c
 	if fingerprint != "" {
 		b["expected_fingerprint"] = fingerprint
 	}
-	return client.Request{Method: http.MethodPut, Path: r.spec.Key, Body: b, IfMatch: ifMatch}
+	p, q := r.rowPath(id)
+	return client.Request{Method: http.MethodPut, Path: p, Query: q, Body: b, IfMatch: ifMatch}
+}
+
+// parsePreviewOf reads a preview.data with the reader the spec's preview needs.
+func (r *facadeResource) parsePreviewOf(m map[string]any) (preview, error) {
+	if r.spec.AccessPreview {
+		return parseAccessPreview(m)
+	}
+	return parsePreview(m)
 }
 
 // previewCall is the first request of a previewed write: it answers the preview
 // and writes nothing.
 func (r *facadeResource) previewCall(ctx context.Context, body map[string]any, ifMatch string, confirm []string) (preview, error) {
-	_, err := r.client.Do(ctx, r.previewedRequest(body, ifMatch, confirm, ""))
+	p, written, err := r.probe(ctx, "", body, ifMatch, confirm)
+	if err == nil && written != nil {
+		return preview{}, fmt.Errorf("the platform wrote sreagent_%s instead of previewing it, so no fingerprint could be taken", r.spec.TypeName)
+	}
+	return p, err
+}
+
+// probe asks for the preview of a previewed write of the row id and writes
+// nothing. A spec with a ProbeFingerprint asks with a fingerprint no preview
+// carries, because the platform writes a change that takes nothing away at
+// once; it answers that as a stale one, with the fresh preview. written is the
+// answer when the platform has nothing to write (a 200).
+func (r *facadeResource) probe(ctx context.Context, id string, body map[string]any, ifMatch string, confirm []string) (p preview, written *client.Response, err error) {
+	probing := r.spec.ProbeFingerprint != ""
+	out, err := r.client.Do(ctx, r.previewedRequest(id, body, ifMatch, confirm, r.spec.ProbeFingerprint))
 	var apiErr *client.APIError
 	switch {
 	case err == nil:
-		return preview{}, fmt.Errorf("the platform wrote sreagent_%s instead of previewing it, so no fingerprint could be taken", r.spec.TypeName)
-	case errors.As(err, &apiErr) && apiErr.Status == http.StatusPreconditionRequired:
-		return parsePreview(apiErr.Preview)
+		return preview{}, out, nil
+	case errors.As(err, &apiErr) && (apiErr.Status == http.StatusPreconditionRequired || (probing && apiErr.Status == http.StatusConflict)):
+		p, err = r.parsePreviewOf(apiErr.Preview)
+		return p, nil, err
 	}
-	return preview{}, err
+	return preview{}, nil, err
 }
 
 func (r *facadeResource) staleError(diags *diag.Diagnostics, verb string, err error) {
@@ -469,7 +502,7 @@ func (r *facadeResource) staleError(diags *diag.Diagnostics, verb string, err er
 	detail := fmt.Sprintf("What would move changed since the plan (the platform answered 409), so nothing was written. Run %s again to review the fresh preview.", rerun)
 	var apiErr *client.APIError
 	if errors.As(err, &apiErr) && len(apiErr.Preview) > 0 {
-		if fresh, perr := parsePreview(apiErr.Preview); perr != nil {
+		if fresh, perr := r.parsePreviewOf(apiErr.Preview); perr != nil {
 			detail += "\n\nThe fresh preview could not be read: " + perr.Error()
 		} else {
 			detail += "\n\nThe fresh preview: " + fresh.warning()
@@ -485,7 +518,7 @@ func (r *facadeResource) staleError(diags *diag.Diagnostics, verb string, err er
 // what moves and applies that fingerprint. It answers the fingerprint it applied.
 func (r *facadeResource) previewedWrite(ctx context.Context, diags *diag.Diagnostics, verb string, body map[string]any, ifMatch string, confirm []string, planned string) (*client.Response, string, error) {
 	if planned != "" {
-		out, err := r.client.Do(ctx, r.previewedRequest(body, ifMatch, confirm, planned))
+		out, err := r.client.Do(ctx, r.previewedRequest("", body, ifMatch, confirm, planned))
 		if client.IsConflict(err) {
 			r.staleError(diags, verb, err)
 			return nil, "", errReported
@@ -514,7 +547,7 @@ func (r *facadeResource) previewedWrite(ctx context.Context, diags *diag.Diagnos
 			}
 			warned = true
 		}
-		out, err := r.client.Do(ctx, r.previewedRequest(body, ifMatch, confirm, p.Fingerprint))
+		out, err := r.client.Do(ctx, r.previewedRequest("", body, ifMatch, confirm, p.Fingerprint))
 		if client.IsConflict(err) {
 			if attempt == 0 {
 				continue

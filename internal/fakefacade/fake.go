@@ -43,6 +43,7 @@ type Fake struct {
 	em          effectiveModel
 	history     map[string][]map[string]any
 	accepted    []string
+	ca          childAccessModel
 }
 
 // New starts a fake for specs; the server stops when the test ends.
@@ -337,6 +338,12 @@ func (f *Fake) rowID(spec engine.Spec, row map[string]any) string {
 			id += "?environment=" + url.QueryEscape(env)
 		}
 		return id
+	case engine.PathAndQuery:
+		id := url.PathEscape(fmt.Sprint(row[spec.IDAttr]))
+		if q := fmt.Sprint(row[spec.QueryAttr]); q != "" && q != "<nil>" {
+			id += "?" + spec.QueryAttr + "=" + url.QueryEscape(q)
+		}
+		return id
 	}
 	return fmt.Sprint(row["id"])
 }
@@ -370,8 +377,12 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 {
 		seg, _ := url.PathUnescape(parts[1])
 		id = url.PathEscape(seg)
-		if env := r.URL.Query().Get("environment"); env != "" {
-			id += "?environment=" + url.QueryEscape(env)
+		queryName := "environment"
+		if spec.Shape == engine.PathAndQuery {
+			queryName = spec.QueryAttr
+		}
+		if q := r.URL.Query().Get(queryName); q != "" {
+			id += "?" + queryName + "=" + url.QueryEscape(q)
 		}
 	}
 	if spec.Shape == engine.Singleton {
@@ -387,6 +398,10 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut {
 			f.history[spec.Key] = append(f.history[spec.Key], body)
 		}
+	}
+	if spec.Key == childAccessKey {
+		f.serveChildAccess(w, r, id, body)
+		return
 	}
 	if spec.Key == "repository_defaults" {
 		f.serveDefaults(w, r, body)

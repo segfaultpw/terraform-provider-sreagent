@@ -186,6 +186,13 @@ func specProblems(d *Doc, s engine.Spec) []string {
 	for _, a := range s.Attrs {
 		switch {
 		case a.Local, a.Kept:
+		case a.Address:
+			if !slices.Contains(res.IDArgs, a.Name) {
+				add("address %s is not an id argument of %s (id_args %v)", a.Name, s.Key, res.IDArgs)
+			}
+			if _, ok := res.ComputedFields[a.Name]; !ok && !slices.Contains(res.Fields, a.Name) {
+				add("address %s is not answered by the API", a.Name)
+			}
 		case a.WriteOnly:
 			checkWriteOnly(a, res, post.Properties, put.Properties, add)
 		case a.NotRead:
@@ -329,14 +336,26 @@ func checkPreviewed(d *Doc, s engine.Spec, res Resource, add func(string, ...any
 	if !s.Previewed {
 		return
 	}
-	if s.Shape != engine.Singleton {
-		add("a previewed spec must be a singleton")
+	if s.Shape != engine.Singleton && s.Shape != engine.PathAndQuery {
+		add("a previewed spec must be a singleton or a path and query row")
 		return
 	}
 	if !slices.Contains(res.ActionArgs, "expected_fingerprint") {
 		add("previewed %s does not publish the expected_fingerprint argument", s.Key)
 	}
-	put := d.Paths["/"+s.Key]["put"]
+	pathKey := "/" + s.Key
+	if s.Shape == engine.PathAndQuery {
+		pathKey += "/{id}"
+		// The platform writes a change that takes nothing away at once, so a plan
+		// can only ask for a preview with a fingerprint no preview carries.
+		if s.ProbeFingerprint == "" {
+			add("a previewed row of %s needs a ProbeFingerprint: a PUT with none writes a change that takes nothing away", s.Key)
+		}
+		if s.DestroyBody != nil || len(s.Confirmations) > 0 {
+			add("a previewed row of %s takes no destroy body and no confirmation: the platform publishes none", s.Key)
+		}
+	}
+	put := d.Paths[pathKey]["put"]
 	for _, status := range []string{"428", "409"} {
 		if _, ok := put.Responses[status]; !ok {
 			add("the PUT of %s no longer documents a %s", s.Key, status)
@@ -352,7 +371,7 @@ func checkPreviewed(d *Doc, s engine.Spec, res Resource, add func(string, ...any
 			add("the destroy follows %s, which the API does not publish as a computed field", s.DestroyWhen)
 		}
 	}
-	checkPreviewShape(put.Responses, add)
+	checkPreviewShape(put.Responses, s.AccessPreview, add)
 	body := put.RequestBody.Content["application/json"].Schema.Properties
 	for name, c := range s.Confirmations {
 		items, _ := body["confirm"]["items"].(map[string]any)
@@ -392,7 +411,15 @@ func checkPreviewShape(responses map[string]struct {
 			Properties map[string]map[string]any `json:"properties"`
 		} `json:"schema"`
 	} `json:"content"`
-}, add func(string, ...any)) {
+}, access bool, add func(string, ...any)) {
+	if access {
+		published := map[string]map[string]any{}
+		for _, status := range []string{"428", "409"} {
+			published[status] = responses[status].Content["application/json"].Schema.Properties["preview"]
+		}
+		checkAccessPreviewShape(published, add)
+		return
+	}
 	fixture, err := previewFixture()
 	switch {
 	case err != nil:
@@ -929,6 +956,17 @@ func checkAddressing(s engine.Spec, res Resource, add func(string, ...any)) {
 		}
 	case engine.ServiceBinding:
 		want = []string{"service", "environment"}
+	case engine.PathAndQuery:
+		want = []string{s.IDAttr, s.QueryAttr}
+	}
+	// A row nothing can create is addressed by attributes the contract lists as id
+	// arguments, never as fields, so they are Address attributes.
+	if s.AdoptOnly {
+		for _, name := range want {
+			if !slices.ContainsFunc(s.Attrs, func(a engine.Attr) bool { return a.Address && a.Name == name }) {
+				add("%s is adopted, so it is addressed by %s, which no Address attribute of the spec holds", s.Key, name)
+			}
+		}
 	}
 	got := res.IDArgs
 	if got == nil {

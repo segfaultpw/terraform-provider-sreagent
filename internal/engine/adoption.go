@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,9 @@ import (
 type rowSource struct {
 	row   map[string]any
 	attrs []Attr
+	// id and etag are the row's address and version, for an adoption of a
+	// collection row (a singleton's is its key).
+	id, etag string
 }
 
 func (s rowSource) GetAttribute(_ context.Context, p path.Path, target any) diag.Diagnostics {
@@ -147,34 +151,50 @@ func (c adoptedConfig) List(name string) Presence {
 // adopting reports that the plan is the create of a singleton that adopts the
 // organization's settings and wants the plan to say what that moves.
 func (r *facadeResource) adopting(req resource.ModifyPlanRequest) bool {
-	return r.spec.PlanAdoption && r.spec.Shape == Singleton && req.State.Raw.IsNull() && r.client != nil
+	return (r.spec.AdoptOnly || (r.spec.PlanAdoption && r.spec.Shape == Singleton)) && req.State.Raw.IsNull() && r.client != nil
 }
 
 // importAdvice is how to see an adoption as an ordinary plan.
-func (r *facadeResource) importAdvice() string {
-	return fmt.Sprintf("Import it first (terraform import sreagent_%s.<name> %s) to review the change as a plan.", r.spec.TypeName, r.spec.Key)
+func (r *facadeResource) importAdvice(id string) string {
+	if id == "" {
+		id = r.spec.Key
+	}
+	return fmt.Sprintf("Import it first (terraform import sreagent_%s.<name> %s) to review the change as a plan.", r.spec.TypeName, id)
 }
 
 // currentRow reads the row an adopting create would overwrite. It never fails the
 // plan: a read that cannot be made is said, and the apply answers.
-func (r *facadeResource) currentRow(ctx context.Context, resp *resource.ModifyPlanResponse) *rowSource {
-	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: r.spec.Key})
+func (r *facadeResource) currentRow(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) *rowSource {
+	p, q, id := r.spec.Key, url.Values(nil), ""
+	if r.spec.AdoptOnly {
+		addressed, ok, d := r.addressedID(ctx, req.Plan)
+		resp.Diagnostics.Append(d...)
+		if !ok {
+			return nil
+		}
+		id = addressed
+		p, q = r.rowPath(id)
+	}
+	out, err := r.client.Do(ctx, client.Request{Method: http.MethodGet, Path: p, Query: q})
 	switch {
 	case err == nil:
 		row, derr := decodeRow(out.Data)
 		if derr == nil {
-			return &rowSource{row: row, attrs: r.spec.Attrs}
+			return &rowSource{row: row, attrs: r.spec.Attrs, id: id, etag: out.ETag}
 		}
 		err = derr
 	case client.IsNotFound(err):
-		if r.alwaysThere() {
+		switch {
+		case r.spec.AdoptOnly:
+			resp.Diagnostics.AddError(r.title("plan"), r.adoptMissing(id, err))
+		case r.alwaysThere():
 			resp.Diagnostics.AddWarning("The platform may be too old for this resource", r.platformTooOld(err))
 		}
 		return nil
 	}
 	_, detail := r.failure("read", err)
 	resp.Diagnostics.AddWarning("The plan could not read the current settings",
-		fmt.Sprintf("sreagent_%s adopts the settings the organization already has, and the plan could not read them, so it cannot say what the apply will change: %s\n\nThe apply overwrites what the block names. %s", r.spec.TypeName, detail, r.importAdvice()))
+		fmt.Sprintf("sreagent_%s adopts the settings the organization already has, and the plan could not read them, so it cannot say what the apply will change: %s\n\nThe apply overwrites what the block names. %s", r.spec.TypeName, detail, r.importAdvice(id)))
 	return nil
 }
 
@@ -190,7 +210,7 @@ func (r *facadeResource) planAdoptionWarnings(ctx context.Context, plan valueSou
 	r.planWarnings(ctx, plan, current, diags)
 	var moves []string
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.Secret || a.Local || a.WriteOnly || a.Kept || a.NotRead || len(a.Complement) > 0 {
+		if a.Computed || a.Secret || a.Local || a.WriteOnly || a.Kept || a.NotRead || a.Address || len(a.Complement) > 0 {
 			continue
 		}
 		planned, d := getValue(ctx, plan, a)
@@ -207,7 +227,7 @@ func (r *facadeResource) planAdoptionWarnings(ctx context.Context, plan valueSou
 	}
 	diags.AddWarning("This block adopts the organization's current settings",
 		fmt.Sprintf("sreagent_%s has no state yet, so this block adopts the settings the organization already has, and the apply overwrites what the block names. It will change: %s. An attribute the block leaves out stays as it is. %s",
-			r.spec.TypeName, strings.Join(moves, "; "), r.importAdvice()))
+			r.spec.TypeName, strings.Join(moves, "; "), r.importAdvice(current.id)))
 }
 
 // showValue is a value as a sentence says it.

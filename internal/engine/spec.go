@@ -144,6 +144,13 @@ type Attr struct {
 	// state and never sends or reads from the API: a value a later operation
 	// that has no configuration (a destroy) needs. It is never a write by itself.
 	Kept bool
+	// Address: the attribute names the row, as the path segment (Spec.IDAttr) or
+	// the query value (Spec.QueryAttr) of a PathAndQuery spec. It is Required and
+	// a change replaces the row, it is never sent in a body, and state keeps what
+	// the configuration says (the platform may answer its canonical spelling, a
+	// child by id where the configuration wrote its name). The contract lists it
+	// as an id argument of the resource, not as a field.
+	Address bool
 	// Local: Computed and kept by the provider alone. It is never sent, never read
 	// from the API, and carried through a refresh from the prior state.
 	Local bool
@@ -245,13 +252,17 @@ type Issue struct {
 type Shape int
 
 // Generated rows are addressed by a platform uuid, NaturalKey rows by one
-// of their own fields, a Singleton by its resource key, and a ServiceBinding
-// by its service plus an optional environment query.
+// of their own fields, a Singleton by its resource key, a ServiceBinding
+// by its service plus an optional environment query, and a PathAndQuery row by
+// the value of the spec's IDAttr in the path plus the value of its QueryAttr in
+// the query string (a child organization and one of its parent's GitHub
+// accounts).
 const (
 	Generated Shape = iota
 	NaturalKey
 	Singleton
 	ServiceBinding
+	PathAndQuery
 )
 
 // Spec is one facade resource.
@@ -265,7 +276,11 @@ type Spec struct {
 	ReadDescription string
 	Shape           Shape
 	IDAttr          string
-	Lifecycle       bool
+	// QueryAttr names the attribute whose value a PathAndQuery row is addressed
+	// by in the query string, beside IDAttr in the path. The id Terraform holds
+	// is <path value>?<QueryAttr>=<value>, which is also the import format.
+	QueryAttr string
+	Lifecycle bool
 	// Upsert: the write tool describes the row's whole state, so an update
 	// sends every field rather than only the changed ones.
 	Upsert    bool
@@ -296,6 +311,19 @@ type Spec struct {
 	// DestroyNote is added to the warning a destroy of a singleton says when it
 	// leaves the settings in place: what stays in force.
 	DestroyNote string
+	// AdoptOnly: the platform has no door that creates the row (it exists when
+	// something in the app made it), so create reads it by its key, judges the
+	// block against what it holds as PlanAdoption does for a singleton, and writes
+	// the difference through the update door. A row that does not exist is the
+	// error the platform's 404 stands for, with AdoptHint added. Every attribute
+	// of such a spec is UpdateOnly, which the contract derives from an empty
+	// create_fields and a non-empty update_fields.
+	AdoptOnly bool
+	// AdoptHint finishes the sentence that says there is nothing to adopt.
+	AdoptHint string
+	// LeaveOnDestroy: the platform has no door that removes the row, so a destroy
+	// writes nothing and says this: what stays, and how to change it.
+	LeaveOnDestroy string
 	// ListIDAttr names a list row when the list answers rows without an id.
 	ListIDAttr string
 	// StartsEmpty: a singleton an organization has no row of until its first
@@ -338,6 +366,17 @@ type Spec struct {
 	// and the apply sends that fingerprint. The WriteOnly attribute confirm names
 	// the confirmations the preview asks for.
 	Previewed bool
+	// ProbeFingerprint is the fingerprint a Previewed collection row sends to ask
+	// for a preview without a write. The platform writes a change that takes
+	// nothing away at once, so a PUT with no fingerprint cannot be a plan's
+	// question; it answers a fingerprint no preview carries as it answers a stale
+	// one, with the fresh preview, and writes nothing. A 200 to the probe means the
+	// platform has nothing to write.
+	ProbeFingerprint string
+	// AccessPreview: the preview this spec's 428 and 409 carry is the child access
+	// preview (before, after, what the child stops and starts reaching, what the
+	// change holds), not the repository defaults' one.
+	AccessPreview bool
 	// Confirmations maps each confirm value to the setting whose turning on needs
 	// it and the platform's sentence for a configuration that lacks it.
 	Confirmations map[string]Confirmation

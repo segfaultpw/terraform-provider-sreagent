@@ -356,12 +356,25 @@ func (r *facadeResource) IdentitySchema(_ context.Context, _ resource.IdentitySc
 		}}
 		return
 	}
+	if r.spec.Shape == PathAndQuery {
+		resp.IdentitySchema = identityschema.Schema{Attributes: map[string]identityschema.Attribute{
+			r.spec.IDAttr:    identityschema.StringAttribute{RequiredForImport: true},
+			r.spec.QueryAttr: identityschema.StringAttribute{OptionalForImport: true},
+		}}
+		return
+	}
 	resp.IdentitySchema = identityschema.Schema{Attributes: map[string]identityschema.Attribute{
 		"id": identityschema.StringAttribute{RequiredForImport: true},
 	}}
 }
 
 func resourceAttributes(a Attr, singleton bool) map[string]schema.Attribute {
+	if a.Address {
+		return map[string]schema.Attribute{a.Attribute(): schema.StringAttribute{
+			Required: true, Description: a.Description,
+			PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+		}}
+	}
 	if a.Secret {
 		n := a.Attribute()
 		version := schema.Int64Attribute{Optional: true, Description: fmt.Sprintf("Change this number to send %s_wo again. Set it whenever %s_wo is set.", n, n)}
@@ -611,8 +624,47 @@ func (r *facadeResource) rowPath(id string) (string, url.Values) {
 			q.Set("environment", env)
 		}
 		return r.spec.Key + "/" + url.PathEscape(service), q
+	case PathAndQuery:
+		segment, value, _ := splitPathQueryID(r.spec.QueryAttr, id)
+		q := url.Values{}
+		if value != "" {
+			q.Set(r.spec.QueryAttr, value)
+		}
+		return r.spec.Key + "/" + url.PathEscape(segment), q
 	}
 	return r.spec.Key + "/" + url.PathEscape(id), nil
+}
+
+// pathQueryID is the id of a PathAndQuery row: the escaped path value, and the
+// query value when there is one, in the form an import takes.
+func pathQueryID(queryName, segment, value string) string {
+	id := url.PathEscape(segment)
+	if value != "" {
+		id += "?" + queryName + "=" + url.QueryEscape(value)
+	}
+	return id
+}
+
+// splitPathQueryID undoes pathQueryID. ok is false for an id that carries a
+// query other than queryName, which an import refuses.
+func splitPathQueryID(queryName, id string) (segment, value string, ok bool) {
+	escaped, query, found := strings.Cut(id, "?")
+	segment, err := url.PathUnescape(escaped)
+	if err != nil {
+		segment = escaped
+	}
+	if !found {
+		return segment, "", true
+	}
+	name, raw, hasValue := strings.Cut(query, "=")
+	if name != queryName || !hasValue || strings.ContainsAny(raw, "&?") {
+		return segment, "", false
+	}
+	value, err = url.QueryUnescape(raw)
+	if err != nil {
+		value = raw
+	}
+	return segment, value, true
 }
 
 func bindingID(service, env string) string {
@@ -647,6 +699,9 @@ func RowID(spec Spec, row map[string]any) string {
 	case ServiceBinding:
 		env, _ := row["environment"].(string)
 		return bindingID(fmt.Sprint(row["service"]), env)
+	case PathAndQuery:
+		value, _ := row[spec.QueryAttr].(string)
+		return pathQueryID(spec.QueryAttr, fmt.Sprint(row[spec.IDAttr]), value)
 	}
 	if id, ok := row["id"].(string); ok {
 		return id
@@ -662,7 +717,7 @@ func (r *facadeResource) body(ctx context.Context, plan, config, state valueSour
 	body := map[string]any{}
 	var secrets []string
 	for _, a := range r.spec.Attrs {
-		if a.Computed || a.WriteOnly || a.Local || a.Kept || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
+		if a.Computed || a.WriteOnly || a.Local || a.Kept || a.Address || (o == opUpdate && (a.CreateOnly || a.NotRead)) || (o == opCreate && a.UpdateOnly) {
 			continue
 		}
 		if a.Secret {
@@ -844,17 +899,27 @@ func (r *facadeResource) lost(ctx context.Context, state valueSource, n string) 
 // plans a re-send at the same version. A cleared secret plans _set false.
 func (r *facadeResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.Plan.Raw.IsNull() {
-		if r.spec.Previewed && r.spec.Shape == Singleton {
+		switch {
+		case r.spec.LeaveOnDestroy != "":
+			if !req.State.Raw.IsNull() {
+				resp.Diagnostics.AddWarning("What destroying this resource leaves", r.leftInPlace())
+			}
+		case r.spec.Previewed && r.spec.Shape == Singleton:
 			r.planDestroy(ctx, req, resp)
 		}
 		return
 	}
 	var current *rowSource
 	if r.adopting(req) {
-		current = r.currentRow(ctx, resp)
+		current = r.currentRow(ctx, req, resp)
+		if r.spec.AdoptOnly && resp.Diagnostics.HasError() {
+			return
+		}
 	}
 	r.planChecks(ctx, req, resp, current)
-	if r.spec.Previewed {
+	if r.spec.Previewed && r.spec.Shape != Singleton {
+		r.planRowPreview(ctx, req, resp, current)
+	} else if r.spec.Previewed {
 		r.planPreview(ctx, req, resp)
 	} else {
 		r.planConfirmations(ctx, req, resp)
@@ -959,6 +1024,23 @@ func (r *facadeResource) writeState(ctx context.Context, out *client.Response, p
 	heldUnknown := map[string][]string{}
 	diags.Append(state.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 	for _, a := range r.spec.Attrs {
+		if a.Address {
+			// State keeps what the configuration says; only a row that arrives
+			// with no stated address (an import) takes the platform's spelling.
+			var held attr.Value = types.StringNull()
+			if prior != nil {
+				v, d := getValue(ctx, prior, a)
+				diags.Append(d...)
+				if v != nil && !v.IsNull() && !v.IsUnknown() {
+					held = v
+				}
+			}
+			if text, ok := row[a.Name].(string); ok && held.IsNull() {
+				held = types.StringValue(text)
+			}
+			diags.Append(state.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+			continue
+		}
 		if a.Secret {
 			version := types.Int64Null()
 			if prior != nil {
@@ -1068,6 +1150,12 @@ func (r *facadeResource) setIdentity(ctx context.Context, identity *tfsdk.Resour
 		diags.Append(identity.SetAttribute(ctx, path.Root("environment"), types.StringValue(env))...)
 		return diags
 	}
+	if r.spec.Shape == PathAndQuery {
+		segment, value, _ := splitPathQueryID(r.spec.QueryAttr, id)
+		diags.Append(identity.SetAttribute(ctx, path.Root(r.spec.IDAttr), types.StringValue(segment))...)
+		diags.Append(identity.SetAttribute(ctx, path.Root(r.spec.QueryAttr), types.StringValue(value))...)
+		return diags
+	}
 	diags.Append(identity.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
 	return diags
 }
@@ -1146,6 +1234,10 @@ func (r *facadeResource) precondition(verb string, err error) (string, string) {
 }
 
 func (r *facadeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	if r.spec.AdoptOnly {
+		r.createAdopted(ctx, req, resp)
+		return
+	}
 	body, secrets, diags := r.body(ctx, req.Plan, req.Config, nil, opCreate)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -1292,7 +1384,10 @@ func (r *facadeResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 	if client.IsNotFound(err) {
-		if r.spec.Previewed && followsParent(err) {
+		if r.spec.AdoptOnly {
+			resp.Diagnostics.AddWarning("The row is gone on the platform", fmt.Sprintf("The platform no longer has the sreagent_%s %s (the child was unlinked, or the GitHub account disconnected), so Terraform dropped it from state. The next plan proposes to adopt it again, which fails until it exists.", r.spec.TypeName, id.ValueString()))
+		}
+		if r.spec.Previewed && r.spec.Shape == Singleton && followsParent(err) {
 			resp.Diagnostics.AddWarning("Following the parent again", fmt.Sprintf("This organization now follows its parent's %s, so sreagent_%s no longer manages anything here. The next plan proposes to create it again, which gives the organization its own and says what moves.", r.spec.Key, r.spec.TypeName))
 		}
 		resp.State.RemoveResource(ctx)
@@ -1350,7 +1445,11 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		out, used, err = r.previewedWrite(ctx, &resp.Diagnostics, "update", body, etag, confirm, planned.ValueString())
+		if r.spec.Shape == Singleton {
+			out, used, err = r.previewedWrite(ctx, &resp.Diagnostics, "update", body, etag, confirm, planned.ValueString())
+		} else {
+			out, used, err = r.writeRow(ctx, &resp.Diagnostics, "update", id.ValueString(), body, etag, confirm, planned)
+		}
 		if errors.Is(err, errReported) {
 			return
 		}
@@ -1381,6 +1480,10 @@ func (r *facadeResource) Update(ctx context.Context, req resource.UpdateRequest,
 }
 
 func (r *facadeResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	if r.spec.LeaveOnDestroy != "" {
+		resp.Diagnostics.AddWarning("Left in place", r.leftInPlace())
+		return
+	}
 	if r.spec.Shape == Singleton && r.destroyFollows(ctx, req.State) {
 		r.destroyPreviewed(ctx, req, resp)
 		return
@@ -1470,7 +1573,12 @@ func discoveredWarning(spec Spec, discovered bool) string {
 func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := req.ID
 	if id == "" && req.Identity != nil {
-		if r.spec.Shape == ServiceBinding {
+		if r.spec.Shape == PathAndQuery {
+			var segment, value types.String
+			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root(r.spec.IDAttr), &segment)...)
+			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root(r.spec.QueryAttr), &value)...)
+			id = pathQueryID(r.spec.QueryAttr, segment.ValueString(), value.ValueString())
+		} else if r.spec.Shape == ServiceBinding {
 			var service, env types.String
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("service"), &service)...)
 			resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("environment"), &env)...)
@@ -1485,6 +1593,10 @@ func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportSta
 		resp.Diagnostics.AddError("Import a singleton by its name", fmt.Sprintf("Import sreagent_%s with the ID %q.", r.spec.TypeName, r.spec.Key))
 		return
 	}
+	if r.spec.Shape == PathAndQuery {
+		r.importAddressed(ctx, id, resp)
+		return
+	}
 	if r.spec.Previewed {
 		r.importCheck(ctx, resp)
 		if resp.Diagnostics.HasError() {
@@ -1492,6 +1604,33 @@ func (r *facadeResource) ImportState(ctx context.Context, req resource.ImportSta
 		}
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(id))...)
+}
+
+// importAddressed imports a PathAndQuery row by <path value>?<query attribute>=<value>
+// and records both halves, which a refresh then keeps.
+func (r *facadeResource) importAddressed(ctx context.Context, id string, resp *resource.ImportStateResponse) {
+	segment, value, ok := splitPathQueryID(r.spec.QueryAttr, id)
+	if !ok || segment == "" {
+		resp.Diagnostics.AddError("Import the row by its key", fmt.Sprintf("Import sreagent_%s with the ID <%s>?%s=<%s>, for example %q. Got %q.",
+			r.spec.TypeName, r.spec.IDAttr, r.spec.QueryAttr, r.spec.QueryAttr, "00000000-0000-0000-0000-000000000000?"+r.spec.QueryAttr+"=acme", id))
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(pathQueryID(r.spec.QueryAttr, segment, value)))...)
+	for _, a := range r.spec.Attrs {
+		if !a.Address {
+			continue
+		}
+		held := types.StringNull()
+		switch a.Name {
+		case r.spec.IDAttr:
+			held = types.StringValue(segment)
+		case r.spec.QueryAttr:
+			if value != "" {
+				held = types.StringValue(value)
+			}
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(a.Attribute()), held)...)
+	}
 }
 
 // planChecks runs the spec's PlanChecks over the planned values and, on an
