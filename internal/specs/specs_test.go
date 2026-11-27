@@ -92,12 +92,12 @@ func TestAQuickRowEntryIsHeldToTheEmojiBoundsOfThePlatform(t *testing.T) {
 }
 
 func TestTheTwoGitHubAccountResourcesSayWhichOneToUseWhen(t *testing.T) {
-	for _, want := range []string{"sreagent_github_settings manages the organization's managed account", "the one connected longest", "fights sreagent_github_settings", "any other account", "terraform import sreagent_github_account.<name>"} {
+	for _, want := range []string{"sreagent_github_settings manages the organization's managed account", "the one connected longest", "fights sreagent_github_settings", "any other account", "terraform import sreagent_github_account.NAME"} {
 		if !strings.Contains(GitHubAccount.Description, want) {
 			t.Errorf("sreagent_github_account does not say %q", want)
 		}
 	}
-	for _, want := range []string{"<child id>?account=<account>", "api:config_read", "Destroying the resource leaves the row in place", "fingerprint", "adopts it"} {
+	for _, want := range []string{"CHILD_ID?account=ACCOUNT", "api:config_read", "Destroying the resource leaves the row in place", "fingerprint", "adopts it"} {
 		if !strings.Contains(GitHubChildAccess.Description, want) {
 			t.Errorf("sreagent_github_child_access does not say %q", want)
 		}
@@ -123,7 +123,7 @@ func TestNoSpecDescriptionUsesAnEmOrEnDash(t *testing.T) {
 			}
 		}
 		for _, text := range texts {
-			if strings.ContainsAny(text, "—–") {
+			if strings.ContainsAny(text, "\u2014\u2013") {
 				t.Errorf("%s: a description uses an em or en dash: %.60s", s.Key, text)
 			}
 		}

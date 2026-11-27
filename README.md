@@ -53,6 +53,13 @@ Most of the provider works against any platform that serves the configuration AP
 | `informative_learning_enabled` on `data.sreagent_alert_follow_up_settings` | v0.513.0 |
 | `answer_feedback` in `reaction_meanings_off` on `sreagent_organization_settings` | v0.514.0 |
 | `slack_reaction_sync` and `slack_reaction_counts` on `sreagent_organization_settings` | v0.517.0 |
+| `card_event_kinds` and `card_event_text` on `sreagent_outbound_config` | v0.522.0 |
+| `data.sreagent_ticket_templates`, `data.sreagent_ticket_schedules` | v0.523.0 |
+| `data.sreagent_lead_agent_settings` | v0.524.0 |
+| `data.sreagent_board_rules` | v0.525.0 |
+| `board_summary_model_enabled` on `sreagent_organization_settings` | v0.529.0 |
+| `good_events_query`, `total_events_query`, `threshold_good` and `unit` on `sreagent_sli` | v0.529.3 |
+| `sreagent_github_account`, `sreagent_github_child_access`, their data sources, and `account` on `data.sreagent_effective_repo_settings` | v0.538.0 |
 
 The security resources need nothing newer than the release that first served each (0.3.0 changes the provider and the
 platform's published API document, not what a platform serves). They also need the infrastructure suite in the

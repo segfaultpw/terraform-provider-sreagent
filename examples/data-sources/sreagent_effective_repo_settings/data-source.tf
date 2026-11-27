@@ -11,3 +11,9 @@ output "repositories_on_your_runner" {
 output "defaults" {
   value = jsondecode(data.sreagent_effective_repo_settings.self_hosted.defaults)
 }
+
+# With more than one GitHub account connected, each repository says which
+# account it is read through (null when no account reaches it).
+output "repositories_by_account" {
+  value = { for r in data.sreagent_effective_repo_settings.self_hosted.items : r.repo => r.account }
+}

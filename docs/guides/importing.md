@@ -21,6 +21,8 @@ Every resource imports, either with `terraform import` or with an
 | `sreagent_security_sla_policy`, `sreagent_security_digest_settings`, `sreagent_security_code_classes` | the resource's own name | `security_sla_policy` |
 | `sreagent_security_notification_rule`, `sreagent_secret_allow_rule` | the row's id | `00000000-0000-0000-0000-000000000000` |
 | `sreagent_service_binding` | the service, plus `?environment=<name>` when the environment is not the default, each part escaped as in a URL | `checkout?environment=prod` |
+| `sreagent_github_account` | the account's login | `acme-labs` |
+| `sreagent_github_child_access` | the child organization's id, plus `?account=<login>` (the same shape as a service binding; the account may be left out while the organization has one connected account) | `00000000-0000-0000-0000-000000000000?account=acme` |
 
 A collection's id is on the row's page in the app and in its list data source:
 
@@ -106,6 +108,36 @@ the resource instead gives the child its own defaults for every setting and stop
 plan says so and lists what moves). Destroying the resource hands the child back to the parent and is planned like
 a change: the destroy plan lists what moves, and if the parent's defaults turn CI configuration, network access or auto-merge
 on, it fails until `confirm_on_destroy` holds the confirmation (set it, apply, then destroy).
+
+## GitHub accounts and what a child may use of them
+
+`sreagent_github_account` and `sreagent_github_child_access` manage rows the platform has no door to create or delete:
+a GitHub account is connected on the Integrations page, and a child organization is linked under its parent by a
+platform administrator. So both adopt an existing row, whether the block is imported or not: creating the resource reads
+the row, judges the block against what it holds and writes only the difference, and a setting the block leaves out is
+left as it is. A block for an account or a child that does not exist fails and says where to connect or link it, and
+destroying either resource leaves the row where it is, with a warning, and changes nothing on the platform.
+
+- **`sreagent_github_account` imports by the account's login**, as the Integrations page shows it. A GitHub account that is
+  renamed changes its login, so edit the block to the new login and import it again. The organization's managed account (the one
+  connected longest) belongs to `sreagent_github_settings`; a block for it fights that resource, and the plan warns.
+- **`sreagent_github_child_access` imports as `<child id>?account=<login>`**, in the parent organization. A change that
+  takes repositories away from a child is previewed at plan time and applied against the plan's fingerprint; a change
+  that takes nothing away is applied at once. Importing writes nothing, so import first to review a change as a plan.
+- **`context_repo_shared` belongs to the child, not to the account.** The platform holds one value for each child, so
+  state it on one block of the child only.
+
+```terraform
+import {
+  to = sreagent_github_account.acme_labs
+  id = "acme-labs"
+}
+
+import {
+  to = sreagent_github_child_access.acme_labs_acme
+  id = "00000000-0000-0000-0000-000000000000?account=acme"
+}
+```
 
 ## The organization's Slack thread settings
 

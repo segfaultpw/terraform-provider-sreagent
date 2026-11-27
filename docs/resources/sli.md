@@ -31,8 +31,12 @@ resource "sreagent_sli" "latency" {
 
 - `data_source_id` (String) The data source the query runs on.
 - `description` (String) What the indicator measures.
+- `good_events_query` (String) A query counting good events, in the data source's own language. Both event queries (this and total_events_query) make an event-ratio SLI. Needs platform v0.529.3.
 - `query` (String) The query against the data source.
 - `service` (String) The service measured.
+- `threshold_good` (Number) The line between a good sample and a bad one when the SLI has no event queries, in the SLI's unit: at or under it is good for latency, error_rate and saturation, at or over it is good for availability and throughput. Needs platform v0.529.3.
+- `total_events_query` (String) A query counting all events, to pair with good_events_query. Needs platform v0.529.3.
+- `unit` (String) The label for the SLI's numbers, such as ms. Needs platform v0.529.3.
 
 ### Read-Only
 
