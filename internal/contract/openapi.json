@@ -16300,9 +16300,7 @@
       "terraform_null_as": {
         "looking_window_hours": 0
       },
-      "terraform_pending": [
-        "board_summary_model_enabled"
-      ],
+      "terraform_pending": [],
       "terraform_pending_values": {},
       "terraform_read_only": [
         "social_joins_enabled",
@@ -16409,10 +16407,7 @@
       "singleton": false,
       "terraform_names": {},
       "terraform_null_as": {},
-      "terraform_pending": [
-        "card_event_kinds",
-        "card_event_text"
-      ],
+      "terraform_pending": [],
       "terraform_pending_values": {},
       "terraform_read_only": [],
       "terraform_type": "outbound_config",
@@ -17179,12 +17174,7 @@
       "singleton": false,
       "terraform_names": {},
       "terraform_null_as": {},
-      "terraform_pending": [
-        "good_events_query",
-        "total_events_query",
-        "threshold_good",
-        "unit"
-      ],
+      "terraform_pending": [],
       "terraform_pending_values": {},
       "terraform_read_only": [],
       "terraform_type": "sli",
